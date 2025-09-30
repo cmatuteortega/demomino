@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(love:*)",
+      "Bash(lua:*)",
+      "Bash(for i in {1..5})",
+      "Bash(do echo \"=== Test run $i ===\")",
+      "Bash(echo)",
+      "Bash(done)",
+      "Bash(rm:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}

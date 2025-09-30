@@ -1,0 +1,648 @@
+function love.load()
+    love.window.setTitle("Domino Deckbuilder")
+    
+    local screenWidth = love.graphics.getWidth()
+    local screenHeight = love.graphics.getHeight()
+    
+    if love.system.getOS() == "Android" or love.system.getOS() == "iOS" then
+        love.window.setFullscreen(true)
+        screenWidth = love.graphics.getWidth()
+        screenHeight = love.graphics.getHeight()
+    else
+        -- Enable window resizing for desktop platforms
+        love.window.setMode(screenWidth, screenHeight, {resizable = true})
+    end
+    
+    love.graphics.setDefaultFilter("nearest", "nearest")
+    
+    require("game.domino")
+    require("game.hand")
+    require("game.board")
+    require("game.validation")
+    require("game.scoring")
+    require("game.challenges")
+    require("game.map")
+    require("ui.touch")
+    require("ui.layout")
+    require("ui.fonts")
+    require("ui.colors")
+    require("ui.renderer")
+    require("ui.animation")
+    
+    loadDominoSprites()
+    loadNodeSprites()
+    
+    gameState = {
+        screen = {
+            width = screenWidth,
+            height = screenHeight,
+            scale = math.min(screenWidth / 800, screenHeight / 600)
+        },
+        deck = {},
+        hand = {},
+        board = {},
+        placedTiles = {},
+        score = 0,
+        gamePhase = "playing",
+        placementOrder = {},
+        discardsUsed = 0,
+        playsUsed = 0,
+        handsPlayed = 0,
+        currentRound = 1,
+        baseTargetScore = 3,
+        targetScore = 3,
+        maxHandsPerRound = 3,
+        scoringSequence = nil,
+        currentMap = nil,
+        selectedNode = nil,  -- For node confirmation dialog
+        isBossRound = false,  -- Track if current combat is the boss round
+        scoreAnimation = {    -- Animation properties for score display
+            scale = 1.0,
+            shake = 0,
+            color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], UI.Colors.FONT_RED[4]}
+        },
+        -- Deckbuilding system
+        tileCollection = {},  -- All tiles the player has unlocked
+        offeredTiles = {},    -- Tiles currently being offered in tiles menu
+        selectedTileOffer = nil,  -- Currently selected tile in the offering
+        -- Challenge system
+        activeChallenges = {},  -- Active challenges for current combat
+        challengeStates = {}  -- State data for each challenge
+    }
+    
+    UI.Fonts.load()
+    
+    -- Load CRT shader and create render canvas
+    crtShader = love.graphics.newShader("shaders/background_crt.glsl")
+    mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
+    
+    initializeGame()
+end
+
+function initializeGame(isNewRound)
+    isNewRound = isNewRound or false
+    
+    -- Initialize tile collection on first run
+    if not gameState.tileCollection or #gameState.tileCollection == 0 then
+        gameState.tileCollection = Domino.createStarterCollection()
+    end
+    
+    -- Create deck from player's collection
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+    
+    -- Initialize empty hand first
+    gameState.hand = {}
+    
+    -- Draw tiles from deck
+    for i = 1, 7 do
+        local tile = table.remove(gameState.deck, 1)
+        if tile then
+            tile.selected = false
+            tile.placed = false
+            table.insert(gameState.hand, tile)
+        end
+    end
+    
+    gameState.board = {}
+    gameState.placedTiles = {}
+    gameState.score = 0
+    gameState.previousScore = 0
+    gameState.selectedTiles = {}
+    gameState.placementOrder = {}
+    gameState.discardsUsed = 0
+    gameState.playsUsed = 0
+    gameState.handsPlayed = 0
+    gameState.scoreAnimation = nil
+    gameState.buttonAnimations = {
+        playButton = {scale = 1.0, pressed = false},
+        discardButton = {scale = 1.0, pressed = false}
+    }
+    
+    -- If not a new round, reset everything including round progress
+    if not isNewRound then
+        gameState.currentRound = 1
+        gameState.targetScore = gameState.baseTargetScore
+    else
+        -- Calculate target score for current round (doubles each round)
+        gameState.targetScore = gameState.baseTargetScore * (2 ^ (gameState.currentRound - 1))
+    end
+    
+    -- Position tiles will be handled in first draw call
+end
+
+function initializeCombatRound()
+    -- Reset only combat-specific state while preserving map progress and tile collection
+
+    -- STEP 1: Clear old combat state FIRST
+    gameState.board = {}
+    gameState.placedTiles = {}
+    gameState.hand = {}
+    gameState.score = 0
+    gameState.previousScore = 0
+    gameState.selectedTiles = {}
+    gameState.placementOrder = {}
+    gameState.discardsUsed = 0
+    gameState.playsUsed = 0
+    gameState.handsPlayed = 0
+    gameState.scoreAnimation = nil
+    gameState.buttonAnimations = {
+        playButton = {scale = 1.0, pressed = false},
+        discardButton = {scale = 1.0, pressed = false}
+    }
+
+    -- STEP 2: Create fresh deck from player's collection
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+
+    -- STEP 3: Initialize challenges (can now take a tile from deck for anchor)
+    Challenges.initialize(gameState)
+
+    -- STEP 4: Draw tiles from deck to hand
+    for i = 1, 7 do
+        local tile = table.remove(gameState.deck, 1)
+        if tile then
+            tile.selected = false
+            tile.placed = false
+            table.insert(gameState.hand, tile)
+        end
+    end
+
+    -- STEP 5: Arrange board tiles (including anchor) to ensure proper positioning
+    if #gameState.placedTiles > 0 then
+        Board.arrangePlacedTiles()
+    end
+
+    -- Keep currentRound, targetScore, currentMap, and tileCollection unchanged
+    -- These should persist across combat rounds
+end
+
+function updateScore(newScore, bonusInfo)
+    if newScore ~= gameState.score then
+        local difference = newScore - gameState.score
+        gameState.previousScore = gameState.score
+        gameState.score = newScore
+        
+        -- Create score popup animation
+        local scoreX = gameState.screen.width - UI.Layout.scale(120)
+        local scoreY = UI.Layout.scale(50)
+        
+        UI.Animation.createScorePopup(difference, scoreX, scoreY, bonusInfo and bonusInfo.hasBonus)
+        
+        -- Animate the score display itself
+        gameState.scoreAnimation = {
+            scale = 1.0,
+            shake = 0,
+            color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], UI.Colors.FONT_RED[4]}
+        }
+        
+        local color = UI.Colors.FONT_RED
+        if bonusInfo and bonusInfo.hasBonus then
+            color = UI.Colors.FONT_RED_DARK
+            gameState.scoreAnimation.shake = 3
+        end
+        
+        UI.Animation.animateTo(gameState.scoreAnimation, {scale = 1.3}, 0.2, "easeOutBack", function()
+            UI.Animation.animateTo(gameState.scoreAnimation, {scale = 1.0}, 0.3, "easeOutQuart")
+            gameState.scoreAnimation.color = {color[1], color[2], color[3], color[4]}
+            UI.Animation.animateTo(gameState.scoreAnimation, {shake = 0}, 0.5, "easeOutQuart", function()
+                UI.Animation.animateTo(gameState.scoreAnimation.color, {[1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2], [3] = UI.Colors.FONT_RED[3]}, 1.0, "easeOutQuart")
+            end)
+        end)
+    end
+end
+
+function startScoringSequence(tiles)
+    gameState.scoringSequence = {
+        tiles = tiles,
+        currentTileIndex = 1,
+        accumulatedValue = 0,
+        showingMultiplier = false,
+        showingFinal = false,
+        phase = "scoring_tiles",  -- "scoring_tiles", "multiplying", "final"
+        timer = 0,
+        tileAnimDelay = 0.4,
+        finalTileAnimating = false,
+        waitingForFinalTile = false
+    }
+    
+    -- Sort tiles from left to right for visual consistency
+    table.sort(gameState.scoringSequence.tiles, function(a, b)
+        return a.x < b.x
+    end)
+end
+
+function updateScoringSequence(dt)
+    if not gameState.scoringSequence then return end
+    
+    local seq = gameState.scoringSequence
+    seq.timer = seq.timer + dt
+    
+    if seq.phase == "scoring_tiles" then
+        -- Check if we're waiting for final tile to finish
+        if seq.waitingForFinalTile and not seq.finalTileAnimating then
+            -- Final tile finished, move to multiplier phase
+            seq.phase = "multiplying"
+            seq.showingMultiplier = true
+            seq.timer = 0
+            seq.waitingForFinalTile = false
+        else
+            -- Check if it's time to animate the next tile
+            local tileDelay = (seq.currentTileIndex - 1) * seq.tileAnimDelay
+            
+            if seq.timer >= tileDelay then
+                if seq.currentTileIndex <= #seq.tiles then
+                    local tile = seq.tiles[seq.currentTileIndex]
+                    
+                    -- Add this tile's value to accumulated
+                    local tileValue = Domino.getValue(tile)
+                    local isDouble = Domino.isDouble(tile)
+                    seq.accumulatedValue = seq.accumulatedValue + tileValue + (isDouble and 10 or 0)
+                    
+                    -- Animate the tile with shake effect
+                    animateTileScoring(tile)
+                    
+                    seq.currentTileIndex = seq.currentTileIndex + 1
+                else
+                    -- All tiles have been triggered, wait for final tile to finish animating
+                    seq.waitingForFinalTile = true
+                end
+            end
+        end
+    elseif seq.phase == "multiplying" then
+        -- Immediately move to final result
+        seq.phase = "final"
+        seq.showingFinal = true
+        seq.timer = 0
+    elseif seq.phase == "final" then
+        -- Immediately complete the scoring sequence
+        completeScoringSequence()
+    end
+end
+
+function animateTileScoring(tile)
+    -- Create satisfying punch-out shake effect
+    tile.scoreScale = tile.scoreScale or 1.0
+    tile.scoreShake = tile.scoreShake or 0
+    
+    local seq = gameState.scoringSequence
+    local isFinalTile = (seq.currentTileIndex == #seq.tiles)
+    
+    if isFinalTile then
+        seq.finalTileAnimating = true
+    end
+    
+    UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
+        UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack", function()
+            -- If this was the final tile, mark that it's done animating
+            if isFinalTile then
+                seq.finalTileAnimating = false
+            end
+        end)
+    end)
+    
+    -- Add shake effect
+    tile.scoreShake = 5
+    UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
+    
+    -- Animate the formula counter as well
+    seq.formulaAnimation = seq.formulaAnimation or {scale = 1.0, shake = 0}
+    seq.formulaAnimation.scale = 1.0
+    seq.formulaAnimation.shake = 3
+    
+    UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.2}, 0.1, "easeOutBack", function()
+        UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.0}, 0.2, "easeOutBack")
+    end)
+    UI.Animation.animateTo(seq.formulaAnimation, {shake = 0}, 0.3, "easeOutQuart")
+end
+
+function completeScoringSequence()
+    local tiles = gameState.scoringSequence.tiles
+    local score = Scoring.calculateScore(tiles)
+    local breakdown = Scoring.getScoreBreakdown(tiles)
+    
+    -- Add celebration text for successful plays
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+    local hasBonus = breakdown.multiplier > 1 or breakdown.doubleBonus > 0
+    
+    if hasBonus then
+        UI.Animation.createFloatingText("NICE COMBO!", centerX, centerY, {
+            color = {1, 0.8, 0.2, 1},
+            fontSize = "large",
+            duration = 2.5,
+            riseDistance = 100,
+            startScale = 0.3,
+            endScale = 1.8,
+            bounce = true,
+            easing = "easeOutElastic"
+        })
+    elseif #tiles >= 3 then
+        UI.Animation.createFloatingText("GOOD PLAY!", centerX, centerY, {
+            color = {0.2, 0.9, 0.3, 1},
+            fontSize = "medium",
+            duration = 2.0,
+            riseDistance = 80,
+            startScale = 0.5,
+            endScale = 1.4,
+            bounce = true,
+            easing = "easeOutBack"
+        })
+    end
+    
+    -- Update the actual game score
+    updateScore(gameState.score + score, {hasBonus = hasBonus})
+    
+    -- Clear scoring sequence state
+    gameState.scoringSequence = nil
+    
+    -- Continue with normal game flow (refill hand, etc.)
+    gameState.handsPlayed = gameState.handsPlayed + 1
+
+    -- Call challenge hand complete handlers
+    if Challenges then
+        Challenges.onHandComplete(gameState)
+    end
+
+    -- Remove tiles from hand and placed tiles
+    -- First mark the tiles as selected so they can be removed
+    for _, placedTile in ipairs(tiles) do
+        for _, handTile in ipairs(gameState.hand) do
+            if handTile.id == placedTile.id then
+                handTile.selected = true
+                break
+            end
+        end
+    end
+
+    Hand.removeSelectedTiles(gameState.hand)
+
+    -- Clear placed tiles but preserve anchor tile if it exists
+    local anchorTile = Challenges and Challenges.getAnchorTile(gameState)
+    gameState.placedTiles = {}
+
+    if anchorTile then
+        -- Re-add anchor tile to placed tiles so it persists
+        table.insert(gameState.placedTiles, anchorTile)
+        -- Re-position anchor tile at center
+        Board.arrangePlacedTiles()
+    end
+
+    -- Refill hand
+    Hand.refillHand(gameState.hand, gameState.deck, 7)
+
+    -- Check game end condition
+    Touch.checkGameEnd()
+end
+
+function animateButtonPress(buttonName)
+    if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
+        local button = gameState.buttonAnimations[buttonName]
+        button.pressed = true
+        
+        UI.Animation.animateTo(button, {scale = 0.9}, 0.1, "easeOutQuart", function()
+            UI.Animation.animateTo(button, {scale = 1.1}, 0.15, "easeOutBack", function()
+                UI.Animation.animateTo(button, {scale = 1.0}, 0.2, "easeOutQuart", function()
+                    button.pressed = false
+                end)
+            end)
+        end)
+    end
+end
+
+function love.update(dt)
+    Touch.update(dt)
+    UI.Animation.update(dt)
+    
+    if gameState.gamePhase == "playing" then
+        Hand.update(dt)
+        Board.update(dt)
+        updateScoringSequence(dt)
+    end
+end
+
+function love.draw()
+    -- PASS 1: Render entire game to canvas
+    love.graphics.setCanvas(mainCanvas)
+    -- Don't clear here - let each screen phase handle its own background properly
+    
+    UI.Layout.begin()
+    
+    -- Each phase draws its own background as before
+    if gameState.gamePhase == "playing" then
+        UI.Renderer.drawBackground()
+        UI.Renderer.drawBoard(gameState.board)
+        UI.Renderer.drawPlacedTiles()
+        UI.Renderer.drawHand(gameState.hand)
+        UI.Renderer.drawScore(gameState.score)
+        UI.Renderer.drawUI()
+    elseif gameState.gamePhase == "map" then
+        UI.Renderer.drawMap()
+    elseif gameState.gamePhase == "node_confirmation" then
+        UI.Renderer.drawMap()  -- Draw map background
+        UI.Renderer.drawNodeConfirmation()  -- Draw confirmation dialog on top
+    elseif gameState.gamePhase == "tiles_menu" then
+        UI.Renderer.drawTilesMenu()
+    elseif gameState.gamePhase == "artifacts_menu" then
+        UI.Renderer.drawArtifactsMenu()
+    elseif gameState.gamePhase == "contracts_menu" then
+        UI.Renderer.drawContractsMenu()
+    elseif gameState.gamePhase == "won" or gameState.gamePhase == "lost" then
+        UI.Renderer.drawGameOver()
+    end
+    
+    UI.Animation.drawFloatingTexts()
+    
+    UI.Layout.finish()
+    
+    -- PASS 2: Apply CRT shader and render canvas to screen
+    love.graphics.setCanvas()  -- Reset to screen
+    
+    -- Ensure proper color and blend state before applying shader
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setBlendMode("alpha")
+    love.graphics.setShader(crtShader)
+    
+    -- Set shader uniforms
+    crtShader:send("time", love.timer.getTime())
+    crtShader:send("resolution", {gameState.screen.width, gameState.screen.height})
+    
+    -- Draw the canvas to screen through CRT shader
+    love.graphics.draw(mainCanvas, 0, 0)
+    
+    -- Reset shader and state
+    love.graphics.setShader()
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function love.resize(w, h)
+    gameState.screen.width = w
+    gameState.screen.height = h
+    gameState.screen.scale = math.min(w / 800, h / 600)
+    
+    -- Recreate canvas with new dimensions for CRT shader
+    if mainCanvas then
+        mainCanvas:release()
+    end
+    mainCanvas = love.graphics.newCanvas(w, h, {format = "rgba8", readable = true, msaa = 0})
+    
+    UI.Fonts.recalculate()
+    
+    -- Force layout recalculation for orientation changes
+    UI.Layout.recalculate()
+    
+    -- Update hand positions for responsive layout
+    if gameState.hand then
+        Hand.updatePositions(gameState.hand)
+    end
+    
+    -- Rearrange board tiles for new screen dimensions
+    if gameState.placedTiles and #gameState.placedTiles > 0 then
+        Board.arrangePlacedTiles()
+    end
+end
+
+function love.mousepressed(x, y, button, istouch)
+    if istouch or button == 1 then
+        Touch.pressed(x, y, istouch)
+    end
+end
+
+function love.mousereleased(x, y, button, istouch)
+    if istouch or button == 1 then
+        Touch.released(x, y, istouch)
+    end
+end
+
+function love.mousemoved(x, y, dx, dy, istouch)
+    Touch.moved(x, y, dx, dy, istouch)
+end
+
+function love.touchpressed(id, x, y, dx, dy, pressure)
+    Touch.pressed(x, y, true, id)
+end
+
+function love.touchreleased(id, x, y, dx, dy, pressure)
+    Touch.released(x, y, true, id)
+end
+
+function love.touchmoved(id, x, y, dx, dy, pressure)
+    Touch.moved(x, y, dx, dy, true, id)
+end
+
+function loadDominoSprites()
+    dominoSprites = {}
+    dominoTiltedSprites = {}
+    
+    -- Load vertical sprites (for hand tiles)
+    for i = 0, 6 do
+        for j = i, 6 do
+            local filename = "sprites/tiles/" .. i .. j .. ".png"
+            if love.filesystem.getInfo(filename) then
+                local sprite = love.graphics.newImage(filename)
+                dominoSprites[i .. j] = sprite
+            end
+        end
+    end
+    
+    -- Load tilted sprites (for board tiles) - note: folder was titled_tiles, likely meant to be tilted_tiles
+    local rawTiltedSprites = {}
+    for i = 0, 6 do
+        for j = i, 6 do
+            local filename = "sprites/titled_tiles/" .. i .. j .. "t.png"
+            if love.filesystem.getInfo(filename) then
+                local sprite = love.graphics.newImage(filename)
+                rawTiltedSprites[i .. j] = sprite
+            end
+        end
+    end
+    
+    -- Create mapping for all possible domino combinations (vertical sprites)
+    for i = 0, 6 do
+        for j = 0, 6 do
+            local key = i .. j
+            if not dominoSprites[key] then
+                -- Try inverted version (j-i instead of i-j)
+                local invertedKey = j .. i
+                if dominoSprites[invertedKey] then
+                    -- Mark this sprite as needing 180-degree rotation
+                    dominoSprites[key] = {
+                        sprite = dominoSprites[invertedKey],
+                        inverted = true
+                    }
+                end
+            elseif dominoSprites[key] then
+                -- Wrap existing sprites in consistent format
+                local existingSprite = dominoSprites[key]
+                dominoSprites[key] = {
+                    sprite = existingSprite,
+                    inverted = false
+                }
+            end
+        end
+    end
+    
+    -- Create mapping for all tilted sprite combinations
+    for i = 0, 6 do
+        for j = 0, 6 do
+            local key = i .. j
+            local minVal = math.min(i, j)
+            local maxVal = math.max(i, j)
+            local spriteKey = minVal .. maxVal
+            
+            -- Check if we have the base sprite (e.g., "14" for both "14" and "41")
+            local baseSprite = rawTiltedSprites[spriteKey]
+            if baseSprite then
+                -- Create entries for both orientations
+                dominoTiltedSprites[spriteKey] = {
+                    sprite = baseSprite,
+                    flipped = false  -- Normal orientation (smaller number left)
+                }
+                
+                -- If it's not a double, create the flipped version
+                if minVal ~= maxVal then
+                    local flippedKey = maxVal .. minVal
+                    dominoTiltedSprites[flippedKey] = {
+                        sprite = baseSprite,
+                        flipped = true  -- Flipped orientation (larger number left)
+                    }
+                end
+            end
+        end
+    end
+end
+
+function loadNodeSprites()
+    nodeSprites = {}
+    
+    -- Define node type to sprite mapping
+    local nodeTypeMapping = {
+        combat = "combat",
+        tiles = "tile",
+        artifacts = "artifact", 
+        contracts = "contract",
+        start = "tile",  -- Fallback to tile sprite
+        boss = "combat"  -- Fallback to combat sprite
+    }
+    
+    -- Load base sprites and selected sprites for each node type
+    for nodeType, spriteName in pairs(nodeTypeMapping) do
+        -- Load base sprite
+        local baseFilename = "sprites/nodes/" .. spriteName .. ".png"
+        if love.filesystem.getInfo(baseFilename) then
+            local baseSprite = love.graphics.newImage(baseFilename)
+            
+            -- Load selected sprite
+            local selectedFilename = "sprites/nodes/" .. spriteName .. "_selected.png"
+            local selectedSprite = nil
+            if love.filesystem.getInfo(selectedFilename) then
+                selectedSprite = love.graphics.newImage(selectedFilename)
+            end
+            
+            nodeSprites[nodeType] = {
+                base = baseSprite,
+                selected = selectedSprite
+            }
+        end
+    end
+end

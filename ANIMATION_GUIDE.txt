@@ -1,0 +1,222 @@
+DOMINO GAME - TEXT ANIMATION SYSTEM GUIDE
+=========================================
+
+This document describes all the text animation styles implemented in the domino game 
+for future reference and replication.
+
+FONT SYSTEM
+-----------
+- Font: Pixellari.ttf (pixel art style font)
+- Sizes: small, medium, large, title, score, button
+- Auto-scaling based on screen resolution
+- Fallback to default fonts if custom font unavailable
+
+CORE ANIMATION FUNCTIONS
+------------------------
+
+1. UI.Fonts.drawAnimatedText(text, x, y, fontSize, color, alignment, animProps)
+   - Main function for animated text rendering
+   - animProps: {scale, rotation, opacity, shake}
+
+2. UI.Animation.createFloatingText(text, x, y, options)
+   - Creates floating text that rises and fades
+   - Options: color, fontSize, duration, riseDistance, startScale, endScale, bounce, easing, shake
+
+3. UI.Animation.createScorePopup(score, x, y, isBonus)
+   - Specialized function for score notifications
+   - Green for regular scores, gold for bonus scores
+
+ANIMATION STYLES IMPLEMENTED
+============================
+
+1. SCORE DISPLAY ANIMATION
+--------------------------
+Location: Main score in top-right corner
+Trigger: When score changes
+Effects:
+- Scale bounce: 1.0 → 1.3 → 1.0 (easeOutBack → easeOutQuart)
+- Color flash: Green/Gold → White (1 second fade)
+- Shake: 3 pixels for bonus scores
+Duration: 0.5 seconds total animation
+
+Code Pattern:
+```
+gameState.scoreAnimation = {scale = 1.0, shake = 0, color = {1,1,1,1}}
+UI.Animation.animateTo(gameState.scoreAnimation, {scale = 1.3}, 0.2, "easeOutBack", ...)
+```
+
+2. FLOATING SCORE POPUP
+-----------------------
+Location: Near score display
+Trigger: When points are gained
+Effects:
+- Text: "+X" or "BONUS +X"
+- Rise: 80 pixels upward
+- Scale: 0.5 → 1.2 (with bounce for bonuses)
+- Fade: 1.0 → 0.0 opacity
+Duration: 2.0 seconds
+
+Code Pattern:
+```
+UI.Animation.createScorePopup(difference, scoreX, scoreY, bonusInfo.hasBonus)
+```
+
+3. BUTTON PRESS ANIMATION
+-------------------------
+Location: All buttons (PLAY TILES, DISCARD)
+Trigger: When button is pressed
+Effects:
+- Scale sequence: 1.0 → 0.9 → 1.1 → 1.0
+- Timing: 0.1s → 0.15s → 0.2s
+- Easing: easeOutQuart → easeOutBack → easeOutQuart
+Duration: 0.45 seconds total
+
+Code Pattern:
+```
+animateButtonPress("buttonName")
+```
+
+4. CELEBRATION TEXT
+-------------------
+Location: Center screen
+Trigger: Successful tile plays
+
+4a. NICE COMBO! (for bonus plays)
+- Color: Gold {1, 0.8, 0.2, 1}
+- Font: Large
+- Rise: 100 pixels
+- Scale: 0.3 → 1.8
+- Bounce: Yes
+- Easing: easeOutElastic
+Duration: 2.5 seconds
+
+4b. GOOD PLAY! (for 3+ tile plays)
+- Color: Green {0.2, 0.9, 0.3, 1}
+- Font: Medium
+- Rise: 80 pixels
+- Scale: 0.5 → 1.4
+- Bounce: Yes
+- Easing: easeOutBack
+Duration: 2.0 seconds
+
+Code Pattern:
+```
+UI.Animation.createFloatingText("NICE COMBO!", centerX, centerY, {
+    color = {1, 0.8, 0.2, 1},
+    fontSize = "large",
+    duration = 2.5,
+    riseDistance = 100,
+    startScale = 0.3,
+    endScale = 1.8,
+    bounce = true,
+    easing = "easeOutElastic"
+})
+```
+
+5. ERROR FEEDBACK
+-----------------
+Location: Center screen (slightly below center)
+Trigger: Invalid tile placement
+Effects:
+- Text: "INVALID PLAY"
+- Color: Red {0.9, 0.3, 0.3, 1}
+- Font: Medium
+- Rise: 40 pixels (minimal)
+- Scale: 0.8 → 1.2
+- Shake: 3 pixels
+Duration: 1.5 seconds
+
+Code Pattern:
+```
+UI.Animation.createFloatingText("INVALID PLAY", centerX, centerY, {
+    color = {0.9, 0.3, 0.3, 1},
+    fontSize = "medium",
+    duration = 1.5,
+    riseDistance = 40,
+    startScale = 0.8,
+    endScale = 1.2,
+    shake = 3,
+    easing = "easeOutQuart"
+})
+```
+
+6. GAME OVER SCREEN ANIMATIONS
+------------------------------
+Location: Game over overlay
+
+6a. Title Animation
+- Text: "YOU WON!" / "GAME OVER"
+- Color: Green for win, Red for loss
+- Scale: Continuous sine wave (1 + sin(time*2) * 0.1)
+- Shake: 2 pixels for win state
+- Font: Title
+
+6b. Final Score Pulse
+- Scale: Continuous sine wave (1 + sin(time*3) * 0.05)
+- Color: White
+- Font: Large
+
+6c. Restart Prompt Breathing
+- Opacity: 0.7 + 0.3 * sin(time*2) (breathing effect)
+- Color: Light gray
+- Font: Medium
+
+7. UI ELEMENT BREATHING ANIMATIONS
+----------------------------------
+Location: Various UI elements
+Type: Continuous/Idle animations
+
+7a. Play Button (when valid play available)
+- Scale: 1 + sin(time*3) * 0.05
+- Creates subtle "ready" animation
+
+7b. Score Preview (above play button)
+- Scale: 1 + sin(time*4) * 0.1
+- Color: Green for regular, Gold for bonus
+
+7c. Goal Text (when no tiles selected/placed)
+- Scale: 1 + sin(time*2) * 0.03
+- Color: Light blue {0.8, 0.9, 1, 1}
+
+EASING FUNCTIONS USED
+====================
+- easeOutQuart: Smooth deceleration, most common
+- easeOutBack: Slight overshoot then settle, for satisfying pops
+- easeOutElastic: Bouncy spring effect, for celebrations
+- linear: Constant speed, rarely used
+
+COLOR PALETTE
+=============
+- Success/Good: Green {0.2, 0.9, 0.3, 1}
+- Bonus/Special: Gold {1, 0.8, 0.2, 1}
+- Error/Invalid: Red {0.9, 0.3, 0.3, 1}
+- Default UI: White {1, 1, 1, 1}
+- Subtle UI: Light Gray {0.8, 0.8, 0.8, 1}
+- Goal Text: Light Blue {0.8, 0.9, 1, 1}
+
+TIMING GUIDELINES
+================
+- Quick feedback: 0.1-0.3 seconds (button presses)
+- UI transitions: 0.3-0.5 seconds (score updates)
+- Celebrations: 1.5-2.5 seconds (floating text)
+- Idle animations: 2-4 second periods (breathing effects)
+
+IMPLEMENTATION NOTES
+===================
+- All animations use the centralized UI.Animation system
+- Font rendering goes through UI.Fonts for consistency
+- gameState tracks animation states for UI elements
+- Floating texts are self-contained and auto-cleanup
+- Button animations use dedicated state tracking
+- Screen scaling affects all font sizes and measurements
+
+REPLICATION CHECKLIST
+====================
+□ Load custom font through UI.Fonts system
+□ Set up animation state tracking in gameState
+□ Use appropriate easing function for desired effect
+□ Choose colors from established palette
+□ Set duration based on animation type
+□ Test on different screen sizes
+□ Ensure animations don't overlap inappropriately
+□ Add cleanup for temporary animations
