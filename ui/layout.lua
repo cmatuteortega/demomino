@@ -47,7 +47,7 @@ function UI.Layout.recalculate()
     layout.handY = screen.height - layout.tileSize.height - layout.padding - buttonHeight - (uiSpacing * 2)
     layout.boardY = layout.padding
     layout.boardCenterX = screen.width / 2
-    layout.boardCenterY = (layout.boardY + layout.handY - buttonHeight - uiSpacing) / 2
+    layout.boardCenterY = (layout.boardY + layout.handY - buttonHeight - uiSpacing) / 2 + (30 * scale)
     
     layout.isCalculated = true
 end
