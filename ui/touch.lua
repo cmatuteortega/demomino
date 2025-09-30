@@ -489,7 +489,10 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
         table.remove(gameState.hand, actualIndex)
         Board.arrangePlacedTiles()
         Hand.updatePositions(gameState.hand)
-        
+
+        -- Play tile placement sound
+        UI.Audio.playTilePlaced()
+
         -- Find the placed tile and animate it to its final board position
         for _, placedTile in ipairs(gameState.placedTiles) do
             if placedTile.id == clonedTile.id then
@@ -497,7 +500,7 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
                 placedTile.visualX = tile.dragX or tile.visualX
                 placedTile.visualY = tile.dragY or tile.visualY
                 placedTile.isDragging = false
-                
+
                 Touch.animateTileToPosition(placedTile, placedTile.x, placedTile.y)
                 break
             end
@@ -668,16 +671,19 @@ function Touch.returnTileToHand(tile)
             break
         end
     end
-    
+
     -- Create a hand tile copy
     local handTile = Domino.clone(tile)
     handTile.placed = false
     handTile.orientation = "vertical"  -- Reset to hand orientation
     handTile.selected = false
-    
+
     -- Use Hand module function to properly add the tile
     Hand.addTiles(gameState.hand, {handTile})
-    
+
+    -- Play tile return sound
+    UI.Audio.playTileReturned()
+
     -- Automatically rearrange remaining tiles to close gaps
     Board.arrangePlacedTiles()
 end

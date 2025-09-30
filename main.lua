@@ -28,6 +28,7 @@ function love.load()
     require("ui.colors")
     require("ui.renderer")
     require("ui.animation")
+    require("ui.audio")
     
     loadDominoSprites()
     loadDemonTileSprites()
@@ -72,12 +73,16 @@ function love.load()
     }
     
     UI.Fonts.load()
-    
+    UI.Audio.load()
+
     -- Load CRT shader and create render canvas
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
     mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
-    
+
     initializeGame()
+
+    -- Start background music
+    UI.Audio.playMusic()
 end
 
 function initializeGame(isNewRound)
@@ -285,7 +290,10 @@ function animateTileScoring(tile)
     -- Create satisfying punch-out shake effect
     tile.scoreScale = tile.scoreScale or 1.0
     tile.scoreShake = tile.scoreShake or 0
-    
+
+    -- Play tile sound for audio feedback
+    UI.Audio.playTilePlaced()
+
     local seq = gameState.scoringSequence
     local isFinalTile = (seq.currentTileIndex == #seq.tiles)
     
