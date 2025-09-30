@@ -305,12 +305,13 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
         -- Vertical: top half is left value, bottom half is right value
         local topY = y - baseSprite:getHeight() * spriteScale / 4
         local bottomY = y + baseSprite:getHeight() * spriteScale / 4
-        local verticalOffset = -5 * spriteScale  -- 5 pixels up
+        local topVerticalOffset = -1 * spriteScale  -- 2 pixels up (was 5, brought down by 3)
+        local bottomVerticalOffset = -5 * spriteScale  -- 5 pixels up
 
         -- Top pips: indices 1 to leftVal
-        drawEyePips(x, topY + verticalOffset, leftVal, eyeScale, tileId, 0)
+        drawEyePips(x, topY + topVerticalOffset, leftVal, eyeScale, tileId, 0)
         -- Bottom pips: indices (leftVal + 1) to (leftVal + rightVal)
-        drawEyePips(x, bottomY + verticalOffset, rightVal, eyeScale, tileId, leftVal)
+        drawEyePips(x, bottomY + bottomVerticalOffset, rightVal, eyeScale, tileId, leftVal)
     end
 
     love.graphics.setColor(1, 1, 1, 1)
@@ -584,20 +585,31 @@ function UI.Renderer.drawScore(score)
     local targetColor = UI.Colors.FONT_WHITE
     UI.Fonts.drawText(targetText, x, y + UI.Layout.scale(65), "large", targetColor, "right")
     
-    -- Draw round counter on the LEFT side
+    -- Draw round counter on the LEFT side with bigger font
     local leftX = UI.Layout.scale(20)
     local leftY = UI.Layout.scale(20)
-    
-    -- Draw round counter on left
+
+    -- Draw round counter on left with bigger font
     local roundText = "Round " .. gameState.currentRound
     local roundColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(roundText, leftX, leftY, "large", roundColor, "left")
-    
+    UI.Fonts.drawText(roundText, leftX, leftY, "title", roundColor, "left")
+
+    -- Draw current round challenge below round counter
+    local displayInfo = Challenges.getDisplayInfo(gameState)
+    if #displayInfo > 0 then
+        local challengeY = leftY + UI.Layout.scale(50)
+        for i, challenge in ipairs(displayInfo) do
+            local challengeText = challenge.icon .. " " .. challenge.text
+            local challengeColor = challenge.color or UI.Colors.FONT_WHITE
+            UI.Fonts.drawText(challengeText, leftX, challengeY + (i - 1) * UI.Layout.scale(25), "medium", challengeColor, "left")
+        end
+    end
+
     -- Draw goal text in CENTER, aligned with round counter
     local centerX = gameState.screen.width / 2
     local goalColor = UI.Colors.FONT_PINK
     local goalScale = 1 + math.sin(love.timer.getTime() * 2) * 0.03
-    UI.Fonts.drawAnimatedText("Goal: Reach " .. gameState.targetScore .. " points!", 
+    UI.Fonts.drawAnimatedText("Goal: Reach " .. gameState.targetScore .. " points!",
         centerX, leftY, "large", goalColor, "center", {scale = goalScale})
     
     -- Draw tiles left counter in bottom right
@@ -735,9 +747,6 @@ function UI.Renderer.drawChallenges()
 end
 
 function UI.Renderer.drawUI()
-    -- Draw challenge indicators at top center
-    UI.Renderer.drawChallenges()
-
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
     local playButtonX, playButtonY = UI.Layout.getPlayButtonPosition()
     local discardButtonX, discardButtonY = UI.Layout.getDiscardButtonPosition()
@@ -811,18 +820,6 @@ function UI.Renderer.drawUI()
     end
     
     UI.Fonts.drawAnimatedText(discardText, discardButtonX + buttonWidth/2, discardButtonY + buttonHeight/2, "button", color, "center", {scale = discardScale})
-    
-    local color = UI.Colors.FONT_WHITE
-    local lineHeight = UI.Layout.scale(25)
-    local startY = UI.Layout.scale(70)  -- Move down since round and hands info is above
-    
-    if hasPlacedTiles then
-        UI.Fonts.drawText("Placed: " .. #gameState.placedTiles .. " tiles", 
-            UI.Layout.scale(20), startY, "medium", color)
-    elseif hasSelectedTiles then
-        UI.Fonts.drawText("Selected: " .. #Hand.getSelectedTiles(gameState.hand) .. " tiles", 
-            UI.Layout.scale(20), startY, "medium", color)
-    end
 end
 
 function UI.Renderer.drawBackground()
