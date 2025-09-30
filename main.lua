@@ -415,7 +415,7 @@ function love.update(dt)
     Touch.update(dt)
     UI.Animation.update(dt)
     UI.Renderer.updateEyeBlinks(dt)
-
+    
     if gameState.gamePhase == "playing" then
         Hand.update(dt)
         Board.update(dt)
@@ -647,31 +647,31 @@ end
 
 function loadNodeSprites()
     nodeSprites = {}
-
+    
     -- Define node type to sprite mapping
     local nodeTypeMapping = {
         combat = "combat",
         tiles = "tile",
-        artifacts = "artifact",
+        artifacts = "artifact", 
         contracts = "contract",
         start = "tile",  -- Fallback to tile sprite
         boss = "combat"  -- Fallback to combat sprite
     }
-
+    
     -- Load base sprites and selected sprites for each node type
     for nodeType, spriteName in pairs(nodeTypeMapping) do
         -- Load base sprite
         local baseFilename = "sprites/nodes/" .. spriteName .. ".png"
         if love.filesystem.getInfo(baseFilename) then
             local baseSprite = love.graphics.newImage(baseFilename)
-
+            
             -- Load selected sprite
             local selectedFilename = "sprites/nodes/" .. spriteName .. "_selected.png"
             local selectedSprite = nil
             if love.filesystem.getInfo(selectedFilename) then
                 selectedSprite = love.graphics.newImage(selectedFilename)
             end
-
+            
             nodeSprites[nodeType] = {
                 base = baseSprite,
                 selected = selectedSprite
