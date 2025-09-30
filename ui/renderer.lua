@@ -1,6 +1,133 @@
 UI = UI or {}
 UI.Renderer = {}
 
+-- Eye blink state management
+local eyeBlinkStates = {}
+
+local function initializeEyeBlinks(tileId, pipCount)
+    if eyeBlinkStates[tileId] then
+        return
+    end
+
+    eyeBlinkStates[tileId] = {
+        pips = {},
+        lastBlinkPattern = love.timer.getTime()
+    }
+
+    for i = 1, pipCount do
+        eyeBlinkStates[tileId].pips[i] = {
+            currentFrame = 1,  -- 1 = base, 2-4 = blink frames
+            frameTimer = 0,
+            blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
+            blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+            isBlinking = false,
+            blinkPhase = 0  -- 0-5 for animation sequence
+        }
+    end
+end
+
+local function cleanupEyeBlinks(tileId)
+    eyeBlinkStates[tileId] = nil
+end
+
+function UI.Renderer.updateEyeBlinks(dt)
+    if not gameState or not gameState.placedTiles then
+        return
+    end
+
+    -- Update blinks for all anchor tiles
+    for _, tile in ipairs(gameState.placedTiles) do
+        if tile.isAnchor then
+            local tileId = tile.id
+            local pipCount = tile.left + tile.right
+
+            -- Initialize if needed
+            initializeEyeBlinks(tileId, pipCount)
+
+            local blinkState = eyeBlinkStates[tileId]
+            if not blinkState then
+                return
+            end
+
+            local currentTime = love.timer.getTime()
+
+            -- Check for special blink patterns every 8-15 seconds
+            if currentTime - blinkState.lastBlinkPattern > love.math.random() * 7 + 8 then
+                blinkState.lastBlinkPattern = currentTime
+
+                local patternRoll = love.math.random()
+
+                if patternRoll < 0.2 then
+                    -- Wave pattern: cascade blinks with 100ms delay
+                    for i = 1, #blinkState.pips do
+                        local pip = blinkState.pips[i]
+                        pip.blinkTimer = (i - 1) * 0.1  -- Stagger by 100ms
+                    end
+                elseif patternRoll < 0.3 then
+                    -- Simultaneous: all blink at once
+                    for i = 1, #blinkState.pips do
+                        blinkState.pips[i].blinkTimer = 0
+                    end
+                end
+            end
+
+            -- Update each pip
+            for i = 1, #blinkState.pips do
+                local pip = blinkState.pips[i]
+
+                if pip.isBlinking then
+                    -- Update blink animation
+                    pip.frameTimer = pip.frameTimer + dt
+                    local frameTime = 1 / 12  -- 12 FPS
+
+                    if pip.frameTimer >= frameTime then
+                        pip.frameTimer = pip.frameTimer - frameTime
+                        pip.blinkPhase = pip.blinkPhase + 1
+
+                        -- Blink sequence: base -> blink1 -> blink2 -> blink3 -> done (3 frames)
+                        local sequence = {2, 3, 4}
+                        if pip.blinkPhase <= #sequence then
+                            pip.currentFrame = sequence[pip.blinkPhase]
+                        else
+                            -- Blink complete
+                            pip.currentFrame = 1
+                            pip.isBlinking = false
+                            pip.blinkPhase = 0
+                            pip.blinkTimer = pip.blinkInterval
+                        end
+                    end
+                else
+                    -- Count down to next blink
+                    pip.blinkTimer = pip.blinkTimer - dt
+
+                    if pip.blinkTimer <= 0 then
+                        -- Start blink
+                        pip.isBlinking = true
+                        pip.blinkPhase = 1
+                        pip.frameTimer = 0
+                        pip.currentFrame = 2  -- First blink frame
+                        pip.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                    end
+                end
+            end
+        end
+    end
+
+    -- Cleanup blinks for removed tiles
+    local activeTileIds = {}
+    for _, tile in ipairs(gameState.placedTiles) do
+        if tile.isAnchor then
+            activeTileIds[tile.id] = true
+        end
+    end
+
+    for tileId, _ in pairs(eyeBlinkStates) do
+        if not activeTileIds[tileId] then
+            cleanupEyeBlinks(tileId)
+        end
+    end
+end
+
 local function drawPips(x, y, count, scale)
     scale = scale or 1
     local pipRadius = 3 * scale
@@ -36,6 +163,157 @@ local function drawPips(x, y, count, scale)
         love.graphics.circle("fill", x - spacing/2, y + spacing/2, pipRadius)
         love.graphics.circle("fill", x + spacing/2, y + spacing/2, pipRadius)
     end
+end
+
+local function drawEyePips(x, y, count, scale, tileId, pipIndexOffset)
+    if not demonTileSprites or not demonTileSprites.eyeFrames or #demonTileSprites.eyeFrames == 0 then
+        return
+    end
+
+    scale = scale or 1
+    pipIndexOffset = pipIndexOffset or 0
+    local spacing = 13 * scale
+
+    -- Helper to draw a single eye with blink animation
+    local function drawEye(eyeX, eyeY, pipIndex)
+        local eyeSprite = demonTileSprites.eyeFrames[1]  -- Default to base frame
+
+        -- Get blink state if available
+        if tileId and eyeBlinkStates[tileId] and eyeBlinkStates[tileId].pips[pipIndex] then
+            local pipState = eyeBlinkStates[tileId].pips[pipIndex]
+            local frameIndex = pipState.currentFrame or 1
+            eyeSprite = demonTileSprites.eyeFrames[frameIndex] or eyeSprite
+        end
+
+        love.graphics.draw(eyeSprite, eyeX, eyeY, 0, scale, scale, eyeSprite:getWidth()/2, eyeSprite:getHeight()/2)
+    end
+
+    if count == 0 then
+        return
+    elseif count == 1 then
+        -- Center
+        drawEye(x, y, pipIndexOffset + 1)
+    elseif count == 2 then
+        -- Top-left, bottom-right diagonal
+        drawEye(x - spacing/2, y - spacing/2, pipIndexOffset + 1)
+        drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 2)
+    elseif count == 3 then
+        -- Top-left, center, bottom-right diagonal
+        drawEye(x - spacing/2, y - spacing/2, pipIndexOffset + 1)
+        drawEye(x, y, pipIndexOffset + 2)
+        drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 3)
+    elseif count == 4 then
+        -- Four corners
+        drawEye(x - spacing/2, y - spacing/2, pipIndexOffset + 1)
+        drawEye(x + spacing/2, y - spacing/2, pipIndexOffset + 2)
+        drawEye(x - spacing/2, y + spacing/2, pipIndexOffset + 3)
+        drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 4)
+    elseif count == 5 then
+        -- Four corners + center
+        drawEye(x - spacing/2, y - spacing/2, pipIndexOffset + 1)
+        drawEye(x + spacing/2, y - spacing/2, pipIndexOffset + 2)
+        drawEye(x, y, pipIndexOffset + 3)
+        drawEye(x - spacing/2, y + spacing/2, pipIndexOffset + 4)
+        drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 5)
+    elseif count == 6 then
+        -- Two columns of 3
+        drawEye(x - spacing/2, y - spacing/2, pipIndexOffset + 1)
+        drawEye(x + spacing/2, y - spacing/2, pipIndexOffset + 2)
+        drawEye(x - spacing/2, y, pipIndexOffset + 3)
+        drawEye(x + spacing/2, y, pipIndexOffset + 4)
+        drawEye(x - spacing/2, y + spacing/2, pipIndexOffset + 5)
+        drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 6)
+    end
+end
+
+function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicScale)
+    scale = scale or gameState.screen.scale
+    orientation = orientation or "vertical"
+    dynamicScale = dynamicScale or 1.0
+
+    -- Use visual position if dragging or animating
+    if domino.isDragging or domino.isAnimating then
+        x = domino.visualX
+        y = domino.visualY
+    else
+        x = x or domino.x
+        y = y or domino.y
+    end
+
+    -- Apply scoring shake effect
+    if domino.scoreShake and domino.scoreShake > 0 then
+        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        x = x + shakeX
+        y = y + shakeY
+    end
+
+    -- Check if demon sprites are loaded
+    if not demonTileSprites then
+        return
+    end
+
+    -- Choose base sprite based on orientation
+    local baseSprite
+    if orientation == "horizontal" then
+        baseSprite = demonTileSprites.tilted
+    else
+        baseSprite = demonTileSprites.vertical
+    end
+
+    if not baseSprite then
+        return
+    end
+
+    -- Calculate sprite scaling based on screen size (same as regular tiles)
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    -- Apply dynamic scaling for board tiles
+    if dynamicScale < 1.0 then
+        spriteScale = spriteScale * dynamicScale
+    end
+
+    -- Apply drag scaling, selection scaling, and score scaling
+    local progressionScale = domino.progressionScale or 1.0
+    spriteScale = spriteScale * (domino.dragScale or 1.0) * (domino.selectScale or 1.0) * (domino.scoreScale or 1.0) * progressionScale
+
+    -- Draw base sprite
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(baseSprite, x, y, 0, spriteScale, spriteScale,
+        baseSprite:getWidth()/2, baseSprite:getHeight()/2)
+
+    -- Calculate pip positions and draw eyes
+    local leftVal = domino.left
+    local rightVal = domino.right
+    local tileId = domino.id
+
+    -- Eye pip scale should match base sprite scale
+    local eyeScale = spriteScale
+
+    if orientation == "horizontal" then
+        -- Horizontal/tilted: left half is on the left, right half is on the right
+        local leftX = x - baseSprite:getWidth() * spriteScale / 4
+        local rightX = x + baseSprite:getWidth() * spriteScale / 4
+        local verticalOffset = -2 * spriteScale  -- 3 pixels up
+
+        -- Left side pips: indices 1 to leftVal
+        drawEyePips(leftX, y + verticalOffset, leftVal, eyeScale, tileId, 0)
+        -- Right side pips: indices (leftVal + 1) to (leftVal + rightVal)
+        drawEyePips(rightX, y + verticalOffset, rightVal, eyeScale, tileId, leftVal)
+    else
+        -- Vertical: top half is left value, bottom half is right value
+        local topY = y - baseSprite:getHeight() * spriteScale / 4
+        local bottomY = y + baseSprite:getHeight() * spriteScale / 4
+        local verticalOffset = -5 * spriteScale  -- 5 pixels up
+
+        -- Top pips: indices 1 to leftVal
+        drawEyePips(x, topY + verticalOffset, leftVal, eyeScale, tileId, 0)
+        -- Bottom pips: indices (leftVal + 1) to (leftVal + rightVal)
+        drawEyePips(x, bottomY + verticalOffset, rightVal, eyeScale, tileId, leftVal)
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
@@ -260,18 +538,8 @@ function UI.Renderer.drawPlacedTiles()
         if not domino.isDragging then
             -- Check if this is an anchor tile
             if domino.isAnchor then
-                -- Draw anchor tile with highlight tint
-                love.graphics.push()
-
-                -- Tint the sprite with FONT_PINK from game palette
-                local pinkColor = UI.Colors.FONT_PINK
-                local pulseIntensity = 0.8 + math.sin(love.timer.getTime() * 3) * 0.2
-                love.graphics.setColor(pinkColor[1], pinkColor[2], pinkColor[3], pulseIntensity)
-
-                UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
-
-                love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.pop()
+                -- Draw demon tile
+                UI.Renderer.drawDemonDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
             else
                 -- Draw regular tile
                 UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
@@ -282,7 +550,11 @@ function UI.Renderer.drawPlacedTiles()
     -- Draw dragging placed tiles on top
     for i, domino in ipairs(gameState.placedTiles) do
         if domino.isDragging then
-            UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
+            if domino.isAnchor then
+                UI.Renderer.drawDemonDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
+            else
+                UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
+            end
         end
     end
 end

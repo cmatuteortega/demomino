@@ -30,6 +30,7 @@ function love.load()
     require("ui.animation")
     
     loadDominoSprites()
+    loadDemonTileSprites()
     loadNodeSprites()
     
     gameState = {
@@ -413,6 +414,7 @@ end
 function love.update(dt)
     Touch.update(dt)
     UI.Animation.update(dt)
+    UI.Renderer.updateEyeBlinks(dt)
     
     if gameState.gamePhase == "playing" then
         Hand.update(dt)
@@ -609,6 +611,37 @@ function loadDominoSprites()
                 end
             end
         end
+    end
+end
+
+function loadDemonTileSprites()
+    demonTileSprites = {}
+
+    -- Load base demon tile sprites
+    local tiltedFilename = "sprites/demon_tiles/tilted_demon_tile.png"
+    if love.filesystem.getInfo(tiltedFilename) then
+        demonTileSprites.tilted = love.graphics.newImage(tiltedFilename)
+    end
+
+    local verticalFilename = "sprites/demon_tiles/vertical_demon_tile.png"
+    if love.filesystem.getInfo(verticalFilename) then
+        demonTileSprites.vertical = love.graphics.newImage(verticalFilename)
+    end
+
+    -- Load eye animation frames
+    demonTileSprites.eyeFrames = {}
+    local eyeFiles = {"base.png", "blink1.png", "blink2.png", "blink3.png"}
+
+    for i, filename in ipairs(eyeFiles) do
+        local fullPath = "sprites/demon_tiles/eye_animation/" .. filename
+        if love.filesystem.getInfo(fullPath) then
+            table.insert(demonTileSprites.eyeFrames, love.graphics.newImage(fullPath))
+        end
+    end
+
+    -- Also keep reference to base eye for backwards compatibility
+    if #demonTileSprites.eyeFrames > 0 then
+        demonTileSprites.eye = demonTileSprites.eyeFrames[1]
     end
 end
 
