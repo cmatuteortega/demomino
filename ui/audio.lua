@@ -86,4 +86,20 @@ function UI.Audio.setSFXVolume(volume)
     end
 end
 
+function UI.Audio.toggleMusic()
+    if not gameState then return end
+
+    gameState.musicEnabled = not gameState.musicEnabled
+
+    if gameState.musicEnabled then
+        UI.Audio.playMusic()
+    else
+        UI.Audio.stopMusic()
+    end
+end
+
+function UI.Audio.isMusicEnabled()
+    return gameState and gameState.musicEnabled or false
+end
+
 return UI.Audio

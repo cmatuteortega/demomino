@@ -99,24 +99,30 @@ function Touch.pressed(x, y, istouch, touchId)
     touchState.touchId = touchId
     touchState.draggedTile = nil
     touchState.draggedFrom = nil
-    
-    if gameState.gamePhase == "lost" then
-        -- Complete restart - back to round 1 with new map from node 0
-        initializeGame(false)  -- false = not a new round, complete restart
-        -- Generate a completely new map for fresh start
-        gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
-        gameState.gamePhase = "map"  -- Start at map view, not directly in combat
+
+    -- Handle settings menu interactions (takes priority when open)
+    if gameState.settingsMenuOpen then
         return
-    elseif gameState.gamePhase == "map" then
+    end
+
+    -- Check for settings button press during playing phase
+    if gameState.gamePhase == "playing" and gameState.settingsButtonBounds then
+        if isPointInRect(x, y, gameState.settingsButtonBounds) then
+            gameState.settingsMenuOpen = true
+            return
+        end
+    end
+
+    if gameState.gamePhase == "map" then
         -- Initialize map dragging state
         if gameState.currentMap then
             touchState.mapDragStartCameraX = gameState.currentMap.cameraX
         end
         return
     end
-    
-    -- Prevent input during scoring sequence
-    if gameState.scoringSequence then
+
+    -- Prevent input during scoring sequence or when round is won
+    if gameState.scoringSequence or gameState.gamePhase == "won" then
         return
     end
     
@@ -169,7 +175,51 @@ function Touch.released(x, y, istouch, touchId)
     if not touchState.isPressed then
         return
     end
-    
+
+    -- Handle settings menu interactions (takes priority when open)
+    if gameState.settingsMenuOpen then
+        -- Check for music toggle
+        if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
+            UI.Audio.toggleMusic()
+        -- Check for restart button
+        elseif gameState.settingsRestartBounds and isPointInRect(x, y, gameState.settingsRestartBounds) then
+            gameState.settingsMenuOpen = false
+            initializeGame(false)  -- Restart from Round 1
+            -- Generate new map for fresh start
+            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+            gameState.gamePhase = "map"
+        -- Check for close button
+        elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+            gameState.settingsMenuOpen = false
+        end
+
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
+    -- Handle victory screen - Continue to Map button
+    if gameState.gamePhase == "won" then
+        if gameState.continueToMapButton and isPointInRect(x, y, gameState.continueToMapButton) then
+            gameState.gamePhase = "map"
+        end
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
+    -- Handle loss screen - tap anywhere to restart
+    if gameState.gamePhase == "lost" then
+        -- Complete restart - back to round 1 with new map from node 0
+        initializeGame(false)  -- false = not a new round, complete restart
+        -- Generate a completely new map for fresh start
+        gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+        gameState.gamePhase = "map"  -- Start at map view, not directly in combat
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
     -- Handle map screen interactions
     if gameState.gamePhase == "map" then
         if gameState.currentMap then
@@ -609,11 +659,11 @@ end
 
 function Touch.checkGameEnd()
     if gameState.score >= gameState.targetScore then
-        -- Player won this round, advance round and return to map
+        -- Player won this round, show victory screen with continue button
         gameState.currentRound = gameState.currentRound + 1
         gameState.targetScore = gameState.baseTargetScore * (2 ^ (gameState.currentRound - 1))
-        gameState.gamePhase = "map"
-        
+        gameState.gamePhase = "won"
+
         -- If this was a boss round, generate a completely new map
         if gameState.isBossRound then
             gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)

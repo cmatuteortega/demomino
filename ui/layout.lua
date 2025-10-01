@@ -156,15 +156,25 @@ end
 function UI.Layout.getDiscardButtonPosition()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
     local handArea = UI.Layout.getHandArea()
-    
+
     -- Position buttons under the hand area, side by side
     local totalButtonWidth = buttonWidth * 2 + UI.Layout.scale(10) -- Two buttons plus spacing
     local startX = (gameState.screen.width - totalButtonWidth) / 2
-    
+
     local x = startX -- Left button (discard)
     local y = handArea.y + handArea.height + UI.Layout.scale(10)
-    
+
     return x, y
+end
+
+function UI.Layout.getSettingsButtonPosition()
+    local buttonSize = UI.Layout.scale(40)
+    local padding = UI.Layout.scale(20)
+
+    local x = padding
+    local y = gameState.screen.height - buttonSize - padding
+
+    return x, y, buttonSize
 end
 
 return UI.Layout

@@ -609,8 +609,17 @@ function UI.Renderer.drawScore(score)
     local centerX = gameState.screen.width / 2
     local goalColor = UI.Colors.FONT_PINK
     local goalScale = 1 + math.sin(love.timer.getTime() * 2) * 0.03
-    UI.Fonts.drawAnimatedText("Goal: Reach " .. gameState.targetScore .. " points!",
-        centerX, leftY, "large", goalColor, "center", {scale = goalScale})
+
+    if gameState.gamePhase == "won" then
+        -- Show victory message instead of goal
+        goalColor = {1, 0.8, 0.2, 1}  -- Gold color
+        goalScale = 1 + math.sin(love.timer.getTime() * 3) * 0.08  -- More dramatic pulse
+        UI.Fonts.drawAnimatedText("TOTAL DOMINATION!",
+            centerX, leftY, "large", goalColor, "center", {scale = goalScale})
+    else
+        UI.Fonts.drawAnimatedText("Goal: Reach " .. gameState.targetScore .. " points!",
+            centerX, leftY, "large", goalColor, "center", {scale = goalScale})
+    end
     
     -- Draw tiles left counter in bottom right
     local tilesLeft = #gameState.deck
@@ -822,6 +831,129 @@ function UI.Renderer.drawUI()
     UI.Fonts.drawAnimatedText(discardText, discardButtonX + buttonWidth/2, discardButtonY + buttonHeight/2, "button", color, "center", {scale = discardScale})
 end
 
+function UI.Renderer.drawSettingsButton()
+    local x, y, size = UI.Layout.getSettingsButtonPosition()
+
+    -- Button background
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", x, y, size, size, 5)
+
+    -- Button outline
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", x, y, size, size, 5)
+
+    -- Draw gear icon (simple representation)
+    local centerX = x + size / 2
+    local centerY = y + size / 2
+    local iconSize = size * 0.4
+
+    love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4])
+
+    -- Draw simple gear shape with circle and lines
+    love.graphics.circle("line", centerX, centerY, iconSize / 2, 6)
+    local lineLength = iconSize * 0.7
+    for i = 0, 3 do
+        local angle = (i / 4) * math.pi * 2
+        local x1 = centerX + math.cos(angle) * (iconSize / 3)
+        local y1 = centerY + math.sin(angle) * (iconSize / 3)
+        local x2 = centerX + math.cos(angle) * lineLength / 2
+        local y2 = centerY + math.sin(angle) * lineLength / 2
+        love.graphics.line(x1, y1, x2, y2)
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+
+    -- Store button bounds for touch handling
+    gameState.settingsButtonBounds = {x = x, y = y, width = size, height = size}
+end
+
+function UI.Renderer.drawSettingsMenu()
+    if not gameState.settingsMenuOpen then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Semi-transparent overlay
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Menu panel
+    local panelWidth = UI.Layout.scale(300)
+    local panelHeight = UI.Layout.scale(250)
+    local panelX = (screenWidth - panelWidth) / 2
+    local panelY = (screenHeight - panelHeight) / 2
+
+    -- Panel background
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(10))
+
+    -- Panel border
+    UI.Colors.setOutline()
+    love.graphics.setLineWidth(UI.Layout.scale(3))
+    love.graphics.rectangle("line", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(10))
+
+    -- Title
+    local titleColor = UI.Colors.FONT_PINK
+    UI.Fonts.drawText("SETTINGS", panelX + panelWidth / 2, panelY + UI.Layout.scale(30), "large", titleColor, "center")
+
+    -- Music toggle option
+    local optionY = panelY + UI.Layout.scale(80)
+    local musicText = gameState.musicEnabled and "Music: ON" or "Music: OFF"
+    local musicColor = gameState.musicEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText(musicText, panelX + panelWidth / 2, optionY, "medium", musicColor, "center")
+
+    -- Store music toggle button bounds
+    local optionHeight = UI.Layout.scale(30)
+    gameState.settingsMusicToggleBounds = {
+        x = panelX,
+        y = optionY - optionHeight / 2,
+        width = panelWidth,
+        height = optionHeight
+    }
+
+    -- Restart Run button
+    local restartY = panelY + UI.Layout.scale(130)
+    local buttonWidth = UI.Layout.scale(150)
+    local buttonHeight = UI.Layout.scale(40)
+    local buttonX = panelX + (panelWidth - buttonWidth) / 2
+
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    UI.Fonts.drawText("RESTART RUN", buttonX + buttonWidth / 2, restartY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center")
+
+    -- Store restart button bounds
+    gameState.settingsRestartBounds = {x = buttonX, y = restartY, width = buttonWidth, height = buttonHeight}
+
+    -- Close button (X in top right)
+    local closeSize = UI.Layout.scale(30)
+    local closeX = panelX + panelWidth - closeSize - UI.Layout.scale(10)
+    local closeY = panelY + UI.Layout.scale(10)
+
+    love.graphics.setColor(UI.Colors.BACKGROUND[1], UI.Colors.BACKGROUND[2], UI.Colors.BACKGROUND[3], 0.8)
+    love.graphics.rectangle("fill", closeX, closeY, closeSize, closeSize, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", closeX, closeY, closeSize, closeSize, UI.Layout.scale(5))
+
+    -- Draw X
+    love.graphics.setLineWidth(UI.Layout.scale(2))
+    love.graphics.line(closeX + closeSize * 0.25, closeY + closeSize * 0.25,
+                       closeX + closeSize * 0.75, closeY + closeSize * 0.75)
+    love.graphics.line(closeX + closeSize * 0.75, closeY + closeSize * 0.25,
+                       closeX + closeSize * 0.25, closeY + closeSize * 0.75)
+
+    -- Store close button bounds
+    gameState.settingsCloseBounds = {x = closeX, y = closeY, width = closeSize, height = closeSize}
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawBackground()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, gameState.screen.width, gameState.screen.height)
@@ -840,43 +972,66 @@ end
 function UI.Renderer.drawGameOver()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    
-    -- Semi-transparent overlay
-    UI.Colors.setOutline()
-    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.8)
-    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-    
-    local centerX = screenWidth / 2
-    local centerY = screenHeight / 2
-    
-    -- Title with animation - enhanced "YOU LOSE" message
-    local titleText = "YOU LOSE!"
-    local titleColor = UI.Colors.FONT_RED_DARK
-    local titleScale = 1 + math.sin(love.timer.getTime() * 3) * 0.15
-    local shakeAmount = math.sin(love.timer.getTime() * 8) * 4
-    local titleAnimProps = {scale = titleScale, shake = shakeAmount}
-    
-    UI.Fonts.drawAnimatedText(titleText, centerX, centerY - UI.Layout.scale(80), "title", titleColor, "center", titleAnimProps)
-    
-    -- Score with pulse animation
-    local scoreText = "Final Score: " .. gameState.score .. "/" .. gameState.targetScore
-    local scoreColor = UI.Colors.FONT_RED
-    local scoreScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
-    
-    UI.Fonts.drawAnimatedText(scoreText, centerX, centerY - UI.Layout.scale(30), "large", scoreColor, "center", {scale = scoreScale})
-    
-    -- Round info
-    local roundText = "Round " .. gameState.currentRound .. " Failed - Hands used: " .. gameState.handsPlayed .. "/" .. gameState.maxHandsPerRound
-    local roundColor = UI.Colors.FONT_WHITE
-    
-    UI.Fonts.drawText(roundText, centerX, centerY + UI.Layout.scale(10), "small", roundColor, "center")
-    
-    -- Restart prompt with breathing animation
-    local promptText = "Tap anywhere to restart from Round 1"
-    local promptAlpha = 0.7 + 0.3 * math.sin(love.timer.getTime() * 2)
-    local promptColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], promptAlpha}
-    
-    UI.Fonts.drawText(promptText, centerX, centerY + UI.Layout.scale(60), "medium", promptColor, "center")
+
+    if gameState.gamePhase == "won" then
+        -- Victory overlay - just show Continue to Map button (board stays visible)
+        local buttonWidth = UI.Layout.scale(220)
+        local buttonHeight = UI.Layout.scale(60)
+        local buttonX = screenWidth - buttonWidth - UI.Layout.scale(40)
+        local buttonY = screenHeight - buttonHeight - UI.Layout.scale(40)
+
+        -- Button background with pulse
+        local pulseScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
+        UI.Colors.setBackgroundLight()
+        love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+
+        -- Button outline
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+
+        -- Button text
+        UI.Fonts.drawAnimatedText("CONTINUE TO MAP", buttonX + buttonWidth/2, buttonY + buttonHeight/2, "button", UI.Colors.FONT_WHITE, "center", {scale = pulseScale})
+
+        -- Store button bounds for touch handling
+        gameState.continueToMapButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight}
+    else
+        -- Loss screen (full overlay with existing behavior)
+        -- Semi-transparent overlay
+        UI.Colors.setOutline()
+        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.8)
+        love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+        local centerX = screenWidth / 2
+        local centerY = screenHeight / 2
+
+        local titleText = "YOU LOSE!"
+        local titleColor = UI.Colors.FONT_RED_DARK
+        local titleScale = 1 + math.sin(love.timer.getTime() * 3) * 0.15
+        local shakeAmount = math.sin(love.timer.getTime() * 8) * 4
+        local titleAnimProps = {scale = titleScale, shake = shakeAmount}
+
+        UI.Fonts.drawAnimatedText(titleText, centerX, centerY - UI.Layout.scale(80), "title", titleColor, "center", titleAnimProps)
+
+        -- Score with pulse animation
+        local scoreText = "Final Score: " .. gameState.score .. "/" .. gameState.targetScore
+        local scoreColor = UI.Colors.FONT_RED
+        local scoreScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
+
+        UI.Fonts.drawAnimatedText(scoreText, centerX, centerY - UI.Layout.scale(30), "large", scoreColor, "center", {scale = scoreScale})
+
+        -- Round info
+        local roundText = "Round " .. gameState.currentRound .. " Failed - Hands used: " .. gameState.handsPlayed .. "/" .. gameState.maxHandsPerRound
+        local roundColor = UI.Colors.FONT_WHITE
+
+        UI.Fonts.drawText(roundText, centerX, centerY + UI.Layout.scale(10), "small", roundColor, "center")
+
+        -- Restart prompt with breathing animation
+        local promptText = "Tap anywhere to restart from Round 1"
+        local promptAlpha = 0.7 + 0.3 * math.sin(love.timer.getTime() * 2)
+        local promptColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], promptAlpha}
+
+        UI.Fonts.drawText(promptText, centerX, centerY + UI.Layout.scale(60), "medium", promptColor, "center")
+    end
 end
 
 function UI.Renderer.drawMap()

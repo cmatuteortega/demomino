@@ -69,7 +69,10 @@ function love.load()
         selectedTileOffer = nil,  -- Currently selected tile in the offering
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
-        challengeStates = {}  -- State data for each challenge
+        challengeStates = {},  -- State data for each challenge
+        -- Settings system
+        settingsMenuOpen = false,  -- Track if settings menu is open
+        musicEnabled = true  -- Track music state
     }
     
     UI.Fonts.load()
@@ -439,13 +442,19 @@ function love.draw()
     UI.Layout.begin()
     
     -- Each phase draws its own background as before
-    if gameState.gamePhase == "playing" then
+    if gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Renderer.drawHand(gameState.hand)
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
+        -- Draw game over overlay for won state (button only, no full overlay)
+        if gameState.gamePhase == "won" then
+            UI.Renderer.drawGameOver()
+        end
     elseif gameState.gamePhase == "map" then
         UI.Renderer.drawMap()
     elseif gameState.gamePhase == "node_confirmation" then
@@ -457,7 +466,7 @@ function love.draw()
         UI.Renderer.drawArtifactsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
-    elseif gameState.gamePhase == "won" or gameState.gamePhase == "lost" then
+    elseif gameState.gamePhase == "lost" then
         UI.Renderer.drawGameOver()
     end
     
