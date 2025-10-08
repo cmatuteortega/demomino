@@ -354,14 +354,23 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
     
     -- Get sprite for this domino
     local leftVal, rightVal = domino.left, domino.right
-    local minVal = math.min(leftVal, rightVal)
-    local maxVal = math.max(leftVal, rightVal)
-    local spriteKey = minVal .. maxVal
-    
+
+    -- Generate sprite key - for special tiles, use string concatenation directly
+    local spriteKey
+    if type(leftVal) == "string" or type(rightVal) == "string" then
+        -- Special tile: use direct concatenation
+        spriteKey = leftVal .. rightVal
+    else
+        -- Regular tile: use min/max for consistency
+        local minVal = math.min(leftVal, rightVal)
+        local maxVal = math.max(leftVal, rightVal)
+        spriteKey = minVal .. maxVal
+    end
+
     -- Choose sprite collection based on orientation
     local spriteData
     if orientation == "horizontal" then
-        -- Use tilted sprites for board tiles - we should have all combinations now
+        -- Use tilted sprites for board tiles
         local tiltedKey = leftVal .. rightVal  -- Use actual left/right values for flipping logic
         spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
     else

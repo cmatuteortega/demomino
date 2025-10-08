@@ -93,16 +93,25 @@ end
 
 function Board.getTileDisplayWidth(tile, dynamicScale)
     dynamicScale = dynamicScale or Board.calculateDynamicScale()
-    
+
     -- Get the appropriate sprite for this domino
     local leftVal, rightVal = tile.left, tile.right
-    local minVal = math.min(leftVal, rightVal)
-    local maxVal = math.max(leftVal, rightVal)
-    local spriteKey = minVal .. maxVal
-    
+
+    -- Generate sprite key - for special tiles, use string concatenation directly
+    local spriteKey
+    if type(leftVal) == "string" or type(rightVal) == "string" then
+        -- Special tile: use direct concatenation
+        spriteKey = leftVal .. rightVal
+    else
+        -- Regular tile: use min/max for consistency
+        local minVal = math.min(leftVal, rightVal)
+        local maxVal = math.max(leftVal, rightVal)
+        spriteKey = minVal .. maxVal
+    end
+
     local spriteData
     if tile.orientation == "horizontal" then
-        -- Use tilted sprites for board tiles - we should have all combinations now
+        -- Use tilted sprites for board tiles
         local tiltedKey = leftVal .. rightVal
         spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
     else

@@ -715,7 +715,7 @@ end
 function loadDominoSprites()
     dominoSprites = {}
     dominoTiltedSprites = {}
-    
+
     -- Load vertical sprites (for hand tiles)
     for i = 0, 6 do
         for j = i, 6 do
@@ -724,6 +724,35 @@ function loadDominoSprites()
                 local sprite = love.graphics.newImage(filename)
                 dominoSprites[i .. j] = sprite
             end
+        end
+    end
+
+    -- Load special vertical sprites (odd/even tiles)
+    -- Number-even combinations (all numbers 0-6 can have "even" side)
+    for i = 0, 6 do
+        local filename = "sprites/tiles/" .. i .. "even.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            dominoSprites[i .. "even"] = sprite
+        end
+    end
+
+    -- Number-odd combinations (all numbers 0-6 can have "odd" side)
+    for i = 0, 6 do
+        local filename = "sprites/tiles/" .. i .. "odd.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            dominoSprites[i .. "odd"] = sprite
+        end
+    end
+
+    -- Special-special combinations
+    local specialCombos = {"oddodd", "eveneven", "oddeven"}
+    for _, combo in ipairs(specialCombos) do
+        local filename = "sprites/tiles/" .. combo .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            dominoSprites[combo] = sprite
         end
     end
     
@@ -736,6 +765,34 @@ function loadDominoSprites()
                 local sprite = love.graphics.newImage(filename)
                 rawTiltedSprites[i .. j] = sprite
             end
+        end
+    end
+
+    -- Load special tilted sprites (odd/even tiles)
+    -- Number-even combinations (all numbers 0-6 can have "even" side)
+    for i = 0, 6 do
+        local filename = "sprites/titled_tiles/" .. i .. "even.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            rawTiltedSprites[i .. "even"] = sprite
+        end
+    end
+
+    -- Number-odd combinations (all numbers 0-6 can have "odd" side)
+    for i = 0, 6 do
+        local filename = "sprites/titled_tiles/" .. i .. "odd.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            rawTiltedSprites[i .. "odd"] = sprite
+        end
+    end
+
+    -- Special-special combinations
+    for _, combo in ipairs(specialCombos) do
+        local filename = "sprites/titled_tiles/" .. combo .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            rawTiltedSprites[combo] = sprite
         end
     end
     
@@ -771,7 +828,7 @@ function loadDominoSprites()
             local minVal = math.min(i, j)
             local maxVal = math.max(i, j)
             local spriteKey = minVal .. maxVal
-            
+
             -- Check if we have the base sprite (e.g., "14" for both "14" and "41")
             local baseSprite = rawTiltedSprites[spriteKey]
             if baseSprite then
@@ -780,7 +837,7 @@ function loadDominoSprites()
                     sprite = baseSprite,
                     flipped = false  -- Normal orientation (smaller number left)
                 }
-                
+
                 -- If it's not a double, create the flipped version
                 if minVal ~= maxVal then
                     local flippedKey = maxVal .. minVal
@@ -791,6 +848,119 @@ function loadDominoSprites()
                 end
             end
         end
+    end
+
+    -- Wrap special vertical sprites in consistent format
+    -- Number-even combinations (all numbers 0-6)
+    for i = 0, 6 do
+        local key = i .. "even"
+        if dominoSprites[key] then
+            local existingSprite = dominoSprites[key]
+            dominoSprites[key] = {
+                sprite = existingSprite,
+                inverted = false
+            }
+        end
+        -- Create reverse mapping (even-number)
+        local reverseKey = "even" .. i
+        if dominoSprites[key] and dominoSprites[key].sprite then
+            dominoSprites[reverseKey] = {
+                sprite = dominoSprites[key].sprite,
+                inverted = true
+            }
+        end
+    end
+
+    -- Number-odd combinations (all numbers 0-6)
+    for i = 0, 6 do
+        local key = i .. "odd"
+        if dominoSprites[key] then
+            local existingSprite = dominoSprites[key]
+            dominoSprites[key] = {
+                sprite = existingSprite,
+                inverted = false
+            }
+        end
+        -- Create reverse mapping (odd-number)
+        local reverseKey = "odd" .. i
+        if dominoSprites[key] and dominoSprites[key].sprite then
+            dominoSprites[reverseKey] = {
+                sprite = dominoSprites[key].sprite,
+                inverted = true
+            }
+        end
+    end
+
+    -- Wrap special-special vertical sprites
+    for _, combo in ipairs(specialCombos) do
+        if dominoSprites[combo] then
+            local existingSprite = dominoSprites[combo]
+            dominoSprites[combo] = {
+                sprite = existingSprite,
+                inverted = false
+            }
+        end
+    end
+
+    -- Handle evenodd reverse for oddeven
+    if dominoSprites["oddeven"] and dominoSprites["oddeven"].sprite then
+        dominoSprites["evenodd"] = {
+            sprite = dominoSprites["oddeven"].sprite,
+            inverted = true
+        }
+    end
+
+    -- Wrap special tilted sprites in consistent format
+    -- Number-even combinations (all numbers 0-6)
+    for i = 0, 6 do
+        local key = i .. "even"
+        if rawTiltedSprites[key] then
+            dominoTiltedSprites[key] = {
+                sprite = rawTiltedSprites[key],
+                flipped = false
+            }
+            -- Create reverse mapping
+            local reverseKey = "even" .. i
+            dominoTiltedSprites[reverseKey] = {
+                sprite = rawTiltedSprites[key],
+                flipped = true
+            }
+        end
+    end
+
+    -- Number-odd combinations (all numbers 0-6)
+    for i = 0, 6 do
+        local key = i .. "odd"
+        if rawTiltedSprites[key] then
+            dominoTiltedSprites[key] = {
+                sprite = rawTiltedSprites[key],
+                flipped = false
+            }
+            -- Create reverse mapping
+            local reverseKey = "odd" .. i
+            dominoTiltedSprites[reverseKey] = {
+                sprite = rawTiltedSprites[key],
+                flipped = true
+            }
+        end
+    end
+
+    -- Wrap special-special tilted sprites
+    for _, combo in ipairs(specialCombos) do
+        if rawTiltedSprites[combo] then
+            dominoTiltedSprites[combo] = {
+                sprite = rawTiltedSprites[combo],
+                flipped = false
+            }
+        end
+    end
+
+    -- Handle evenodd reverse for oddeven
+    if rawTiltedSprites["oddeven"] then
+        dominoTiltedSprites["evenodd"] = {
+            sprite = rawTiltedSprites["oddeven"],
+            flipped = true
+        }
     end
 end
 

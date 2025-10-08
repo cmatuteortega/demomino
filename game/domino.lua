@@ -42,6 +42,27 @@ function Domino.createStarterCollection()
     return Domino.createStandardDeck()
 end
 
+function Domino.createSpecialTilesDeck()
+    local deck = {}
+
+    -- Create all number-even combinations (0-6 with "even")
+    for i = 0, 6 do
+        table.insert(deck, Domino.new(i, "even"))
+    end
+
+    -- Create all number-odd combinations (0-6 with "odd")
+    for i = 0, 6 do
+        table.insert(deck, Domino.new(i, "odd"))
+    end
+
+    -- Create special-special combinations
+    table.insert(deck, Domino.new("odd", "odd"))
+    table.insert(deck, Domino.new("even", "even"))
+    table.insert(deck, Domino.new("odd", "even"))
+
+    return deck
+end
+
 function Domino.createDeckFromCollection(collection)
     local deck = {}
     
@@ -57,7 +78,7 @@ function Domino.generateRandomTileOffers(collection, count)
     local offers = {}
     local standardDeck = Domino.createStandardDeck()
     local available = {}
-    
+
     -- Find tiles not in collection
     for _, standardTile in ipairs(standardDeck) do
         local inCollection = false
@@ -71,14 +92,38 @@ function Domino.generateRandomTileOffers(collection, count)
             table.insert(available, standardTile)
         end
     end
-    
-    -- If all standard tiles are owned, offer duplicate tiles for now
-    -- (In the future, this will offer special enhanced tiles)
+
+    -- If all standard tiles are owned, offer special enhanced tiles
     if #available == 0 then
-        -- Offer random duplicates from the standard deck
-        for i = 1, count do
-            local randomIndex = love.math.random(1, #standardDeck)
-            table.insert(offers, Domino.clone(standardDeck[randomIndex]))
+        -- Create pool of special tiles not in collection
+        local specialDeck = Domino.createSpecialTilesDeck()
+        local specialAvailable = {}
+
+        for _, specialTile in ipairs(specialDeck) do
+            local inCollection = false
+            for _, collectionTile in ipairs(collection) do
+                if collectionTile.id == specialTile.id then
+                    inCollection = true
+                    break
+                end
+            end
+            if not inCollection then
+                table.insert(specialAvailable, specialTile)
+            end
+        end
+
+        -- Offer available special tiles
+        if #specialAvailable > 0 then
+            for i = 1, math.min(count, #specialAvailable) do
+                local randomIndex = love.math.random(1, #specialAvailable)
+                table.insert(offers, table.remove(specialAvailable, randomIndex))
+            end
+        else
+            -- If all tiles (standard + special) are owned, offer random special tiles
+            for i = 1, count do
+                local randomIndex = love.math.random(1, #specialDeck)
+                table.insert(offers, Domino.clone(specialDeck[randomIndex]))
+            end
         end
     else
         -- Randomly select tiles to offer
@@ -87,7 +132,7 @@ function Domino.generateRandomTileOffers(collection, count)
             table.insert(offers, table.remove(available, randomIndex))
         end
     end
-    
+
     return offers
 end
 
@@ -100,7 +145,38 @@ function Domino.shuffleDeck(deck)
 end
 
 function Domino.getValue(domino)
-    return domino.left + domino.right
+    local leftVal = Domino.getNumericValue(domino.left)
+    local rightVal = Domino.getNumericValue(domino.right)
+    return leftVal + rightVal
+end
+
+function Domino.isSpecialValue(value)
+    return value == "odd" or value == "even"
+end
+
+function Domino.isOddValue(value)
+    if value == "odd" then return true end
+    if type(value) == "number" then
+        return value % 2 == 1
+    end
+    return false
+end
+
+function Domino.isEvenValue(value)
+    if value == "even" then return true end
+    if type(value) == "number" then
+        return value % 2 == 0
+    end
+    return false
+end
+
+function Domino.getNumericValue(value)
+    -- For special tiles: odd/even values are worth 3 points
+    if value == "odd" or value == "even" then
+        return 3
+    end
+    -- For regular tiles: return the pip value
+    return value
 end
 
 function Domino.isDouble(domino)
@@ -110,7 +186,17 @@ end
 function Domino.canConnect(domino1, side1, domino2, side2)
     local value1 = side1 == "left" and domino1.left or domino1.right
     local value2 = side2 == "left" and domino2.left or domino2.right
-    return value1 == value2
+
+    -- Direct match
+    if value1 == value2 then return true end
+
+    -- Special matching logic for odd/even tiles
+    if value1 == "odd" and Domino.isOddValue(value2) then return true end
+    if value2 == "odd" and Domino.isOddValue(value1) then return true end
+    if value1 == "even" and Domino.isEvenValue(value2) then return true end
+    if value2 == "even" and Domino.isEvenValue(value1) then return true end
+
+    return false
 end
 
 function Domino.getConnectableValue(domino, side)

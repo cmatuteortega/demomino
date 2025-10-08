@@ -15,7 +15,11 @@ local touchState = {
     draggedIndex = nil,
     -- Map dragging state
     isDraggingMap = false,
-    mapDragStartCameraX = 0
+    mapDragStartCameraX = 0,
+    -- Double-tap tracking for board tiles
+    lastTappedBoardTile = nil,
+    lastTapTime = 0,
+    doubleTapWindow = 0.5  -- 500ms window for double-tap
 }
 
 -- Adjust drag threshold based on device type and context
@@ -380,8 +384,32 @@ function Touch.released(x, y, istouch, touchId)
     
     if touchState.draggedTile and touchState.draggedFrom == "board" then
         if not Touch.isDragging() then
-            -- Simple tap on board tile returns it to hand
-            Touch.returnTileToHand(touchState.draggedTile)
+            -- Tap on board tile - check for double-tap or flip
+            local currentTime = love.timer.getTime()
+
+            -- Check if this is a double-tap
+            if touchState.lastTappedBoardTile == touchState.draggedTile and
+               currentTime - touchState.lastTapTime < touchState.doubleTapWindow then
+                -- DOUBLE TAP: Return to hand
+                Touch.returnTileToHand(touchState.draggedTile)
+                touchState.lastTappedBoardTile = nil
+            else
+                -- FIRST TAP: Check if can connect both ways
+                if Touch.canConnectBothWays(touchState.draggedTile, gameState.placedTiles) then
+                    -- Tile is ambiguous, flip it
+                    Domino.flip(touchState.draggedTile)
+                    Board.arrangePlacedTiles()  -- Refresh positions
+                    -- Play flip sound if available
+                    if UI.Audio.playTileFlip then
+                        UI.Audio.playTileFlip()
+                    end
+                end
+                -- Otherwise do nothing (future: show tooltip)
+
+                -- Track this tap for potential double-tap
+                touchState.lastTappedBoardTile = touchState.draggedTile
+                touchState.lastTapTime = currentTime
+            end
         else
             -- Animate dragged board tile back to position
             Touch.animateTileToPosition(touchState.draggedTile, touchState.draggedTile.x, touchState.draggedTile.y)
@@ -568,6 +596,9 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
         -- Play tile placement sound
         UI.Audio.playTilePlaced()
 
+        -- Reset tap tracking when new tile is placed
+        touchState.lastTappedBoardTile = nil
+
         -- Find the placed tile and animate it to its final board position
         for _, placedTile in ipairs(gameState.placedTiles) do
             if placedTile.id == clonedTile.id then
@@ -581,7 +612,7 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
             end
         end
     end
-    
+
     return tilePlaced
 end
 
@@ -593,8 +624,9 @@ function Touch.canFitLeft(tile)
     local leftmostTile = gameState.placedTiles[1]
     local leftValue = leftmostTile.left
 
-    -- Check if tile can connect (either orientation)
-    return tile.left == leftValue or tile.right == leftValue
+    -- Check if tile can connect (either orientation) using proper matching logic
+    return Domino.canConnect(tile, "left", {left = leftValue, right = leftValue}, "left") or
+           Domino.canConnect(tile, "right", {left = leftValue, right = leftValue}, "left")
 end
 
 function Touch.canFitRight(tile)
@@ -605,42 +637,101 @@ function Touch.canFitRight(tile)
     local rightmostTile = gameState.placedTiles[#gameState.placedTiles]
     local rightValue = rightmostTile.right
 
-    -- Check if tile can connect (either orientation)
-    return tile.left == rightValue or tile.right == rightValue
+    -- Check if tile can connect (either orientation) using proper matching logic
+    return Domino.canConnect(tile, "left", {left = rightValue, right = rightValue}, "right") or
+           Domino.canConnect(tile, "right", {left = rightValue, right = rightValue}, "right")
 end
 
 function Touch.autoFitLeft(tile)
     if #gameState.placedTiles == 0 then
         return
     end
-    
+
     local leftmostTile = gameState.placedTiles[1]
     local leftValue = leftmostTile.left
-    
+
     -- Auto-flip tile to make it connect properly
     -- When placing left, new tile's RIGHT side should match the left extreme's LEFT side
-    if tile.left == leftValue then
-        -- Tile needs to be flipped so its right side connects to left extreme
+    local dummyTile = {left = leftValue, right = leftValue}
+
+    if Domino.canConnect(tile, "left", dummyTile, "left") then
+        -- Tile's left side matches, needs to be flipped so its right side connects
         Domino.flip(tile)
     end
-    -- If tile.right == leftValue, no flip needed (correct orientation)
+    -- If tile.right matches leftValue, no flip needed (correct orientation)
 end
 
 function Touch.autoFitRight(tile)
     if #gameState.placedTiles == 0 then
         return
     end
-    
+
     local rightmostTile = gameState.placedTiles[#gameState.placedTiles]
     local rightValue = rightmostTile.right
-    
+
     -- Auto-flip tile to make it connect properly
     -- When placing right, new tile's LEFT side should match the right extreme's RIGHT side
-    if tile.right == rightValue then
-        -- Tile needs to be flipped so its left side connects to right extreme
+    local dummyTile = {left = rightValue, right = rightValue}
+
+    if Domino.canConnect(tile, "right", dummyTile, "right") then
+        -- Tile's right side matches, needs to be flipped so its left side connects
         Domino.flip(tile)
     end
-    -- If tile.left == rightValue, no flip needed (correct orientation)
+    -- If tile.left matches rightValue, no flip needed (correct orientation)
+end
+
+function Touch.canConnectBothWays(tile, placedTiles)
+    -- Check if a tile on the board can connect in BOTH orientations
+    -- This happens when both sides of the tile match the connection point
+    -- Example: odd-5 next to 5-5 (both 'odd' and '5' match with '5')
+
+    if #placedTiles == 0 then
+        return false  -- Single tile can't be ambiguous
+    end
+
+    -- Find the tile's position in the placed tiles
+    local tileIndex = nil
+    for i, placedTile in ipairs(placedTiles) do
+        if placedTile == tile then
+            tileIndex = i
+            break
+        end
+    end
+
+    if not tileIndex then
+        return false  -- Tile not found
+    end
+
+    -- Check if tile is at the left end
+    if tileIndex == 1 and #placedTiles > 1 then
+        -- Tile is leftmost, check against second tile's left side
+        local nextTile = placedTiles[2]
+        local connectionValue = nextTile.left
+
+        -- Check if BOTH tile.left and tile.right can connect to nextTile.left
+        local dummyTile = {left = connectionValue, right = connectionValue}
+        local leftMatches = Domino.canConnect(tile, "left", dummyTile, "left")
+        local rightMatches = Domino.canConnect(tile, "right", dummyTile, "left")
+
+        return leftMatches and rightMatches
+    end
+
+    -- Check if tile is at the right end
+    if tileIndex == #placedTiles and #placedTiles > 1 then
+        -- Tile is rightmost, check against previous tile's right side
+        local prevTile = placedTiles[#placedTiles - 1]
+        local connectionValue = prevTile.right
+
+        -- Check if BOTH tile.left and tile.right can connect to prevTile.right
+        local dummyTile = {left = connectionValue, right = connectionValue}
+        local leftMatches = Domino.canConnect(tile, "left", dummyTile, "right")
+        local rightMatches = Domino.canConnect(tile, "right", dummyTile, "right")
+
+        return leftMatches and rightMatches
+    end
+
+    -- Tile is in the middle - not at an end, can't be flipped
+    return false
 end
 
 function Touch.playPlacedTiles()
@@ -796,6 +887,9 @@ function Touch.returnTileToHand(tile)
 
     -- Play tile return sound
     UI.Audio.playTileReturned()
+
+    -- Reset tap tracking after returning tile
+    touchState.lastTappedBoardTile = nil
 
     -- Automatically rearrange remaining tiles to close gaps
     Board.arrangePlacedTiles()
@@ -982,7 +1076,10 @@ function Touch.enterSelectedNode()
         
         -- Reset combat state for fresh round (score=0, new deck/hand, reset counters)
         initializeCombatRound()
-        
+
+        -- Reset tap tracking when entering playing phase
+        touchState.lastTappedBoardTile = nil
+
         -- All combat nodes (including boss) start combat round
         gameState.gamePhase = "playing"
     elseif nodeType == "tiles" then

@@ -16,18 +16,34 @@ function Validation.validateSequentialPlacement(tiles)
     if #tiles <= 1 then
         return true
     end
-    
-    -- Simple left-to-right validation
+
+    -- Simple left-to-right validation with odd/even support
     for i = 1, #tiles - 1 do
         local currentTile = tiles[i]
         local nextTile = tiles[i + 1]
-        
-        -- Check if the right side of current tile matches left side of next tile
-        if currentTile.right ~= nextTile.left then
+
+        local value1 = currentTile.right
+        local value2 = nextTile.left
+
+        -- Check if values match (direct or via odd/even rules)
+        local matches = false
+        if value1 == value2 then
+            matches = true
+        elseif value1 == "odd" and Domino.isOddValue(value2) then
+            matches = true
+        elseif value2 == "odd" and Domino.isOddValue(value1) then
+            matches = true
+        elseif value1 == "even" and Domino.isEvenValue(value2) then
+            matches = true
+        elseif value2 == "even" and Domino.isEvenValue(value1) then
+            matches = true
+        end
+
+        if not matches then
             return false
         end
     end
-    
+
     return true
 end
 
@@ -39,7 +55,17 @@ function Validation.findValidChain(tiles)
     local function canConnect(tile1, side1, tile2, side2)
         local value1 = side1 == "left" and tile1.left or tile1.right
         local value2 = side2 == "left" and tile2.left or tile2.right
-        return value1 == value2
+
+        -- Direct match
+        if value1 == value2 then return true end
+
+        -- Special matching logic for odd/even tiles
+        if value1 == "odd" and Domino.isOddValue(value2) then return true end
+        if value2 == "odd" and Domino.isOddValue(value1) then return true end
+        if value1 == "even" and Domino.isEvenValue(value2) then return true end
+        if value2 == "even" and Domino.isEvenValue(value1) then return true end
+
+        return false
     end
     
     local function tryBuildChain(remainingTiles, currentChain, leftValue, rightValue)
