@@ -145,7 +145,25 @@ function Touch.pressed(x, y, istouch, touchId)
         Touch.discardSelectedTiles()
         return
     end
-    
+
+    -- Handle fusion hand (reuse regular hand logic)
+    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" and gameState.fusionHand then
+        local tile, index = Hand.getTileAt(gameState.fusionHand, x, y)
+        if tile then
+            touchState.draggedTile = tile
+            touchState.draggedFrom = "fusionHand"
+            touchState.draggedIndex = index
+
+            -- Initialize drag state (same as regular hand)
+            tile.isDragging = false
+            tile.dragX = x
+            tile.dragY = y
+            tile.visualX = tile.x
+            tile.visualY = tile.y
+            return
+        end
+    end
+
     if isInBoardArea(x, y) then
         local tile = Board.getTileAt(x, y)
         if tile then
@@ -164,7 +182,7 @@ function Touch.pressed(x, y, istouch, touchId)
             touchState.draggedTile = tile
             touchState.draggedFrom = "hand"
             touchState.draggedIndex = index
-            
+
             -- Initialize drag state
             tile.isDragging = false -- Start as false, will become true when dragging
             tile.dragX = x
@@ -327,51 +345,93 @@ function Touch.released(x, y, istouch, touchId)
         touchState.touchId = nil
         return
     elseif gameState.gamePhase == "tiles_menu" then
-        -- Handle tile selection (multi-select with toggle)
-        if gameState.tileOfferButtons then
-            for i, button in ipairs(gameState.tileOfferButtons) do
-                if isPointInRect(x, y, button) then
-                    -- Toggle selection
-                    if not gameState.selectedTilesToBuy then
-                        gameState.selectedTilesToBuy = {}
-                    end
-
-                    local alreadySelected = false
-                    local selectedIndex = nil
-                    for idx, selectedI in ipairs(gameState.selectedTilesToBuy) do
-                        if selectedI == i then
-                            alreadySelected = true
-                            selectedIndex = idx
-                            break
-                        end
-                    end
-
-                    if alreadySelected then
-                        -- Deselect
-                        table.remove(gameState.selectedTilesToBuy, selectedIndex)
-                    else
-                        -- Select
-                        table.insert(gameState.selectedTilesToBuy, i)
-                    end
-
-                    touchState.isPressed = false
-                    return
-                end
+        -- Handle mode toggle buttons
+        if gameState.modeToggleButtons then
+            if isPointInRect(x, y, gameState.modeToggleButtons.shop) then
+                gameState.tilesMenuMode = "shop"
+                touchState.isPressed = false
+                return
+            elseif isPointInRect(x, y, gameState.modeToggleButtons.fusion) then
+                gameState.tilesMenuMode = "fusion"
+                -- Initialize fusion hand if not already done
+                Touch.initializeFusionHand()
+                touchState.isPressed = false
+                return
             end
         end
 
-        -- Handle confirm tile button (now handles multiple tiles)
-        if gameState.confirmTileButton and isPointInRect(x, y, gameState.confirmTileButton) and gameState.confirmTileButton.enabled then
-            Touch.confirmTileSelection()
-            touchState.isPressed = false
-            return
+        -- Handle based on current mode
+        if gameState.tilesMenuMode == "fusion" then
+            -- FUSION MODE HANDLING
+            -- Note: Hand tile selection is done via DRAG only, not click
+            -- Clicking hand tiles has no effect (like main game)
+
+            -- Handle fusion slot clicks (flip or deselect)
+            if gameState.fusionSlotButtons then
+                for slotIndex, button in ipairs(gameState.fusionSlotButtons) do
+                    if isPointInRect(x, y, button) then
+                        Touch.handleFusionSlotClick(slotIndex)
+                        touchState.isPressed = false
+                        return
+                    end
+                end
+            end
+
+            -- Handle FUSE button
+            if gameState.fuseButton and isPointInRect(x, y, gameState.fuseButton) and gameState.fuseButton.enabled then
+                Touch.confirmFusion()
+                touchState.isPressed = false
+                return
+            end
+        else
+            -- SHOP MODE HANDLING (existing code)
+
+            -- Handle tile selection (multi-select with toggle)
+            if gameState.tileOfferButtons then
+                for i, button in ipairs(gameState.tileOfferButtons) do
+                    if isPointInRect(x, y, button) then
+                        -- Toggle selection
+                        if not gameState.selectedTilesToBuy then
+                            gameState.selectedTilesToBuy = {}
+                        end
+
+                        local alreadySelected = false
+                        local selectedIndex = nil
+                        for idx, selectedI in ipairs(gameState.selectedTilesToBuy) do
+                            if selectedI == i then
+                                alreadySelected = true
+                                selectedIndex = idx
+                                break
+                            end
+                        end
+
+                        if alreadySelected then
+                            -- Deselect
+                            table.remove(gameState.selectedTilesToBuy, selectedIndex)
+                        else
+                            -- Select
+                            table.insert(gameState.selectedTilesToBuy, i)
+                        end
+
+                        touchState.isPressed = false
+                        return
+                    end
+                end
+            end
+
+            -- Handle confirm tile button (now handles multiple tiles)
+            if gameState.confirmTileButton and isPointInRect(x, y, gameState.confirmTileButton) and gameState.confirmTileButton.enabled then
+                Touch.confirmTileSelection()
+                touchState.isPressed = false
+                return
+            end
         end
 
-        -- Handle return to map button (skip purchasing)
+        -- Handle return to map button (skip purchasing) - works for both modes
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
             gameState.gamePhase = "map"
         end
-        touchState.isPressed = false
+        -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
         -- Handle menu screen interactions - only Return to Map button for now
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
@@ -381,8 +441,53 @@ function Touch.released(x, y, istouch, touchId)
         touchState.touchId = nil
         return
     end
-    
-    if touchState.draggedTile and touchState.draggedFrom == "board" then
+
+    if touchState.draggedTile and touchState.draggedFrom == "fusionHand" then
+        if Touch.isDragging() then
+            -- Dragged - add to fusion selection and remove from hand
+            local tile = touchState.draggedTile
+
+            -- Add tile to fusion slots (max 2)
+            if not gameState.fusionSlotTiles then
+                gameState.fusionSlotTiles = {}
+            end
+
+            local slotIndex
+            if #gameState.fusionSlotTiles < 2 then
+                -- Add to next available slot
+                table.insert(gameState.fusionSlotTiles, tile)
+                slotIndex = #gameState.fusionSlotTiles
+            else
+                -- Replace first tile if 2 already selected
+                -- Return first tile back to hand
+                local returnedTile = gameState.fusionSlotTiles[1]
+                table.insert(gameState.fusionHand, returnedTile)
+                gameState.fusionSlotTiles[1] = tile
+                slotIndex = 1
+            end
+
+            -- Remove tile from fusion hand
+            table.remove(gameState.fusionHand, touchState.draggedIndex)
+            Hand.updatePositions(gameState.fusionHand)
+
+            -- Position tile at its fixed fusion slot position
+            Touch.positionTileInFusionSlot(tile, slotIndex)
+        else
+            -- Just a tap - play punch animation only (like main game)
+            -- Players must DRAG to add tiles to fusion board
+            local tile = touchState.draggedTile
+
+            -- Punch out effect - scale up briefly then back down
+            UI.Animation.animateTo(tile, {
+                selectScale = 1.15
+            }, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(tile, {
+                    selectScale = 1.0
+                }, 0.15, "easeOutBack")
+            end)
+            Touch.resetTileDragState(touchState.draggedTile)
+        end
+    elseif touchState.draggedTile and touchState.draggedFrom == "board" then
         if not Touch.isDragging() then
             -- Tap on board tile - check for double-tap or flip
             local currentTime = love.timer.getTime()
@@ -450,7 +555,8 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
     if touchState.isPressed and (touchId == nil or touchId == touchState.touchId) then
         touchState.currentX = x
         touchState.currentY = y
-        
+
+
         -- Handle map screen dragging (works for both map phase and confirmation phase)
         if (gameState.gamePhase == "map" or gameState.gamePhase == "node_confirmation") and gameState.currentMap then
             if Touch.isDragging() then
@@ -929,13 +1035,16 @@ function Touch.animateTileToPosition(tile, targetX, targetY)
     end)
 end
 
-function Touch.animateTileToHandPosition(tile, handIndex)
+function Touch.animateTileToHandPosition(tile, handIndex, hand)
     if not tile then return end
-    
+
+    -- Use provided hand or default to gameState.hand
+    hand = hand or gameState.hand
+
     -- Calculate target hand position
-    local handSize = #gameState.hand
+    local handSize = #hand
     local targetX, targetY = UI.Layout.getHandPosition(handIndex - 1, handSize)
-    
+
     tile.isAnimating = true
     UI.Animation.animateTo(tile, {
         visualX = targetX,
@@ -946,6 +1055,7 @@ function Touch.animateTileToHandPosition(tile, handIndex)
         Touch.resetTileDragState(tile)
     end)
 end
+
 
 function Touch.resetTileDragState(tile)
     if not tile then return end
@@ -1167,13 +1277,252 @@ function Touch.confirmTileSelection()
         easing = "easeOutBack"
     })
 
-    -- Clear selection state and return to map
-    gameState.offeredTiles = {}
-    gameState.selectedTileOffer = nil
+    -- Clear selection state (but stay in shop)
     gameState.selectedTilesToBuy = {}
-    gameState.tileOfferButtons = {}
-    gameState.confirmTileButton = nil
-    gameState.gamePhase = "map"
+    -- Player must click "RETURN TO MAP" to exit shop
+end
+
+-- FUSION SYSTEM FUNCTIONS
+
+-- Helper: Check if coordinates are in fusion area
+function Touch.isInFusionArea(x, y)
+    local areaY = UI.Layout.scale(170)
+    local areaHeight = UI.Layout.scale(200)
+    return y >= areaY and y <= areaY + areaHeight
+end
+
+-- Position a tile at its fixed fusion slot position
+function Touch.positionTileInFusionSlot(tile, slotIndex)
+    -- Calculate fusion slot positions (MUST match renderer exactly!)
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+    local areaY = UI.Layout.scale(170)
+    local areaHeight = UI.Layout.scale(200)
+    local centerY = areaY + areaHeight / 2
+    local tileSpacing = UI.Layout.scale(40)
+
+    -- Get actual sprite dimensions (same as renderer)
+    local sampleSpriteData = dominoTiltedSprites and dominoTiltedSprites["00"]
+    local tiltedWidth, tiltedHeight
+    if sampleSpriteData and sampleSpriteData.sprite then
+        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+        local spriteScale = math.max(minScale * 2.0, 1.0)
+        tiltedHeight = sampleSpriteData.sprite:getWidth() * spriteScale  -- Rotated
+        tiltedWidth = sampleSpriteData.sprite:getHeight() * spriteScale
+    else
+        tiltedWidth = UI.Layout.scale(120)
+        tiltedHeight = UI.Layout.scale(60)
+    end
+
+    -- Calculate tile positions (exact match with renderer)
+    local tile1X = centerX - tiltedWidth - tileSpacing - UI.Layout.scale(50)
+    local tile2X = centerX - UI.Layout.scale(50)
+
+    local targetX = slotIndex == 1 and tile1X or tile2X
+    local targetY = centerY
+
+    -- Set tile position
+    tile.x = targetX
+    tile.y = targetY
+    tile.visualX = targetX
+    tile.visualY = targetY
+end
+
+-- Initialize fusion hand by drawing 7 tiles from deck
+function Touch.initializeFusionHand()
+    -- Always re-draw fusion hand when entering fusion mode
+    -- First, return any existing fusion hand tiles back to deck
+    if gameState.fusionHand and #gameState.fusionHand > 0 then
+        for i = #gameState.fusionHand, 1, -1 do
+            local tile = table.remove(gameState.fusionHand, i)
+            table.insert(gameState.deck, 1, tile)
+        end
+    end
+
+    -- Return any tiles from fusion slots back to deck
+    if gameState.fusionSlotTiles and #gameState.fusionSlotTiles > 0 then
+        for i = #gameState.fusionSlotTiles, 1, -1 do
+            local tile = table.remove(gameState.fusionSlotTiles, i)
+            table.insert(gameState.deck, 1, tile)
+        end
+    end
+
+    -- Draw fresh 7 tiles from deck
+    gameState.fusionHand = Hand.drawTiles(gameState.deck, 7)
+
+    -- Clear fusion state
+    gameState.fusionSlotTiles = {}
+end
+
+-- Handle clicks on fusion slot tiles (flip or double-tap to return)
+function Touch.handleFusionSlotClick(slotIndex)
+    if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles < slotIndex then
+        return  -- No tile in this slot
+    end
+
+    local currentTime = love.timer.getTime()
+    local tile = gameState.fusionSlotTiles[slotIndex]
+
+    -- Check if this is a double-tap on the same slot
+    if touchState.lastTappedFusionSlot == slotIndex and
+       currentTime - touchState.lastTapTime < touchState.doubleTapWindow then
+        -- DOUBLE TAP: Return tile to hand
+        table.remove(gameState.fusionSlotTiles, slotIndex)
+
+        -- Reset tile state to match hand tiles
+        tile.selected = false
+        tile.placed = false
+        tile.isDragging = false
+        tile.dragScale = 1.0
+        tile.dragOpacity = 1.0
+        tile.selectScale = 1.0
+        tile.selectOffset = 0
+
+        table.insert(gameState.fusionHand, tile)
+
+        -- Update hand positions (this will sort and reposition all tiles)
+        Hand.updatePositions(gameState.fusionHand)
+
+        -- Find the tile's new position after sorting
+        local newHandIndex = 1
+        for i, handTile in ipairs(gameState.fusionHand) do
+            if handTile.id == tile.id then
+                newHandIndex = i
+                break
+            end
+        end
+
+        -- Animate tile back to its sorted hand position
+        local targetX, targetY = UI.Layout.getHandPosition(newHandIndex - 1, #gameState.fusionHand)
+        tile.isAnimating = true
+        UI.Animation.animateTo(tile, {
+            visualX = targetX,
+            visualY = targetY
+        }, 0.35, "easeOutBack", function()
+            tile.isAnimating = false
+        end)
+
+        -- Reset double-tap tracking
+        touchState.lastTappedFusionSlot = nil
+        touchState.lastTapTime = 0
+
+        -- If we removed slot 1, shift slot 2 down to slot 1
+        if slotIndex == 1 and #gameState.fusionSlotTiles >= 1 then
+            local movedTile = gameState.fusionSlotTiles[1]
+            Touch.positionTileInFusionSlot(movedTile, 1)
+        end
+    else
+        -- SINGLE TAP: Flip the tile
+        Domino.flip(tile)
+
+        -- Track this tap for potential double-tap
+        touchState.lastTappedFusionSlot = slotIndex
+        touchState.lastTapTime = currentTime
+    end
+end
+
+-- Confirm and execute fusion
+function Touch.confirmFusion()
+    -- Validate
+    if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles ~= 2 then
+        return
+    end
+
+    if gameState.coins < 1 then
+        -- Show error message
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Get the tiles from fusion slots
+    local tile1 = gameState.fusionSlotTiles[1]
+    local tile2 = gameState.fusionSlotTiles[2]
+
+    if not tile1 or not tile2 then
+        return
+    end
+
+    -- Perform fusion
+    local fusedTile = Domino.fuseTiles(tile1, tile2)
+
+    -- Store tile values before removing (we'll need these to find them in collection)
+    local tile1Left, tile1Right = tile1.left, tile1.right
+    local tile2Left, tile2Right = tile2.left, tile2.right
+
+    -- Clear fusion slots (tiles are consumed in fusion)
+    gameState.fusionSlotTiles = {}
+
+    -- Remove original tiles from collection (important: must remove before adding fused tile)
+    local tile1Removed = false
+    local tile2Removed = false
+
+    for i = #gameState.tileCollection, 1, -1 do
+        local collectionTile = gameState.tileCollection[i]
+
+        -- Check if this matches tile1 and we haven't removed it yet
+        if not tile1Removed and collectionTile.left == tile1Left and collectionTile.right == tile1Right then
+            table.remove(gameState.tileCollection, i)
+            tile1Removed = true
+        -- Check if this matches tile2 and we haven't removed it yet
+        elseif not tile2Removed and collectionTile.left == tile2Left and collectionTile.right == tile2Right then
+            table.remove(gameState.tileCollection, i)
+            tile2Removed = true
+        end
+
+        -- Stop if both tiles removed
+        if tile1Removed and tile2Removed then
+            break
+        end
+    end
+
+    -- Add fused tile to collection
+    table.insert(gameState.tileCollection, fusedTile)
+
+    -- Put the fused tile back into the fusion hand for visual feedback
+    table.insert(gameState.fusionHand, fusedTile)
+
+    -- Update hand positions
+    Hand.updatePositions(gameState.fusionHand)
+
+    -- Deduct coin
+    updateCoins(gameState.coins - 1, {hasBonus = false})
+
+    -- Refresh deck from collection
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+
+    -- Show success animation
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    local fusedValues = fusedTile.left .. "-" .. fusedTile.right
+    UI.Animation.createFloatingText("TILES FUSED!\n" .. fusedValues, centerX, centerY - UI.Layout.scale(50), {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 2.0,
+        riseDistance = 100,
+        startScale = 0.5,
+        endScale = 1.5,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+
+    -- Clear fusion state
+    gameState.fusionSlotButtons = {}
+    touchState.lastTappedFusionSlot = nil
 end
 
 return Touch

@@ -39,7 +39,8 @@ function UI.Renderer.updateEyeBlinks(dt)
     for _, tile in ipairs(gameState.placedTiles) do
         if tile.isAnchor then
             local tileId = tile.id
-            local pipCount = tile.left + tile.right
+            -- Use Domino.getValue to handle special tiles (odd, even, x, etc.)
+            local pipCount = Domino.getValue(tile)
 
             -- Initialize if needed
             initializeEyeBlinks(tileId, pipCount)
@@ -317,6 +318,58 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- Helper function to draw numbers on X tiles (for values >= 10)
+local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
+    local leftVal = domino.left
+    local rightVal = domino.right
+
+    -- Calculate positions based on orientation (same as demon tile pip positioning)
+    if orientation == "horizontal" then
+        -- Horizontal/tilted: left half is on the left, right half is on the right
+        local leftX = x - sprite:getWidth() * spriteScale / 4
+        local rightX = x + sprite:getWidth() * spriteScale / 4
+        local verticalOffset = -8 * spriteScale  -- ADJUST THIS: negative = up, positive = down
+
+        -- Draw left side number if >= 10
+        if type(leftVal) == "number" and leftVal >= 10 then
+            local text = tostring(leftVal)
+            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local color = {0.2, 0.2, 0.2, 1}  -- Dark text
+            UI.Fonts.drawText(text, leftX, y + verticalOffset, fontSize, color, "center")
+        end
+
+        -- Draw right side number if >= 10
+        if type(rightVal) == "number" and rightVal >= 10 then
+            local text = tostring(rightVal)
+            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local color = {0.2, 0.2, 0.2, 1}  -- Dark text
+            UI.Fonts.drawText(text, rightX, y + verticalOffset, fontSize, color, "center")
+        end
+    else
+        -- Vertical: top half = left value, bottom half = right value
+        local topY = y - sprite:getHeight() * spriteScale / 4
+        local bottomY = y + sprite:getHeight() * spriteScale / 4
+        local topVerticalOffset = -7 * spriteScale  -- ADJUST THIS: negative = up, positive = down
+        local bottomVerticalOffset = -11 * spriteScale  -- ADJUST THIS: negative = up, positive = down
+
+        -- Draw top number if >= 10
+        if type(leftVal) == "number" and leftVal >= 10 then
+            local text = tostring(leftVal)
+            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local color = {0.2, 0.2, 0.2, 1}  -- Dark text
+            UI.Fonts.drawText(text, x, topY + topVerticalOffset, fontSize, color, "center")
+        end
+
+        -- Draw bottom number if >= 10
+        if type(rightVal) == "number" and rightVal >= 10 then
+            local text = tostring(rightVal)
+            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local color = {0.2, 0.2, 0.2, 1}  -- Dark text
+            UI.Fonts.drawText(text, x, bottomY + bottomVerticalOffset, fontSize, color, "center")
+        end
+    end
+end
+
 function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
     scale = scale or gameState.screen.scale
     orientation = orientation or "vertical"
@@ -357,13 +410,24 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
 
     -- Generate sprite key - for special tiles, use string concatenation directly
     local spriteKey
-    if type(leftVal) == "string" or type(rightVal) == "string" then
-        -- Special tile: use direct concatenation
-        spriteKey = leftVal .. rightVal
+    local leftSpriteVal = leftVal
+    local rightSpriteVal = rightVal
+
+    -- Replace values >= 10 with "x" for sprite lookup
+    if type(leftVal) == "number" and leftVal >= 10 then
+        leftSpriteVal = "x"
+    end
+    if type(rightVal) == "number" and rightVal >= 10 then
+        rightSpriteVal = "x"
+    end
+
+    if type(leftSpriteVal) == "string" or type(rightSpriteVal) == "string" then
+        -- Special tile or X tile: use direct concatenation
+        spriteKey = leftSpriteVal .. rightSpriteVal
     else
         -- Regular tile: use min/max for consistency
-        local minVal = math.min(leftVal, rightVal)
-        local maxVal = math.max(leftVal, rightVal)
+        local minVal = math.min(leftSpriteVal, rightSpriteVal)
+        local maxVal = math.max(leftSpriteVal, rightSpriteVal)
         spriteKey = minVal .. maxVal
     end
 
@@ -371,7 +435,7 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
     local spriteData
     if orientation == "horizontal" then
         -- Use tilted sprites for board tiles
-        local tiltedKey = leftVal .. rightVal  -- Use actual left/right values for flipping logic
+        local tiltedKey = leftSpriteVal .. rightSpriteVal  -- Use sprite values (with "x" replacement) for flipping logic
         spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
     else
         -- Use vertical sprites for hand tiles
@@ -449,9 +513,16 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
                 love.graphics.setColor(r, g, b, a)  -- Reset color for main sprite
             end
             
-            love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY, 
+            love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
-            
+
+            -- Draw numbers on X tiles if values >= 10
+            local needsNumberOverlay = (type(domino.left) == "number" and domino.left >= 10) or
+                                        (type(domino.right) == "number" and domino.right >= 10)
+            if needsNumberOverlay then
+                drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
+            end
+
             love.graphics.setColor(1, 1, 1)
         else
             -- Sprite is invalid, fall back to pip drawing
@@ -1262,7 +1333,6 @@ function UI.Renderer.drawTilesMenu()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
-    local centerY = screenHeight / 2
 
     -- Background
     UI.Colors.setBackground()
@@ -1270,28 +1340,39 @@ function UI.Renderer.drawTilesMenu()
 
     -- Title
     local titleColor = UI.Colors.FONT_PINK
-    UI.Fonts.drawText("TILE SHOP", centerX, UI.Layout.scale(60), "title", titleColor, "center")
+    UI.Fonts.drawText("TILE SHOP", centerX, UI.Layout.scale(30), "title", titleColor, "center")
 
     -- Show current coins in top right
     local coinsText = "Coins: " .. gameState.coins .. " $"
     local coinsColor = {1, 0.9, 0.3, 1}
     UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
 
-    -- Instructions
-    local instructionColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText("Select tiles to purchase (2 $ each)", centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+    -- Draw mode toggle buttons
+    UI.Renderer.drawTilesMenuModeToggle()
 
-    -- Draw offered tiles
-    if gameState.offeredTiles and #gameState.offeredTiles > 0 then
-        UI.Renderer.drawTileOffers()
+    -- Draw content based on mode
+    if gameState.tilesMenuMode == "fusion" then
+        UI.Renderer.drawFusionMode()
     else
-        -- Fallback if no tiles offered
-        local errorColor = UI.Colors.FONT_WHITE
-        UI.Fonts.drawText("No tiles available", centerX, centerY, "large", errorColor, "center")
+        -- Shop mode (existing)
+        -- Instructions
+        local instructionColor = UI.Colors.FONT_WHITE
+        UI.Fonts.drawText("Select tiles to purchase (2 $ each)", centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+
+        -- Draw offered tiles
+        if gameState.offeredTiles and #gameState.offeredTiles > 0 then
+            UI.Renderer.drawTileOffers()
+        else
+            -- Fallback if no tiles offered
+            local errorColor = UI.Colors.FONT_WHITE
+            UI.Fonts.drawText("No tiles available", centerX, screenHeight / 2, "large", errorColor, "center")
+        end
+
+        -- Always show buy button and return to map button
+        UI.Renderer.drawConfirmTileButton()
     end
 
-    -- Always show buy button and return to map button
-    UI.Renderer.drawConfirmTileButton()
+    -- Always show return to map button
     UI.Renderer.drawReturnToMapButton()
 end
 
@@ -1444,7 +1525,7 @@ function UI.Renderer.drawConfirmTileButton()
     local buttonWidth = UI.Layout.scale(200)
     local buttonHeight = UI.Layout.scale(60)
     local buttonX = centerX - buttonWidth/2
-    local buttonY = screenHeight - UI.Layout.scale(120)
+    local buttonY = screenHeight - UI.Layout.scale(80)  -- Lower to match hand position
 
     -- Button background (disabled if can't afford or no selection)
     if hasSelection and canAfford then
@@ -1476,24 +1557,27 @@ end
 function UI.Renderer.drawReturnToMapButton()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local centerX = screenWidth / 2
-    
-    local buttonWidth = UI.Layout.scale(200)
-    local buttonHeight = UI.Layout.scale(60)
-    local buttonX = centerX - buttonWidth/2
-    local buttonY = screenHeight - UI.Layout.scale(120)
-    
+
+    local buttonWidth = UI.Layout.scale(150)
+    local buttonHeight = UI.Layout.scale(50)
+
+    -- Position at bottom right with padding
+    local buttonX = screenWidth - buttonWidth - UI.Layout.scale(20)
+    local buttonY = screenHeight - buttonHeight - UI.Layout.scale(20)
+
     -- Button background
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-    
+
     -- Button border
     UI.Colors.setOutline()
     love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-    
-    -- Button text
-    UI.Fonts.drawText("RETURN TO MAP", centerX, buttonY + buttonHeight/2, "button", UI.Colors.FONT_WHITE, "center")
-    
+
+    -- Button text (centered within button)
+    local textX = buttonX + buttonWidth/2
+    local textY = buttonY + buttonHeight/2
+    UI.Fonts.drawText("RETURN TO MAP", textX, textY, "small", UI.Colors.FONT_WHITE, "center")
+
     -- Store button bounds for touch handling
     gameState.returnToMapButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight}
 end
@@ -1965,5 +2049,241 @@ function UI.Renderer.drawMapScrollIndicators(map)
     love.graphics.setColor(1, 1, 1, 1) -- Reset color
 end
 
+-- Draw mode toggle buttons (SHOP / FUSION)
+function UI.Renderer.drawTilesMenuModeToggle()
+    local screenWidth = gameState.screen.width
+    local centerX = screenWidth / 2
+
+    local buttonWidth = UI.Layout.scale(120)
+    local buttonHeight = UI.Layout.scale(40)
+    local buttonSpacing = UI.Layout.scale(10)
+    local buttonY = UI.Layout.scale(75)
+
+    local shopButtonX = centerX - buttonWidth - buttonSpacing / 2
+    local fusionButtonX = centerX + buttonSpacing / 2
+
+    -- Shop button
+    if gameState.tilesMenuMode == "shop" then
+        UI.Colors.setFontPink()
+    else
+        UI.Colors.setBackgroundLight()
+    end
+    love.graphics.rectangle("fill", shopButtonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", shopButtonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    local shopTextColor = gameState.tilesMenuMode == "shop" and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("SHOP", shopButtonX + buttonWidth/2, buttonY + buttonHeight/2, "button", shopTextColor, "center")
+
+    -- Fusion button
+    if gameState.tilesMenuMode == "fusion" then
+        UI.Colors.setFontPink()
+    else
+        UI.Colors.setBackgroundLight()
+    end
+    love.graphics.rectangle("fill", fusionButtonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", fusionButtonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    local fusionTextColor = gameState.tilesMenuMode == "fusion" and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("FUSION", fusionButtonX + buttonWidth/2, buttonY + buttonHeight/2, "button", fusionTextColor, "center")
+
+    -- Store button bounds for touch handling
+    gameState.modeToggleButtons = {
+        shop = {x = shopButtonX, y = buttonY, width = buttonWidth, height = buttonHeight},
+        fusion = {x = fusionButtonX, y = buttonY, width = buttonWidth, height = buttonHeight}
+    }
+end
+
+-- Draw fusion mode UI
+function UI.Renderer.drawFusionMode()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    -- Draw instructions
+    local instructionColor = UI.Colors.FONT_WHITE
+    UI.Fonts.drawText("Select 2 tiles from your hand to fuse", centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+
+    -- Draw fusion area (shows selected tiles and result)
+    UI.Renderer.drawFusionArea()
+
+    -- Draw fusion hand using regular hand rendering (reuse existing code)
+    if gameState.fusionHand then
+        UI.Renderer.drawHand(gameState.fusionHand)
+    end
+
+    -- Draw FUSE button
+    UI.Renderer.drawFuseButton()
+end
+
+-- Draw fusion area showing selected tiles and preview
+function UI.Renderer.drawFusionArea()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    local areaY = UI.Layout.scale(170)
+    local areaHeight = UI.Layout.scale(200)
+
+    -- Draw section background
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", 0, areaY, screenWidth, areaHeight)
+
+    -- Only draw if we have tiles in fusion slots
+    if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles == 0 then
+        local instructionColor = UI.Colors.FONT_WHITE
+        UI.Fonts.drawText("Drag tiles from your hand to fuse", centerX, areaY + areaHeight/2, "medium", instructionColor, "center")
+        return
+    end
+
+    local centerY = areaY + areaHeight / 2
+
+    -- Calculate positions for tilted input tiles and vertical result
+    local tileSpacing = UI.Layout.scale(40)
+
+    -- Get actual sprite dimensions for tilted and vertical tiles
+    local sampleSpriteData = dominoTiltedSprites and dominoTiltedSprites["00"]
+    local tiltedWidth, tiltedHeight
+    if sampleSpriteData and sampleSpriteData.sprite then
+        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+        local spriteScale = math.max(minScale * 2.0, 1.0)
+        tiltedHeight = sampleSpriteData.sprite:getWidth() * spriteScale  -- Rotated
+        tiltedWidth = sampleSpriteData.sprite:getHeight() * spriteScale
+    else
+        tiltedWidth = UI.Layout.scale(120)
+        tiltedHeight = UI.Layout.scale(60)
+    end
+
+    local verticalSpriteData = dominoSprites and dominoSprites["00"]
+    local verticalWidth, verticalHeight
+    if verticalSpriteData and verticalSpriteData.sprite then
+        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+        local spriteScale = math.max(minScale * 2.0, 1.0)
+        verticalWidth = verticalSpriteData.sprite:getWidth() * spriteScale
+        verticalHeight = verticalSpriteData.sprite:getHeight() * spriteScale
+    else
+        verticalWidth = UI.Layout.scale(60)
+        verticalHeight = UI.Layout.scale(120)
+    end
+
+    -- Position for first tilted tile (left)
+    local tile1X = centerX - tiltedWidth - tileSpacing - UI.Layout.scale(50)
+
+    -- Position for second tilted tile (middle-left)
+    local tile2X = centerX - UI.Layout.scale(50)
+
+    -- Position for result vertical tile (right)
+    local resultX = centerX + UI.Layout.scale(80)
+
+    -- Draw first fusion slot tile (tilted)
+    if #gameState.fusionSlotTiles >= 1 then
+        local tile = gameState.fusionSlotTiles[1]
+        UI.Renderer.drawDomino(tile, tile1X, centerY, gameState.screen.scale, "horizontal", 1.0)
+
+        -- Store button bounds for clicking
+        if not gameState.fusionSlotButtons then
+            gameState.fusionSlotButtons = {}
+        end
+        gameState.fusionSlotButtons[1] = {
+            x = tile1X - tiltedWidth/2,
+            y = centerY - tiltedHeight/2,
+            width = tiltedWidth,
+            height = tiltedHeight
+        }
+    end
+
+    -- Draw + symbol
+    UI.Fonts.drawText("+", centerX - tiltedWidth/2 - UI.Layout.scale(25), centerY, "title", UI.Colors.FONT_WHITE, "center")
+
+    -- Draw second fusion slot tile (tilted)
+    if #gameState.fusionSlotTiles >= 2 then
+        local tile = gameState.fusionSlotTiles[2]
+        UI.Renderer.drawDomino(tile, tile2X, centerY, gameState.screen.scale, "horizontal", 1.0)
+
+        -- Store button bounds for clicking
+        if not gameState.fusionSlotButtons then
+            gameState.fusionSlotButtons = {}
+        end
+        gameState.fusionSlotButtons[2] = {
+            x = tile2X - tiltedWidth/2,
+            y = centerY - tiltedHeight/2,
+            width = tiltedWidth,
+            height = tiltedHeight
+        }
+    end
+
+    -- Draw = symbol and result if 2 tiles selected
+    if #gameState.fusionSlotTiles == 2 then
+        UI.Fonts.drawText("=", resultX - verticalWidth/2 - UI.Layout.scale(25), centerY, "title", UI.Colors.FONT_WHITE, "center")
+
+        -- Draw result tile (vertical)
+        UI.Renderer.drawFusionResult(resultX, centerY, verticalWidth, verticalHeight)
+    end
+
+    -- Draw instruction text at top of area
+    local instructionColor = UI.Colors.FONT_WHITE
+    UI.Fonts.drawText("Click tile: Flip   Click again: Deselect", centerX, areaY + UI.Layout.scale(15), "small", instructionColor, "center")
+end
+
+
+-- Draw fusion result preview (vertical tile)
+function UI.Renderer.drawFusionResult(x, y, width, height)
+    if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles ~= 2 then return end
+
+    local tile1 = gameState.fusionSlotTiles[1]
+    local tile2 = gameState.fusionSlotTiles[2]
+
+    if not tile1 or not tile2 then return end
+
+    -- Create a preview of the fused tile (don't actually fuse yet)
+    local fusedTile = Domino.fuseTiles(tile1, tile2)
+
+    -- Draw the fused tile as a vertical domino
+    UI.Renderer.drawDomino(fusedTile, x, y, gameState.screen.scale, "vertical", 1.0)
+end
+
+
+-- Draw FUSE button
+function UI.Renderer.drawFuseButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    local buttonWidth = UI.Layout.scale(150)
+    local buttonHeight = UI.Layout.scale(50)
+    local buttonX = centerX - buttonWidth/2
+    local buttonY = screenHeight - UI.Layout.scale(80)  -- Lower to match BUY button position
+
+    local hasEnoughTiles = gameState.fusionSlotTiles and #gameState.fusionSlotTiles == 2
+    local canAfford = gameState.coins >= 1
+    local canFuse = hasEnoughTiles and canAfford
+
+    -- Button background
+    if canFuse then
+        UI.Colors.setFontPink()
+    else
+        UI.Colors.setBackground()
+    end
+    love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    -- Button border
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+    -- Button text
+    local buttonText = "FUSE (1 $)"
+    if not hasEnoughTiles then
+        buttonText = "SELECT 2 TILES"
+    elseif not canAfford then
+        buttonText = "NOT ENOUGH $"
+    end
+
+    local textColor = canFuse and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText(buttonText, centerX, buttonY + buttonHeight/2, "button", textColor, "center")
+
+    -- Store button bounds
+    gameState.fuseButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = canFuse}
+end
 
 return UI.Renderer

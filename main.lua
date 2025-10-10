@@ -81,6 +81,10 @@ function love.load()
         offeredTiles = {},    -- Tiles currently being offered in tiles menu
         selectedTileOffer = nil,  -- Currently selected tile in the offering
         selectedTilesToBuy = {},  -- Tiles selected for purchase (multi-select)
+        -- Tile fusion system
+        tilesMenuMode = "shop",  -- "shop" or "fusion"
+        fusionHand = {},  -- 7-tile hand for fusion mode
+        fusionSlotTiles = {},  -- {tile1, tile2} - actual tiles in fusion slots
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
         challengeStates = {},  -- State data for each challenge
@@ -593,6 +597,12 @@ function love.update(dt)
         Hand.update(dt)
         Board.update(dt)
         updateScoringSequence(dt)
+    elseif gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" then
+        -- Update fusion hand using regular Hand.update logic
+        if gameState.fusionHand then
+            Hand.updatePositions(gameState.fusionHand)
+            Hand.updateIdleAnimations(gameState.fusionHand, dt)
+        end
     end
 end
 
@@ -717,8 +727,8 @@ function loadDominoSprites()
     dominoTiltedSprites = {}
 
     -- Load vertical sprites (for hand tiles)
-    for i = 0, 6 do
-        for j = i, 6 do
+    for i = 0, 9 do
+        for j = i, 9 do
             local filename = "sprites/tiles/" .. i .. j .. ".png"
             if love.filesystem.getInfo(filename) then
                 local sprite = love.graphics.newImage(filename)
@@ -728,8 +738,8 @@ function loadDominoSprites()
     end
 
     -- Load special vertical sprites (odd/even tiles)
-    -- Number-even combinations (all numbers 0-6 can have "even" side)
-    for i = 0, 6 do
+    -- Number-even combinations (all numbers 0-9 can have "even" side)
+    for i = 0, 9 do
         local filename = "sprites/tiles/" .. i .. "even.png"
         if love.filesystem.getInfo(filename) then
             local sprite = love.graphics.newImage(filename)
@@ -737,8 +747,8 @@ function loadDominoSprites()
         end
     end
 
-    -- Number-odd combinations (all numbers 0-6 can have "odd" side)
-    for i = 0, 6 do
+    -- Number-odd combinations (all numbers 0-9 can have "odd" side)
+    for i = 0, 9 do
         local filename = "sprites/tiles/" .. i .. "odd.png"
         if love.filesystem.getInfo(filename) then
             local sprite = love.graphics.newImage(filename)
@@ -755,9 +765,39 @@ function loadDominoSprites()
             dominoSprites[combo] = sprite
         end
     end
-    
+
+    -- Load X-variant vertical sprites (for values 10+)
+    -- Number-X combinations (1-9 with "x" for values >= 10)
+    for i = 1, 9 do
+        local filename = "sprites/tiles/" .. i .. "x.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            dominoSprites[i .. "x"] = sprite
+        end
+    end
+
+    -- X-X combination (for double values >= 10)
+    local xxFilename = "sprites/tiles/xx.png"
+    if love.filesystem.getInfo(xxFilename) then
+        local sprite = love.graphics.newImage(xxFilename)
+        dominoSprites["xx"] = sprite
+    end
+
+    -- Special-X combinations (odd/even with X)
+    local xFilename = "sprites/tiles/oddx.png"
+    if love.filesystem.getInfo(xFilename) then
+        local sprite = love.graphics.newImage(xFilename)
+        dominoSprites["oddx"] = sprite
+    end
+    xFilename = "sprites/tiles/evenx.png"
+    if love.filesystem.getInfo(xFilename) then
+        local sprite = love.graphics.newImage(xFilename)
+        dominoSprites["evenx"] = sprite
+    end
+
     -- Load tilted sprites (for board tiles) - note: folder was titled_tiles, likely meant to be tilted_tiles
     local rawTiltedSprites = {}
+    -- Load tiles 0-6 with "t" suffix
     for i = 0, 6 do
         for j = i, 6 do
             local filename = "sprites/titled_tiles/" .. i .. j .. "t.png"
@@ -768,9 +808,20 @@ function loadDominoSprites()
         end
     end
 
+    -- Load tiles 7-9 WITHOUT "t" suffix
+    for i = 0, 9 do
+        for j = math.max(i, 7), 9 do
+            local filename = "sprites/titled_tiles/" .. i .. j .. ".png"
+            if love.filesystem.getInfo(filename) then
+                local sprite = love.graphics.newImage(filename)
+                rawTiltedSprites[i .. j] = sprite
+            end
+        end
+    end
+
     -- Load special tilted sprites (odd/even tiles)
-    -- Number-even combinations (all numbers 0-6 can have "even" side)
-    for i = 0, 6 do
+    -- Number-even combinations (all numbers 0-9 can have "even" side)
+    for i = 0, 9 do
         local filename = "sprites/titled_tiles/" .. i .. "even.png"
         if love.filesystem.getInfo(filename) then
             local sprite = love.graphics.newImage(filename)
@@ -778,8 +829,8 @@ function loadDominoSprites()
         end
     end
 
-    -- Number-odd combinations (all numbers 0-6 can have "odd" side)
-    for i = 0, 6 do
+    -- Number-odd combinations (all numbers 0-9 can have "odd" side)
+    for i = 0, 9 do
         local filename = "sprites/titled_tiles/" .. i .. "odd.png"
         if love.filesystem.getInfo(filename) then
             local sprite = love.graphics.newImage(filename)
@@ -795,10 +846,39 @@ function loadDominoSprites()
             rawTiltedSprites[combo] = sprite
         end
     end
+
+    -- Load X-variant tilted sprites (for values 10+)
+    -- Number-X combinations (1-9 with "x" for values >= 10)
+    for i = 1, 9 do
+        local filename = "sprites/titled_tiles/" .. i .. "x.png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            rawTiltedSprites[i .. "x"] = sprite
+        end
+    end
+
+    -- X-X combination (for double values >= 10)
+    local xxTiltedFilename = "sprites/titled_tiles/xx.png"
+    if love.filesystem.getInfo(xxTiltedFilename) then
+        local sprite = love.graphics.newImage(xxTiltedFilename)
+        rawTiltedSprites["xx"] = sprite
+    end
+
+    -- Special-X combinations (odd/even with X)
+    local oddxTiltedFilename = "sprites/titled_tiles/oddx.png"
+    if love.filesystem.getInfo(oddxTiltedFilename) then
+        local sprite = love.graphics.newImage(oddxTiltedFilename)
+        rawTiltedSprites["oddx"] = sprite
+    end
+    local evenxTiltedFilename = "sprites/titled_tiles/evenx.png"
+    if love.filesystem.getInfo(evenxTiltedFilename) then
+        local sprite = love.graphics.newImage(evenxTiltedFilename)
+        rawTiltedSprites["evenx"] = sprite
+    end
     
     -- Create mapping for all possible domino combinations (vertical sprites)
-    for i = 0, 6 do
-        for j = 0, 6 do
+    for i = 0, 9 do
+        for j = 0, 9 do
             local key = i .. j
             if not dominoSprites[key] then
                 -- Try inverted version (j-i instead of i-j)
@@ -820,10 +900,10 @@ function loadDominoSprites()
             end
         end
     end
-    
+
     -- Create mapping for all tilted sprite combinations
-    for i = 0, 6 do
-        for j = 0, 6 do
+    for i = 0, 9 do
+        for j = 0, 9 do
             local key = i .. j
             local minVal = math.min(i, j)
             local maxVal = math.max(i, j)
@@ -851,8 +931,8 @@ function loadDominoSprites()
     end
 
     -- Wrap special vertical sprites in consistent format
-    -- Number-even combinations (all numbers 0-6)
-    for i = 0, 6 do
+    -- Number-even combinations (all numbers 0-9)
+    for i = 0, 9 do
         local key = i .. "even"
         if dominoSprites[key] then
             local existingSprite = dominoSprites[key]
@@ -871,8 +951,8 @@ function loadDominoSprites()
         end
     end
 
-    -- Number-odd combinations (all numbers 0-6)
-    for i = 0, 6 do
+    -- Number-odd combinations (all numbers 0-9)
+    for i = 0, 9 do
         local key = i .. "odd"
         if dominoSprites[key] then
             local existingSprite = dominoSprites[key]
@@ -889,6 +969,62 @@ function loadDominoSprites()
                 inverted = true
             }
         end
+    end
+
+    -- Wrap X-variant vertical sprites in consistent format
+    -- Number-X combinations (1-9 with "x")
+    for i = 1, 9 do
+        local key = i .. "x"
+        if dominoSprites[key] then
+            local existingSprite = dominoSprites[key]
+            dominoSprites[key] = {
+                sprite = existingSprite,
+                inverted = false
+            }
+        end
+        -- Create reverse mapping (x-number)
+        local reverseKey = "x" .. i
+        if dominoSprites[key] and dominoSprites[key].sprite then
+            dominoSprites[reverseKey] = {
+                sprite = dominoSprites[key].sprite,
+                inverted = true
+            }
+        end
+    end
+
+    -- Wrap xx sprite
+    if dominoSprites["xx"] then
+        local existingSprite = dominoSprites["xx"]
+        dominoSprites["xx"] = {
+            sprite = existingSprite,
+            inverted = false
+        }
+    end
+
+    -- Wrap special-x vertical sprites
+    if dominoSprites["oddx"] then
+        local existingSprite = dominoSprites["oddx"]
+        dominoSprites["oddx"] = {
+            sprite = existingSprite,
+            inverted = false
+        }
+        -- Create reverse mapping (x-odd)
+        dominoSprites["xodd"] = {
+            sprite = existingSprite,
+            inverted = true
+        }
+    end
+    if dominoSprites["evenx"] then
+        local existingSprite = dominoSprites["evenx"]
+        dominoSprites["evenx"] = {
+            sprite = existingSprite,
+            inverted = false
+        }
+        -- Create reverse mapping (x-even)
+        dominoSprites["xeven"] = {
+            sprite = existingSprite,
+            inverted = true
+        }
     end
 
     -- Wrap special-special vertical sprites
@@ -911,8 +1047,8 @@ function loadDominoSprites()
     end
 
     -- Wrap special tilted sprites in consistent format
-    -- Number-even combinations (all numbers 0-6)
-    for i = 0, 6 do
+    -- Number-even combinations (all numbers 0-9)
+    for i = 0, 9 do
         local key = i .. "even"
         if rawTiltedSprites[key] then
             dominoTiltedSprites[key] = {
@@ -928,8 +1064,8 @@ function loadDominoSprites()
         end
     end
 
-    -- Number-odd combinations (all numbers 0-6)
-    for i = 0, 6 do
+    -- Number-odd combinations (all numbers 0-9)
+    for i = 0, 9 do
         local key = i .. "odd"
         if rawTiltedSprites[key] then
             dominoTiltedSprites[key] = {
@@ -943,6 +1079,56 @@ function loadDominoSprites()
                 flipped = true
             }
         end
+    end
+
+    -- Wrap X-variant tilted sprites in consistent format
+    -- Number-X combinations (1-9 with "x")
+    for i = 1, 9 do
+        local key = i .. "x"
+        if rawTiltedSprites[key] then
+            dominoTiltedSprites[key] = {
+                sprite = rawTiltedSprites[key],
+                flipped = false
+            }
+            -- Create reverse mapping (x-number)
+            local reverseKey = "x" .. i
+            dominoTiltedSprites[reverseKey] = {
+                sprite = rawTiltedSprites[key],
+                flipped = true
+            }
+        end
+    end
+
+    -- Wrap xx tilted sprite
+    if rawTiltedSprites["xx"] then
+        dominoTiltedSprites["xx"] = {
+            sprite = rawTiltedSprites["xx"],
+            flipped = false
+        }
+    end
+
+    -- Wrap special-x tilted sprites
+    if rawTiltedSprites["oddx"] then
+        dominoTiltedSprites["oddx"] = {
+            sprite = rawTiltedSprites["oddx"],
+            flipped = false
+        }
+        -- Create reverse mapping (x-odd)
+        dominoTiltedSprites["xodd"] = {
+            sprite = rawTiltedSprites["oddx"],
+            flipped = true
+        }
+    end
+    if rawTiltedSprites["evenx"] then
+        dominoTiltedSprites["evenx"] = {
+            sprite = rawTiltedSprites["evenx"],
+            flipped = false
+        }
+        -- Create reverse mapping (x-even)
+        dominoTiltedSprites["xeven"] = {
+            sprite = rawTiltedSprites["evenx"],
+            flipped = true
+        }
     end
 
     -- Wrap special-special tilted sprites
