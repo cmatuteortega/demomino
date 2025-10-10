@@ -1,9 +1,11 @@
 Domino = {}
 
-function Domino.new(left, right)
+function Domino.new(left, right, leftScore, rightScore)
     return {
         left = left,
         right = right,
+        leftScore = leftScore,  -- Optional: override scoring value for this side
+        rightScore = rightScore,  -- Optional: override scoring value for this side
         id = left .. "-" .. right,
         x = 0,
         y = 0,
@@ -145,8 +147,8 @@ function Domino.shuffleDeck(deck)
 end
 
 function Domino.getValue(domino)
-    local leftVal = Domino.getNumericValue(domino.left)
-    local rightVal = Domino.getNumericValue(domino.right)
+    local leftVal = domino.leftScore or Domino.getNumericValue(domino.left)
+    local rightVal = domino.rightScore or Domino.getNumericValue(domino.right)
     return leftVal + rightVal
 end
 
@@ -207,6 +209,8 @@ function Domino.clone(domino)
     return {
         left = domino.left,
         right = domino.right,
+        leftScore = domino.leftScore,  -- Preserve score overrides
+        rightScore = domino.rightScore,  -- Preserve score overrides
         id = domino.id,
         x = domino.x,
         y = domino.y,
@@ -295,6 +299,7 @@ end
 
 function Domino.flip(domino)
     domino.left, domino.right = domino.right, domino.left
+    domino.leftScore, domino.rightScore = domino.rightScore, domino.leftScore
     domino.flipped = not domino.flipped
 end
 
@@ -304,6 +309,68 @@ end
 
 function Domino.getRightValue(domino)
     return domino.right
+end
+
+-- Fusion system: combine two tiles into one
+function Domino.fuseTiles(tile1, tile2)
+    -- Get scoring values (use override if present, otherwise default)
+    local tile1LeftScore = tile1.leftScore or Domino.getNumericValue(tile1.left)
+    local tile1RightScore = tile1.rightScore or Domino.getNumericValue(tile1.right)
+    local tile2LeftScore = tile2.leftScore or Domino.getNumericValue(tile2.left)
+    local tile2RightScore = tile2.rightScore or Domino.getNumericValue(tile2.right)
+
+    -- Determine new left side
+    local newLeft, newLeftScore
+    if Domino.isSpecialValue(tile1.left) then
+        -- Preserve odd/even from tile1
+        newLeft = tile1.left
+        newLeftScore = tile1LeftScore + tile2LeftScore
+    elseif Domino.isSpecialValue(tile2.left) then
+        -- Preserve odd/even from tile2
+        newLeft = tile2.left
+        newLeftScore = tile1LeftScore + tile2LeftScore
+    else
+        -- Both numeric - sum them
+        newLeft = tile1LeftScore + tile2LeftScore
+        newLeftScore = nil  -- No override needed, value = score
+    end
+
+    -- Determine new right side (same logic)
+    local newRight, newRightScore
+    if Domino.isSpecialValue(tile1.right) then
+        newRight = tile1.right
+        newRightScore = tile1RightScore + tile2RightScore
+    elseif Domino.isSpecialValue(tile2.right) then
+        newRight = tile2.right
+        newRightScore = tile1RightScore + tile2RightScore
+    else
+        newRight = tile1RightScore + tile2RightScore
+        newRightScore = nil  -- No override needed
+    end
+
+    local fusedTile = Domino.new(newLeft, newRight, newLeftScore, newRightScore)
+
+    -- IMPORTANT: For vertical tiles, normalize orientation to avoid sprite inversion
+    -- Vertical sprites should never be inverted (180° rotation), only horizontal tiles can flip
+    -- If both sides are numeric and left > right, swap them to use base sprite
+    if type(fusedTile.left) == "number" and type(fusedTile.right) == "number" then
+        if fusedTile.left > fusedTile.right then
+            -- Swap to use base sprite instead of inverted version
+            fusedTile.left, fusedTile.right = fusedTile.right, fusedTile.left
+            fusedTile.leftScore, fusedTile.rightScore = fusedTile.rightScore, fusedTile.leftScore
+        end
+    end
+
+    return fusedTile
+end
+
+-- Remove a tile from collection by index
+function Domino.removeFromCollection(collection, index)
+    if index > 0 and index <= #collection then
+        table.remove(collection, index)
+        return true
+    end
+    return false
 end
 
 return Domino
