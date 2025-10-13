@@ -1,4 +1,4 @@
-# Domino Deckbuilder
+# DEMOMINO Deckbuilder
 
 A roguelike deckbuilding game built with dominoes! Strategic tile placement meets progression systems in this pixel-art domino adventure.
 
