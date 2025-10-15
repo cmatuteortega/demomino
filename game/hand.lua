@@ -74,12 +74,17 @@ function Hand.sortByValue(hand)
     table.sort(hand, function(a, b)
         local aValue = Domino.getValue(a)
         local bValue = Domino.getValue(b)
-        
+
         if aValue == bValue then
             -- Use tile ID for stable sort when values are equal
-            return a.id < b.id
+            -- Safety check: ensure both tiles have IDs
+            if a.id and b.id then
+                return a.id < b.id
+            end
+            -- If IDs are missing, maintain current order
+            return false
         end
-        
+
         return aValue > bValue
     end)
 end

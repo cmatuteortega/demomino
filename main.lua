@@ -22,6 +22,7 @@ function love.load()
     require("game.scoring")
     require("game.challenges")
     require("game.map")
+    require("game.save")
     require("ui.touch")
     require("ui.layout")
     require("ui.fonts")
@@ -29,6 +30,7 @@ function love.load()
     require("ui.renderer")
     require("ui.animation")
     require("ui.audio")
+    require("ui.title_screen")
     
     loadDominoSprites()
     loadDemonTileSprites()
@@ -100,7 +102,8 @@ function love.load()
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
     mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
 
-    initializeGame()
+    -- Start at title screen instead of initializing game directly
+    gameState.gamePhase = "title_screen"
 
     -- Start background music
     UI.Audio.playMusic()
@@ -614,7 +617,10 @@ function love.draw()
     UI.Layout.begin()
     
     -- Each phase draws its own background as before
-    if gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
+    if gameState.gamePhase == "title_screen" then
+        UI.TitleScreen.draw()
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
@@ -630,15 +636,25 @@ function love.draw()
         end
     elseif gameState.gamePhase == "map" then
         UI.Renderer.drawMap()
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "node_confirmation" then
         UI.Renderer.drawMap()  -- Draw map background
         UI.Renderer.drawNodeConfirmation()  -- Draw confirmation dialog on top
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "artifacts_menu" then
         UI.Renderer.drawArtifactsMenu()
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
+        UI.Renderer.drawSettingsButton()
+        UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "lost" then
         UI.Renderer.drawGameOver()
     end

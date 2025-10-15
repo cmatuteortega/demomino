@@ -5,6 +5,11 @@ UI.Renderer = {}
 local eyeBlinkStates = {}
 
 local function initializeEyeBlinks(tileId, pipCount)
+    -- Safety check: ensure tileId is valid
+    if not tileId then
+        return
+    end
+
     if eyeBlinkStates[tileId] then
         return
     end
@@ -1032,9 +1037,10 @@ function UI.Renderer.drawSettingsMenu()
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Menu panel
+    -- Menu panel (taller if not from title screen)
     local panelWidth = UI.Layout.scale(300)
-    local panelHeight = UI.Layout.scale(250)
+    local fromTitle = gameState.settingsFromTitle or false
+    local panelHeight = fromTitle and UI.Layout.scale(200) or UI.Layout.scale(300)
     local panelX = (screenWidth - panelWidth) / 2
     local panelY = (screenHeight - panelHeight) / 2
 
@@ -1066,22 +1072,44 @@ function UI.Renderer.drawSettingsMenu()
         height = optionHeight
     }
 
-    -- Restart Run button
-    local restartY = panelY + UI.Layout.scale(130)
-    local buttonWidth = UI.Layout.scale(150)
-    local buttonHeight = UI.Layout.scale(40)
-    local buttonX = panelX + (panelWidth - buttonWidth) / 2
+    -- Only show game-related buttons if not from title screen
+    if not fromTitle then
+        -- Restart Run button
+        local restartY = panelY + UI.Layout.scale(130)
+        local buttonWidth = UI.Layout.scale(150)
+        local buttonHeight = UI.Layout.scale(40)
+        local buttonX = panelX + (panelWidth - buttonWidth) / 2
 
-    UI.Colors.setBackground()
-    love.graphics.rectangle("fill", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+        UI.Colors.setBackground()
+        love.graphics.rectangle("fill", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
 
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
 
-    UI.Fonts.drawText("RESTART RUN", buttonX + buttonWidth / 2, restartY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center")
+        UI.Fonts.drawText("RESTART RUN", buttonX + buttonWidth / 2, restartY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center")
 
-    -- Store restart button bounds
-    gameState.settingsRestartBounds = {x = buttonX, y = restartY, width = buttonWidth, height = buttonHeight}
+        -- Store restart button bounds
+        gameState.settingsRestartBounds = {x = buttonX, y = restartY, width = buttonWidth, height = buttonHeight}
+
+        -- Return to Title button
+        local returnY = panelY + UI.Layout.scale(185)
+        buttonX = panelX + (panelWidth - buttonWidth) / 2
+
+        UI.Colors.setBackground()
+        love.graphics.rectangle("fill", buttonX, returnY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", buttonX, returnY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+
+        UI.Fonts.drawText("RETURN TO TITLE", buttonX + buttonWidth / 2, returnY + buttonHeight / 2, "button", UI.Colors.FONT_PINK, "center")
+
+        -- Store return to title button bounds
+        gameState.settingsReturnToTitleBounds = {x = buttonX, y = returnY, width = buttonWidth, height = buttonHeight}
+    else
+        -- Clear button bounds when from title
+        gameState.settingsRestartBounds = nil
+        gameState.settingsReturnToTitleBounds = nil
+    end
 
     -- Close button (X in top right)
     local closeSize = UI.Layout.scale(30)
@@ -1178,12 +1206,29 @@ function UI.Renderer.drawGameOver()
 
         UI.Fonts.drawText(roundText, centerX, centerY + UI.Layout.scale(10), "small", roundColor, "center")
 
-        -- Restart prompt with breathing animation
-        local promptText = "Tap anywhere to restart from Round 1"
-        local promptAlpha = 0.7 + 0.3 * math.sin(love.timer.getTime() * 2)
-        local promptColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], promptAlpha}
+        -- Buttons instead of tap prompt
+        local buttonWidth = UI.Layout.scale(180)
+        local buttonHeight = UI.Layout.scale(50)
+        local buttonSpacing = UI.Layout.scale(20)
+        local buttonsY = centerY + UI.Layout.scale(80)
 
-        UI.Fonts.drawText(promptText, centerX, centerY + UI.Layout.scale(60), "medium", promptColor, "center")
+        -- RESTART RUN button (left)
+        local restartX = centerX - buttonWidth - buttonSpacing / 2
+        UI.Colors.setBackgroundLight()
+        love.graphics.rectangle("fill", restartX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", restartX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        UI.Fonts.drawText("RESTART RUN", restartX + buttonWidth / 2, buttonsY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center")
+        gameState.lostRestartButton = {x = restartX, y = buttonsY, width = buttonWidth, height = buttonHeight}
+
+        -- RETURN TO TITLE button (right)
+        local returnX = centerX + buttonSpacing / 2
+        UI.Colors.setBackgroundLight()
+        love.graphics.rectangle("fill", returnX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", returnX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        UI.Fonts.drawText("RETURN TO TITLE", returnX + buttonWidth / 2, buttonsY + buttonHeight / 2, "button", UI.Colors.FONT_PINK, "center")
+        gameState.lostReturnToTitleButton = {x = returnX, y = buttonsY, width = buttonWidth, height = buttonHeight}
     end
 end
 
