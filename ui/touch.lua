@@ -299,8 +299,8 @@ function Touch.released(x, y, istouch, touchId)
             gameState.gamePhase = "map"  -- Start at map view, not directly in combat
         -- Check for return to title button
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
-            -- Auto-save current progress before returning to title
-            Save.saveGame(gameState)
+            -- Delete save when returning to title from lost screen (game is over)
+            Save.deleteSave()
             -- Return to title screen
             gameState.gamePhase = "title_screen"
         end
