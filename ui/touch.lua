@@ -109,11 +109,18 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
-    -- Check for settings button press during playing phase
-    if gameState.gamePhase == "playing" and gameState.settingsButtonBounds then
-        if isPointInRect(x, y, gameState.settingsButtonBounds) then
-            gameState.settingsMenuOpen = true
-            return
+    -- Check for settings button press in any phase that shows it
+    local phasesWithSettings = {
+        "playing", "map", "node_confirmation",
+        "tiles_menu", "artifacts_menu", "contracts_menu"
+    }
+
+    for _, phase in ipairs(phasesWithSettings) do
+        if gameState.gamePhase == phase and gameState.settingsButtonBounds then
+            if isPointInRect(x, y, gameState.settingsButtonBounds) then
+                gameState.settingsMenuOpen = true
+                return
+            end
         end
     end
 
@@ -198,6 +205,35 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
+    -- Handle title screen interactions
+    if gameState.gamePhase == "title_screen" then
+        -- If settings menu is open on title screen, handle that first
+        if gameState.settingsMenuOpen then
+            -- Check for music toggle
+            if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
+                UI.Audio.toggleMusic()
+            -- Check for close button
+            elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+                gameState.settingsMenuOpen = false
+                gameState.settingsFromTitle = false
+            end
+
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+
+        -- Check for button presses on title screen
+        local buttonName = UI.TitleScreen.getButtonAtPoint(x, y)
+        if buttonName then
+            UI.TitleScreen.handleButtonPress(buttonName)
+        end
+
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
     -- Handle settings menu interactions (takes priority when open)
     if gameState.settingsMenuOpen then
         -- Check for music toggle
@@ -206,13 +242,24 @@ function Touch.released(x, y, istouch, touchId)
         -- Check for restart button
         elseif gameState.settingsRestartBounds and isPointInRect(x, y, gameState.settingsRestartBounds) then
             gameState.settingsMenuOpen = false
+            gameState.settingsFromTitle = false
+            Save.deleteSave()  -- Clear save when restarting
             initializeGame(false)  -- Restart from Round 1
             -- Generate new map for fresh start
             gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
             gameState.gamePhase = "map"
+        -- Check for return to title button
+        elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
+            gameState.settingsMenuOpen = false
+            gameState.settingsFromTitle = false
+            -- Auto-save current progress before returning to title
+            Save.saveGame(gameState)
+            -- Return to title screen
+            gameState.gamePhase = "title_screen"
         -- Check for close button
         elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
             gameState.settingsMenuOpen = false
+            gameState.settingsFromTitle = false
         end
 
         touchState.isPressed = false
@@ -226,20 +273,38 @@ function Touch.released(x, y, istouch, touchId)
             -- Now increment round counter when player continues
             gameState.currentRound = gameState.currentRound + 1
             gameState.targetScore = gameState.baseTargetScore * (2 ^ (gameState.currentRound - 1))
+
+            -- Update best round stats
+            Save.updateBestRound(gameState.currentRound)
+
             gameState.gamePhase = "map"
+
+            -- Auto-save progress after winning a combat round
+            Save.saveGame(gameState)
         end
         touchState.isPressed = false
         touchState.touchId = nil
         return
     end
 
-    -- Handle loss screen - tap anywhere to restart
+    -- Handle loss screen - check for button presses
     if gameState.gamePhase == "lost" then
-        -- Complete restart - back to round 1 with new map from node 0
-        initializeGame(false)  -- false = not a new round, complete restart
-        -- Generate a completely new map for fresh start
-        gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
-        gameState.gamePhase = "map"  -- Start at map view, not directly in combat
+        -- Check for restart button
+        if gameState.lostRestartButton and isPointInRect(x, y, gameState.lostRestartButton) then
+            -- Complete restart - back to round 1 with new map from node 0
+            Save.deleteSave()  -- Clear any save when restarting
+            initializeGame(false)  -- false = not a new round, complete restart
+            -- Generate a completely new map for fresh start
+            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+            gameState.gamePhase = "map"  -- Start at map view, not directly in combat
+        -- Check for return to title button
+        elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
+            -- Auto-save current progress before returning to title
+            Save.saveGame(gameState)
+            -- Return to title screen
+            gameState.gamePhase = "title_screen"
+        end
+
         touchState.isPressed = false
         touchState.touchId = nil
         return
