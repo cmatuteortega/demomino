@@ -16,7 +16,10 @@ function Hand.drawTiles(deck, count)
     return hand
 end
 
-function Hand.updatePositions(hand)
+function Hand.updatePositions(hand, skipSort)
+    -- skipSort parameter allows disabling auto-sort for custom ordering
+    skipSort = skipSort or false
+
     -- Always initialize animation properties first
     for i, domino in ipairs(hand) do
         if domino.selectScale == nil then
@@ -32,7 +35,7 @@ function Hand.updatePositions(hand)
             domino.visualX = x
             domino.visualY = y
         end
-        
+
         -- Initialize idle animation properties
         if domino.idleFloatOffset == nil then
             domino.idleFloatOffset = 0
@@ -48,24 +51,29 @@ function Hand.updatePositions(hand)
             domino.idlePhase = (i - 1) * 0.8
         end
     end
-    
+
     -- Only recalculate positions if hand composition has changed
     local currentHandSignature = Hand.getHandSignature(hand)
-    if not hand._lastSignature or hand._lastSignature ~= currentHandSignature then
-        Hand.sortByValue(hand)
+    local handChanged = not hand._lastSignature or hand._lastSignature ~= currentHandSignature
+
+    if handChanged then
+        -- Only sort if not disabled (for custom ordering)
+        if not skipSort then
+            Hand.sortByValue(hand)
+        end
         hand._lastSignature = currentHandSignature
-        
-        -- Update positions when hand changes
-        for i, domino in ipairs(hand) do
-            local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            domino.x = x
-            domino.y = y
-            
-            -- Update visual position if not dragging or animating
-            if not domino.isDragging and not domino.isAnimating then
-                domino.visualX = x
-                domino.visualY = y
-            end
+    end
+
+    -- Always update logical positions based on current order
+    for i, domino in ipairs(hand) do
+        local x, y = UI.Layout.getHandPosition(i - 1, #hand)
+        domino.x = x
+        domino.y = y
+
+        -- Update visual position if not dragging or animating
+        if not domino.isDragging and not domino.isAnimating then
+            domino.visualX = x
+            domino.visualY = y
         end
     end
 end
@@ -208,7 +216,7 @@ end
 function Hand.removeSelectedTiles(hand)
     local remaining = {}
     local removed = {}
-    
+
     for _, domino in ipairs(hand) do
         if domino.selected then
             -- Clean up animations for removed tiles
@@ -218,17 +226,44 @@ function Hand.removeSelectedTiles(hand)
             table.insert(remaining, domino)
         end
     end
-    
+
     for i = 1, #hand do
         hand[i] = nil
     end
-    
+
     for i, domino in ipairs(remaining) do
         hand[i] = domino
     end
-    
-    Hand.updatePositions(hand)
+
+    -- Animate remaining tiles to their new positions smoothly
+    Hand.animateRemainingTilesToNewPositions(hand)
+
     return removed
+end
+
+-- Animate remaining tiles smoothly to their new positions after removal
+function Hand.animateRemainingTilesToNewPositions(hand)
+    -- Update logical positions
+    Hand.updatePositions(hand, true)
+
+    -- Animate visual positions to match logical positions
+    for i, domino in ipairs(hand) do
+        if not domino.isDrawing and not domino.isDiscarding then
+            local targetX = domino.x
+            local targetY = domino.y
+
+            -- Only animate if position actually changed
+            if math.abs(domino.visualX - targetX) > 1 then
+                domino.isAnimating = true  -- Mark as animating to prevent updatePositions from overwriting
+                UI.Animation.animateTo(domino, {
+                    visualX = targetX,
+                    visualY = targetY
+                }, 0.25, "easeOutQuart", function()
+                    domino.isAnimating = false  -- Clear flag when done
+                end)
+            end
+        end
+    end
 end
 
 function Hand.addTiles(hand, tiles)
@@ -241,7 +276,7 @@ function Hand.addTiles(hand, tiles)
                 break
             end
         end
-        
+
         -- Only add if it doesn't already exist
         if not alreadyExists then
             tile.selected = false
@@ -249,7 +284,8 @@ function Hand.addTiles(hand, tiles)
             table.insert(hand, tile)
         end
     end
-    Hand.updatePositions(hand)
+    -- Skip sorting when adding tiles to preserve custom order
+    Hand.updatePositions(hand, true)
 end
 
 function Hand.refillHand(hand, deck, targetCount)
@@ -466,6 +502,68 @@ function Hand.updateDiscardAnimations(hand, dt)
             end
         end
     end
+end
+
+-- Get the insertion index for a dragged tile based on hover position
+function Hand.getInsertionIndex(hand, draggedTile, dragX)
+    if #hand <= 1 then
+        return 1
+    end
+
+    -- Build a list of visible tiles (excluding dragged) with their 6-tile closed positions
+    local visibleTiles = {}
+    for i, tile in ipairs(hand) do
+        if tile ~= draggedTile then
+            table.insert(visibleTiles, tile)
+        end
+    end
+
+    -- Calculate where each tile would be in the 6-tile closed layout
+    -- and find which position the drag X corresponds to
+    local insertIndex = 1
+
+    for i, tile in ipairs(visibleTiles) do
+        local tileX, _ = UI.Layout.getHandPosition(i - 1, #visibleTiles)
+
+        -- If dragX is past this tile's center, we should insert after it
+        if dragX > tileX then
+            insertIndex = i + 1
+        end
+    end
+
+    return insertIndex
+end
+
+-- Insert a tile at a specific index in the hand
+function Hand.insertTileAt(hand, tile, targetIndex)
+    -- Find current index of tile
+    local currentIndex = nil
+    for i, t in ipairs(hand) do
+        if t == tile then
+            currentIndex = i
+            break
+        end
+    end
+
+    if not currentIndex then
+        -- Tile not in hand, just insert at target
+        table.insert(hand, targetIndex, tile)
+    else
+        -- Remove from current position
+        table.remove(hand, currentIndex)
+
+        -- Adjust target index if needed (when moving right, index shifts)
+        local adjustedIndex = targetIndex
+        if currentIndex < targetIndex then
+            adjustedIndex = targetIndex - 1
+        end
+
+        -- Insert at new position
+        table.insert(hand, adjustedIndex, tile)
+    end
+
+    -- Update positions without sorting
+    Hand.updatePositions(hand, true)
 end
 
 return Hand
