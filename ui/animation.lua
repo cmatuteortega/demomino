@@ -7,6 +7,10 @@ local function easeOutQuart(t)
     return 1 - math.pow(1 - t, 4)
 end
 
+local function easeInQuart(t)
+    return t * t * t * t
+end
+
 local function easeOutBack(t)
     local c1 = 1.70158
     local c3 = c1 + 1
@@ -31,12 +35,14 @@ end
 function UI.Animation.create(target, properties, duration, easing)
     easing = easing or "easeOutQuart"
     duration = duration or 0.3
-    
+
     local easingFunc = easeOutQuart
     if easing == "easeOutBack" then
         easingFunc = easeOutBack
     elseif easing == "easeOutElastic" then
         easingFunc = easeOutElastic
+    elseif easing == "easeInQuart" then
+        easingFunc = easeInQuart
     elseif easing == "linear" then
         easingFunc = function(t) return t end
     end
