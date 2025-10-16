@@ -987,22 +987,27 @@ function Touch.checkGameEnd()
             end
         end
 
-        gameState.gamePhase = "won"
+        -- Animate hand tiles discarding before showing victory screen
+        Hand.animateAllHandDiscard(gameState.hand, function()
+            gameState.gamePhase = "won"
 
-        -- If this was a boss round, generate a completely new map
-        if gameState.isBossRound then
-            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
-            gameState.isBossRound = false
-        else
-            -- Regular combat node completion - return to existing map
-            -- Generate a new map if one doesn't exist (shouldn't happen)
-            if not gameState.currentMap then
+            -- If this was a boss round, generate a completely new map
+            if gameState.isBossRound then
                 gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+                gameState.isBossRound = false
+            else
+                -- Regular combat node completion - return to existing map
+                -- Generate a new map if one doesn't exist (shouldn't happen)
+                if not gameState.currentMap then
+                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+                end
             end
-        end
+        end)
     elseif gameState.handsPlayed >= gameState.maxHandsPerRound then
-        -- Player failed to reach target in 3 hands - they lose
-        gameState.gamePhase = "lost"
+        -- Animate hand tiles discarding before showing loss screen
+        Hand.animateAllHandDiscard(gameState.hand, function()
+            gameState.gamePhase = "lost"
+        end)
     end
 end
 
@@ -1070,18 +1075,26 @@ function Touch.discardSelectedTiles()
     if gameState.discardsUsed >= 2 or not Hand.hasSelectedTiles(gameState.hand) then
         return false
     end
-    
+
     local selectedTiles = Hand.getSelectedTiles(gameState.hand)
     local discardedCount = #selectedTiles
-    
-    -- Remove selected tiles from hand using the existing Hand function
-    Hand.removeSelectedTiles(gameState.hand)
-    
-    -- Draw new tiles to replace discarded ones
-    Hand.refillHand(gameState.hand, gameState.deck, 7)
-    
+
+    -- Animate selected tiles discarding downward
+    Hand.animateDiscard(selectedTiles, function()
+        -- After discard animation completes, remove tiles and draw new ones
+        Hand.removeSelectedTiles(gameState.hand)
+
+        -- Draw new tiles to replace discarded ones (same amount as discarded)
+        local drawnCount, drawnTiles = Hand.refillHand(gameState.hand, gameState.deck, #gameState.hand + discardedCount)
+
+        -- Animate ONLY the newly drawn tiles from right (not the entire hand)
+        if drawnTiles and #drawnTiles > 0 then
+            Hand.animateTilesDraw(gameState.hand, 0, drawnTiles)
+        end
+    end)
+
     gameState.discardsUsed = gameState.discardsUsed + 1
-    
+
     return true
 end
 

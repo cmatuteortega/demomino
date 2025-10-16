@@ -25,7 +25,9 @@ function Hand.updatePositions(hand)
         if domino.selectOffset == nil then
             domino.selectOffset = 0
         end
-        if not domino.visualX or not domino.visualY then
+        -- Only initialize visualX/visualY if not already set AND not animating
+        -- This prevents overwriting the off-screen position set by animateTilesDraw
+        if (not domino.visualX or not domino.visualY) and not domino.isDrawing and not domino.isAnimating then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
             domino.visualX = x
             domino.visualY = y
@@ -100,15 +102,17 @@ end
 
 function Hand.update(dt)
     Hand.updatePositions(gameState.hand)
+    Hand.updateDrawAnimations(gameState.hand, dt)
+    Hand.updateDiscardAnimations(gameState.hand, dt)
     Hand.updateIdleAnimations(gameState.hand, dt)
 end
 
 function Hand.updateIdleAnimations(hand, dt)
     local time = love.timer.getTime()
-    
+
     for i, domino in ipairs(hand) do
-        -- Only apply idle animations if tile is not being dragged or selected
-        if not domino.isDragging and not domino.selected then
+        -- Only apply idle animations if tile is not being dragged, selected, drawing, or discarding
+        if not domino.isDragging and not domino.selected and not domino.isDrawing and not domino.isDiscarding then
             -- Floating animation - 3px range, 2.5 second cycle with unique phase offset
             local floatPhase = time * 2.5 + domino.idlePhase
             domino.idleFloatOffset = math.sin(floatPhase) * 3
@@ -253,7 +257,7 @@ function Hand.refillHand(hand, deck, targetCount)
     if needed <= 0 then
         return 0
     end
-    
+
     -- Draw tiles directly without positioning them
     local drawnTiles = {}
     for i = 1, math.min(needed, #deck) do
@@ -264,10 +268,10 @@ function Hand.refillHand(hand, deck, targetCount)
             table.insert(drawnTiles, tile)
         end
     end
-    
+
     Hand.addTiles(hand, drawnTiles)
-    
-    return #drawnTiles
+
+    return #drawnTiles, drawnTiles
 end
 
 function Hand.isEmpty(hand)
@@ -276,6 +280,192 @@ end
 
 function Hand.size(hand)
     return #hand
+end
+
+function Hand.animateTilesDraw(hand, startDelay, specificTiles)
+    startDelay = startDelay or 0
+
+    -- Get off-screen right position
+    local offScreenX = gameState.screen.width + UI.Layout.scale(200)
+
+    -- If specific tiles provided, only animate those
+    local tilesToAnimate = specificTiles or hand
+
+    -- Create a set of tile IDs to animate for quick lookup
+    local animateSet = {}
+    if specificTiles then
+        for _, tile in ipairs(specificTiles) do
+            animateSet[tile.id] = true
+        end
+    end
+
+    for i, tile in ipairs(hand) do
+        -- Only animate if this tile should be animated
+        local shouldAnimate = not specificTiles or animateSet[tile.id]
+
+        if shouldAnimate then
+            -- Calculate final position
+            local targetX, targetY = UI.Layout.getHandPosition(i - 1, #hand)
+
+            -- IMPORTANT: Set visual position off-screen FIRST, before marking as animating
+            -- This prevents Hand.updatePositions from setting it to final position
+            tile.visualX = offScreenX
+            tile.visualY = targetY
+
+            -- NOW mark tile as drawing and animating
+            tile.isDrawing = true
+            tile.isAnimating = true
+
+            -- Set logical position
+            tile.x = targetX
+            tile.y = targetY
+
+            -- Calculate staggered delay - leftmost tile (index 0) appears first
+            -- Since tiles are sorted high to low value, index 0 is highest value (leftmost)
+            local tileDelay = startDelay + (i - 1) * 0.08
+
+            -- Animate from right to final position with delay
+            local animStart = love.timer.getTime() + tileDelay
+            tile.drawAnimStart = animStart
+            tile.drawAnimDuration = 0.4
+            tile.drawStartX = offScreenX
+            tile.drawTargetX = targetX
+        else
+            -- Ensure non-animated tiles have correct visual position
+            if not tile.isAnimating and not tile.isDragging then
+                local targetX, targetY = UI.Layout.getHandPosition(i - 1, #hand)
+                tile.visualX = targetX
+                tile.visualY = targetY
+            end
+        end
+    end
+end
+
+function Hand.updateDrawAnimations(hand, dt)
+    local currentTime = love.timer.getTime()
+
+    for i, tile in ipairs(hand) do
+        if tile.isDrawing and tile.drawAnimStart then
+            local elapsed = currentTime - tile.drawAnimStart
+
+            if elapsed >= 0 then
+                local progress = math.min(elapsed / tile.drawAnimDuration, 1.0)
+
+                -- Use easeOutQuart for smooth deceleration with minimal overshoot
+                local easedProgress = 1 - math.pow(1 - progress, 4)
+
+                -- Update visual position
+                tile.visualX = tile.drawStartX + (tile.drawTargetX - tile.drawStartX) * easedProgress
+
+                if progress >= 1.0 then
+                    -- Animation complete
+                    tile.isDrawing = false
+                    tile.isAnimating = false
+                    tile.drawAnimStart = nil
+                    tile.drawAnimDuration = nil
+                    tile.drawStartX = nil
+                    tile.drawTargetX = nil
+                    tile.visualX = tile.x
+                end
+            end
+        end
+    end
+end
+
+function Hand.animateDiscard(tiles, onComplete)
+    if #tiles == 0 then
+        if onComplete then onComplete() end
+        return
+    end
+
+    local completedCount = 0
+    local targetY = gameState.screen.height + UI.Layout.scale(100)
+
+    for i, tile in ipairs(tiles) do
+        tile.isDiscarding = true
+        tile.isAnimating = true
+
+        -- Animate downward off screen
+        UI.Animation.animateTo(tile, {
+            visualY = targetY
+        }, 0.3, "easeInQuart", function()
+            tile.isDiscarding = false
+            completedCount = completedCount + 1
+
+            -- Call completion callback when all tiles finish
+            if completedCount == #tiles and onComplete then
+                onComplete()
+            end
+        end)
+    end
+end
+
+function Hand.animateAllHandDiscard(hand, onComplete)
+    if #hand == 0 then
+        if onComplete then onComplete() end
+        return
+    end
+
+    local completedCount = 0
+    local totalTiles = #hand
+    local targetY = gameState.screen.height + UI.Layout.scale(100)
+
+    for i, tile in ipairs(hand) do
+        tile.isDiscarding = true
+        tile.isAnimating = true
+
+        -- Small stagger for visual polish using animation system's built-in delay
+        local staggerDelay = (i - 1) * 0.05
+        local animDuration = 0.3
+
+        -- Store animation start time for staggered execution
+        tile.discardAnimStart = love.timer.getTime() + staggerDelay
+        tile.discardAnimDuration = animDuration
+        tile.discardStartY = tile.visualY
+        tile.discardTargetY = targetY
+        tile.discardOnCompleteCallback = function()
+            tile.isDiscarding = false
+            completedCount = completedCount + 1
+
+            if completedCount == totalTiles and onComplete then
+                onComplete()
+            end
+        end
+    end
+end
+
+function Hand.updateDiscardAnimations(hand, dt)
+    local currentTime = love.timer.getTime()
+
+    for i, tile in ipairs(hand) do
+        if tile.isDiscarding and tile.discardAnimStart then
+            local elapsed = currentTime - tile.discardAnimStart
+
+            if elapsed >= 0 then
+                local progress = math.min(elapsed / tile.discardAnimDuration, 1.0)
+
+                -- Use easeInQuart for smooth acceleration downward
+                local easedProgress = progress * progress * progress * progress
+
+                -- Update visual position
+                tile.visualY = tile.discardStartY + (tile.discardTargetY - tile.discardStartY) * easedProgress
+
+                if progress >= 1.0 then
+                    -- Animation complete
+                    tile.discardAnimStart = nil
+                    tile.discardAnimDuration = nil
+                    tile.discardStartY = nil
+                    tile.discardTargetY = nil
+
+                    -- Call completion callback
+                    if tile.discardOnCompleteCallback then
+                        tile.discardOnCompleteCallback()
+                        tile.discardOnCompleteCallback = nil
+                    end
+                end
+            end
+        end
+    end
 end
 
 return Hand

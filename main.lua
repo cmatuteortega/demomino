@@ -133,7 +133,15 @@ function initializeGame(isNewRound)
             table.insert(gameState.hand, tile)
         end
     end
-    
+
+    -- Sort hand BEFORE animating so tiles animate to their final sorted positions
+    Hand.sortByValue(gameState.hand)
+    -- Mark signature to prevent re-sorting during first update
+    gameState.hand._lastSignature = Hand.getHandSignature(gameState.hand)
+
+    -- Animate initial tiles drawing from right
+    Hand.animateTilesDraw(gameState.hand, 0)
+
     gameState.board = {}
     gameState.placedTiles = {}
     gameState.score = 0
@@ -201,7 +209,15 @@ function initializeCombatRound()
         end
     end
 
-    -- STEP 5: Arrange board tiles (including anchor) to ensure proper positioning
+    -- STEP 5: Sort hand BEFORE animating so tiles animate to their final sorted positions
+    Hand.sortByValue(gameState.hand)
+    -- Mark signature to prevent re-sorting during first update
+    gameState.hand._lastSignature = Hand.getHandSignature(gameState.hand)
+
+    -- STEP 6: Animate tiles drawing from right
+    Hand.animateTilesDraw(gameState.hand, 0)
+
+    -- STEP 7: Arrange board tiles (including anchor) to ensure proper positioning
     if #gameState.placedTiles > 0 then
         Board.arrangePlacedTiles()
     end
@@ -568,10 +584,21 @@ function completeScoringSequence()
         Board.arrangePlacedTiles()
     end
 
-    -- Refill hand
-    Hand.refillHand(gameState.hand, gameState.deck, 7)
+    -- Check game end condition BEFORE refilling hand
+    -- This way we can animate the actual remaining tiles, not a refilled hand
+    local isGameEnding = gameState.score >= gameState.targetScore or gameState.handsPlayed >= gameState.maxHandsPerRound
 
-    -- Check game end condition
+    if not isGameEnding then
+        -- Only refill hand if game is continuing
+        local drawnCount, drawnTiles = Hand.refillHand(gameState.hand, gameState.deck, 7)
+
+        -- Animate ONLY the newly drawn tiles from right (not the entire hand)
+        if drawnTiles and #drawnTiles > 0 then
+            Hand.animateTilesDraw(gameState.hand, 0, drawnTiles)
+        end
+    end
+
+    -- Check game end and trigger animations if needed
     Touch.checkGameEnd()
 end
 

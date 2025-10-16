@@ -584,25 +584,41 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
 end
 
 function UI.Renderer.drawHand(hand)
-    -- Draw non-selected, non-dragging tiles first
+    -- Draw non-selected, non-dragging, non-discarding tiles first
     for i, domino in ipairs(hand) do
-        if not domino.isDragging and not domino.selected then
+        if not domino.isDragging and not domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
             UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
         end
     end
-    
+
     -- Draw selected but non-dragging tiles next (they appear elevated)
     for i, domino in ipairs(hand) do
-        if not domino.isDragging and domino.selected then
+        if not domino.isDragging and domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
             UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
         end
     end
-    
+
     -- Draw dragging tiles on top (highest priority)
     for i, domino in ipairs(hand) do
         if domino.isDragging then
+            local x, y = UI.Layout.getHandPosition(i - 1, #hand)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+        end
+    end
+
+    -- Draw discarding tiles (animating downward)
+    for i, domino in ipairs(hand) do
+        if domino.isDiscarding then
+            local x, y = UI.Layout.getHandPosition(i - 1, #hand)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+        end
+    end
+
+    -- Draw drawing tiles (animating from left)
+    for i, domino in ipairs(hand) do
+        if domino.isDrawing then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
             UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
         end
