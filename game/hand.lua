@@ -403,6 +403,11 @@ function Hand.updateDrawAnimations(hand, dt)
                     tile.drawStartX = nil
                     tile.drawTargetX = nil
                     tile.visualX = tile.x
+
+                    -- Play placement sound when tile arrives at position
+                    if UI.Audio and UI.Audio.playTilePlaced then
+                        UI.Audio.playTilePlaced()
+                    end
                 end
             end
         end
@@ -623,6 +628,11 @@ function Hand.animateSortTiles(hand)
                 }, 0.25, "easeOutBack", function()
                     tile.isAnimating = false
                     tile.isSorting = false
+
+                    -- Play placement sound when tile arrives at sorted position
+                    if UI.Audio and UI.Audio.playTilePlaced then
+                        UI.Audio.playTilePlaced()
+                    end
                 end)
             end
         end
@@ -670,6 +680,11 @@ function Hand.updateSortAnimations(hand, dt)
                     tile.sortArcHeight = nil
                     tile.visualX = tile.x
                     tile.visualY = tile.y
+
+                    -- Play placement sound when tile arrives at sorted position
+                    if UI.Audio and UI.Audio.playTilePlaced then
+                        UI.Audio.playTilePlaced()
+                    end
                 end
             end
         end

@@ -76,7 +76,9 @@ function love.load()
             coinFlips = {},  -- Random horizontal flips for each coin sprite
             fallingCoins = {},  -- Array of coins currently animating
             settledCoins = 0,  -- Number of coins that finished animating
-            targetCoins = 0  -- Final target coin count
+            targetCoins = 0,  -- Final target coin count
+            chipLoopActive = false,  -- Whether chip loop sound should be playing
+            firstCoinLanded = false  -- Track when first coin lands to start sound
         },
         -- Deckbuilding system
         tileCollection = {},  -- All tiles the player has unlocked
@@ -92,7 +94,8 @@ function love.load()
         challengeStates = {},  -- State data for each challenge
         -- Settings system
         settingsMenuOpen = false,  -- Track if settings menu is open
-        musicEnabled = true  -- Track music state
+        musicEnabled = true,  -- Track music state
+        sfxEnabled = true  -- Track sound effects state
     }
     
     UI.Fonts.load()
@@ -269,6 +272,8 @@ function updateCoins(newCoins, bonusInfo)
     if difference > 0 then
         -- Gaining coins - trigger falling animation
         gameState.coinsAnimation.targetCoins = newCoins
+        gameState.coinsAnimation.chipLoopActive = true  -- Enable chip loop for this animation
+        gameState.coinsAnimation.firstCoinLanded = false  -- Reset flag
 
         -- Get base position from layout (separate text and stack positions)
         local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
@@ -331,6 +336,19 @@ function updateCoins(newCoins, bonusInfo)
     end
 end
 
+function updateChipLoopSound()
+    -- Check if chip loop should be playing but current sound finished
+    if gameState.coinsAnimation.chipLoopActive and
+       gameState.coinsAnimation.firstCoinLanded and
+       #gameState.coinsAnimation.fallingCoins > 0 then
+
+        -- If current chip loop finished, play next random one
+        if not UI.Audio.isChipLoopPlaying() then
+            UI.Audio.playChipLoop()
+        end
+    end
+end
+
 function updateFallingCoins(dt)
     if not gameState.coinsAnimation.fallingCoins then return end
 
@@ -366,7 +384,11 @@ function updateFallingCoins(dt)
                 coin.currentY = coin.targetY
                 coin.currentX = coin.targetX
 
-                -- Play sound effect here if you have one
+                -- Start chip loop when first coin lands
+                if not gameState.coinsAnimation.firstCoinLanded and gameState.coinsAnimation.chipLoopActive then
+                    gameState.coinsAnimation.firstCoinLanded = true
+                    UI.Audio.playChipLoop()
+                end
             end
             allSettled = false
 
@@ -404,6 +426,13 @@ function updateFallingCoins(dt)
     if allSettled and #gameState.coinsAnimation.fallingCoins == 0 then
         gameState.coinsAnimation.settledCoins = gameState.coinsAnimation.targetCoins
         gameState.coins = gameState.coinsAnimation.targetCoins
+
+        -- Stop chip loop sound abruptly when last coin settles
+        if gameState.coinsAnimation.chipLoopActive then
+            UI.Audio.stopChipLoop()
+            gameState.coinsAnimation.chipLoopActive = false
+            gameState.coinsAnimation.firstCoinLanded = false
+        end
     end
 end
 
@@ -624,6 +653,7 @@ function love.update(dt)
     UI.Animation.update(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)
+    updateChipLoopSound()
 
     if gameState.gamePhase == "playing" then
         Hand.update(dt)
@@ -634,6 +664,11 @@ function love.update(dt)
         if gameState.fusionHand then
             Hand.updatePositions(gameState.fusionHand)
             Hand.updateIdleAnimations(gameState.fusionHand, dt)
+        end
+    elseif gameState.gamePhase == "map" or gameState.gamePhase == "node_confirmation" then
+        -- Update map path preview sounds
+        if gameState.currentMap then
+            Map.updatePathSounds(gameState.currentMap)
         end
     end
 end

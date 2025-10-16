@@ -2439,32 +2439,51 @@ function Map.clearPreviewPath(map)
 end
 
 -- Animate preview path tiles with satisfying left-to-right sequence
+function Map.updatePathSounds(map)
+    -- Check preview tiles for animation progress and play sounds
+    if not map.previewTiles then return end
+
+    for i, tile in ipairs(map.previewTiles) do
+        -- Play sound when tile reaches 85% animation progress (slightly before completion)
+        if not tile.soundPlayed and tile.animationProgress and tile.animationProgress >= 0.85 then
+            tile.soundPlayed = true
+            if UI.Audio and UI.Audio.playTilePlaced then
+                UI.Audio.playTilePlaced()
+            end
+        end
+    end
+end
+
 function Map.animatePathPreview(map, direction)
     direction = direction or "in" -- "in" or "out"
-    
+
     if not map.previewTiles or #map.previewTiles == 0 then
         return
     end
-    
+
     local animationDelay = 0.08 -- Slightly faster for more satisfying flow
     local animationDuration = 0.4 -- Slightly longer for more pronounced effect
-    
+
     for i, tile in ipairs(map.previewTiles) do
         local delay = (i - 1) * animationDelay
-        
+
         -- Special timing for L-shaped corner tiles
         if tile.isLShapeCornerTile then
             delay = delay + animationDelay * 1.5 -- Extra delay for corner turn effect
         end
-        
+
         if direction == "in" then
+            -- Initialize sound tracking
+            tile.soundPlayed = false
+            tile.animationProgress = 0
+
             -- Animate tiles appearing left to right with extra bounce
             local animation = UI.Animation.animateTo(tile, {
                 opacity = 1,
                 scale = 1.0,
                 animationProgress = 1
             }, animationDuration, "easeOutBack")
-            
+
             -- Add delay for staggered effect
             animation.elapsed = -delay
             
