@@ -141,27 +141,54 @@ end
 
 function UI.Layout.getPlayButtonPosition()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
     local handArea = UI.Layout.getHandArea()
-    
-    -- Position buttons under the hand area, side by side
-    local totalButtonWidth = buttonWidth * 2 + UI.Layout.scale(10) -- Two buttons plus spacing
+
+    -- Position buttons under the hand area: Sort + Discard + Play (3 buttons total)
+    local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10)
     local startX = (gameState.screen.width - totalButtonWidth) / 2
-    
-    local x = startX + buttonWidth + UI.Layout.scale(10) -- Right button (play)
+
+    local x = startX + sortButtonWidth + UI.Layout.scale(5) + buttonWidth + UI.Layout.scale(10) -- Right-most button (play)
     local y = handArea.y + handArea.height + UI.Layout.scale(10)
-    
+
     return x, y
 end
 
 function UI.Layout.getDiscardButtonPosition()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
     local handArea = UI.Layout.getHandArea()
 
     -- Position buttons under the hand area, side by side
-    local totalButtonWidth = buttonWidth * 2 + UI.Layout.scale(10) -- Two buttons plus spacing
+    local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10) -- Sort + spacing + two buttons + spacing
     local startX = (gameState.screen.width - totalButtonWidth) / 2
 
-    local x = startX -- Left button (discard)
+    local x = startX + sortButtonWidth + UI.Layout.scale(5) -- Discard button (after sort button)
+    local y = handArea.y + handArea.height + UI.Layout.scale(10)
+
+    return x, y
+end
+
+function UI.Layout.getSortButtonSize()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+
+    -- Half the width of regular button
+    local sortWidth = buttonWidth / 2
+    local sortHeight = buttonHeight
+
+    return sortWidth, sortHeight
+end
+
+function UI.Layout.getSortButtonPosition()
+    local handArea = UI.Layout.getHandArea()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
+
+    -- Position sort button to the left of discard button
+    local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10)
+    local startX = (gameState.screen.width - totalButtonWidth) / 2
+
+    local x = startX -- Left-most button (sort)
     local y = handArea.y + handArea.height + UI.Layout.scale(10)
 
     return x, y

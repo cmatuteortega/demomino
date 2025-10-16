@@ -933,6 +933,8 @@ function UI.Renderer.drawUI()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
     local playButtonX, playButtonY = UI.Layout.getPlayButtonPosition()
     local discardButtonX, discardButtonY = UI.Layout.getDiscardButtonPosition()
+    local sortButtonWidth, sortButtonHeight = UI.Layout.getSortButtonSize()
+    local sortButtonX, sortButtonY = UI.Layout.getSortButtonPosition()
 
     -- Check if there are non-anchor tiles placed
     local nonAnchorTileCount = 0
@@ -944,6 +946,21 @@ function UI.Renderer.drawUI()
 
     local hasPlacedTiles = nonAnchorTileCount > 0
     local hasSelectedTiles = Hand.hasSelectedTiles(gameState.hand)
+
+    -- Draw sort button (always enabled)
+    local sortColor = UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(sortColor[1], sortColor[2], sortColor[3], sortColor[4])
+    love.graphics.rectangle("fill", sortButtonX, sortButtonY, sortButtonWidth, sortButtonHeight, 5)
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", sortButtonX, sortButtonY, sortButtonWidth, sortButtonHeight, 5)
+
+    local sortScale = 1.0
+    if gameState.buttonAnimations and gameState.buttonAnimations.sortButton then
+        sortScale = gameState.buttonAnimations.sortButton.scale
+    end
+
+    UI.Fonts.drawAnimatedText("SORT", sortButtonX + sortButtonWidth/2, sortButtonY + sortButtonHeight/2, "button", UI.Colors.FONT_WHITE, "center", {scale = sortScale})
 
     -- Always show play button
     local canPlay = hasPlacedTiles and Validation.canConnectTiles(gameState.placedTiles)

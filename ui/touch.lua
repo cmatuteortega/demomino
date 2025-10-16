@@ -65,7 +65,19 @@ end
 local function getDiscardButtonBounds()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
     local x, y = UI.Layout.getDiscardButtonPosition()
-    
+
+    return {
+        x = x,
+        y = y,
+        width = buttonWidth,
+        height = buttonHeight
+    }
+end
+
+local function getSortButtonBounds()
+    local buttonWidth, buttonHeight = UI.Layout.getSortButtonSize()
+    local x, y = UI.Layout.getSortButtonPosition()
+
     return {
         x = x,
         y = y,
@@ -139,6 +151,13 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
     
+    local sortButtonBounds = getSortButtonBounds()
+    if isPointInRect(x, y, sortButtonBounds) then
+        animateButtonPress("sortButton")
+        Touch.sortHandTiles()
+        return
+    end
+
     local playButtonBounds = getPlayButtonBounds()
     if isPointInRect(x, y, playButtonBounds) then
         animateButtonPress("playButton")
@@ -147,7 +166,7 @@ function Touch.pressed(x, y, istouch, touchId)
         end
         return
     end
-    
+
     local discardButtonBounds = getDiscardButtonBounds()
     if isPointInRect(x, y, discardButtonBounds) then
         animateButtonPress("discardButton")
@@ -1645,6 +1664,16 @@ function Touch.confirmFusion()
     -- Clear fusion state
     gameState.fusionSlotButtons = {}
     touchState.lastTappedFusionSlot = nil
+end
+
+-- Sort hand tiles with satisfying arc animation
+function Touch.sortHandTiles()
+    if #gameState.hand <= 1 then
+        return -- Nothing to sort
+    end
+
+    -- Trigger the animated sort
+    Hand.animateSortTiles(gameState.hand)
 end
 
 return Touch

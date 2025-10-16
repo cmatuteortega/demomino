@@ -256,42 +256,45 @@ end
 function UI.Animation.update(dt)
     for i = #animations, 1, -1 do
         local anim = animations[i]
-        
-        if not anim.completed then
-            anim.elapsed = anim.elapsed + dt
-            local progress = math.min(anim.elapsed / anim.duration, 1.0)
-            
-            if anim.pulseCount then
-                local pulsePhase = (progress * anim.pulseCount * 2) % 2
-                local pulseValue
-                if pulsePhase < 1 then
-                    pulseValue = lerp(anim.fromValue, anim.toValue, easeOutQuart(pulsePhase))
+
+        -- Safety check: skip if animation is nil (shouldn't happen, but prevents crashes)
+        if anim then
+            if not anim.completed then
+                anim.elapsed = anim.elapsed + dt
+                local progress = math.min(anim.elapsed / anim.duration, 1.0)
+
+                if anim.pulseCount then
+                    local pulsePhase = (progress * anim.pulseCount * 2) % 2
+                    local pulseValue
+                    if pulsePhase < 1 then
+                        pulseValue = lerp(anim.fromValue, anim.toValue, easeOutQuart(pulsePhase))
+                    else
+                        pulseValue = lerp(anim.toValue, anim.fromValue, easeOutQuart(pulsePhase - 1))
+                    end
+                    anim.target[anim.property] = pulseValue
                 else
-                    pulseValue = lerp(anim.toValue, anim.fromValue, easeOutQuart(pulsePhase - 1))
+                    local easedProgress = anim.easingFunc(progress)
+
+                    for prop, targetValue in pairs(anim.properties) do
+                        local startValue = anim.startValues[prop]
+                        anim.target[prop] = lerp(startValue, targetValue, easedProgress)
+                    end
                 end
-                anim.target[anim.property] = pulseValue
-            else
-                local easedProgress = anim.easingFunc(progress)
-                
-                for prop, targetValue in pairs(anim.properties) do
-                    local startValue = anim.startValues[prop]
-                    anim.target[prop] = lerp(startValue, targetValue, easedProgress)
-                end
-            end
-            
-            if progress >= 1.0 then
-                anim.completed = true
-                if anim.onComplete then
-                    anim.onComplete()
+
+                if progress >= 1.0 then
+                    anim.completed = true
+                    if anim.onComplete then
+                        anim.onComplete()
+                    end
                 end
             end
-        end
-        
-        if anim.completed then
-            table.remove(animations, i)
+
+            if anim.completed then
+                table.remove(animations, i)
+            end
         end
     end
-    
+
     UI.Animation.updateFloatingTexts(dt)
 end
 

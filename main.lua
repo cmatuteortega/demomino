@@ -154,7 +154,8 @@ function initializeGame(isNewRound)
     gameState.scoreAnimation = nil
     gameState.buttonAnimations = {
         playButton = {scale = 1.0, pressed = false},
-        discardButton = {scale = 1.0, pressed = false}
+        discardButton = {scale = 1.0, pressed = false},
+        sortButton = {scale = 1.0, pressed = false}
     }
     
     -- If not a new round, reset everything including round progress
@@ -186,7 +187,8 @@ function initializeCombatRound()
     gameState.scoreAnimation = nil
     gameState.buttonAnimations = {
         playButton = {scale = 1.0, pressed = false},
-        discardButton = {scale = 1.0, pressed = false}
+        discardButton = {scale = 1.0, pressed = false},
+        sortButton = {scale = 1.0, pressed = false}
     }
 
     -- Track coins at start of round for bonus calculation

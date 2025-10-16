@@ -112,6 +112,7 @@ function Hand.update(dt)
     Hand.updatePositions(gameState.hand)
     Hand.updateDrawAnimations(gameState.hand, dt)
     Hand.updateDiscardAnimations(gameState.hand, dt)
+    Hand.updateSortAnimations(gameState.hand, dt)
     Hand.updateIdleAnimations(gameState.hand, dt)
 end
 
@@ -564,6 +565,115 @@ function Hand.insertTileAt(hand, tile, targetIndex)
 
     -- Update positions without sorting
     Hand.updatePositions(hand, true)
+end
+
+-- Animate tiles to sorted positions with satisfying arc motion
+function Hand.animateSortTiles(hand)
+    -- Store current order before sorting
+    local oldIndices = {}
+    for i, tile in ipairs(hand) do
+        oldIndices[tile.id] = i
+    end
+
+    -- Sort the hand by value (highest to lowest)
+    Hand.sortByValue(hand)
+
+    -- Update logical positions to sorted order
+    for i, tile in ipairs(hand) do
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #hand)
+        tile.x = targetX
+        tile.y = targetY
+    end
+
+    -- Animate each tile to its new position with arc if moving >1 spot
+    for i, tile in ipairs(hand) do
+        local oldIndex = oldIndices[tile.id]
+        local newIndex = i
+        local distanceMoved = math.abs(newIndex - oldIndex)
+
+        -- Only animate if position changed
+        if distanceMoved > 0 then
+            local targetX = tile.x
+            local targetY = tile.y
+            local startX = tile.visualX
+            local startY = tile.visualY
+
+            tile.isAnimating = true
+            tile.isSorting = true
+
+            -- If moving more than 1 spot, add arc animation
+            if distanceMoved > 1 then
+                -- Arc animation with parabolic trajectory
+                local arcHeight = UI.Layout.scale(30 + distanceMoved * 10) -- Higher arc for longer distances
+                local duration = 0.35
+
+                -- Create custom animation with arc
+                tile.sortAnimStart = love.timer.getTime()
+                tile.sortAnimDuration = duration
+                tile.sortStartX = startX
+                tile.sortStartY = startY
+                tile.sortTargetX = targetX
+                tile.sortTargetY = targetY
+                tile.sortArcHeight = arcHeight
+            else
+                -- Simple straight animation for 1-spot moves
+                UI.Animation.animateTo(tile, {
+                    visualX = targetX,
+                    visualY = targetY
+                }, 0.25, "easeOutBack", function()
+                    tile.isAnimating = false
+                    tile.isSorting = false
+                end)
+            end
+        end
+    end
+
+    -- Update hand signature to prevent auto-resorting during animation
+    hand._lastSignature = Hand.getHandSignature(hand)
+end
+
+-- Update sort animations (called from Hand.update)
+function Hand.updateSortAnimations(hand, dt)
+    local currentTime = love.timer.getTime()
+
+    for i, tile in ipairs(hand) do
+        if tile.isSorting and tile.sortAnimStart then
+            local elapsed = currentTime - tile.sortAnimStart
+
+            if elapsed >= 0 then
+                local progress = math.min(elapsed / tile.sortAnimDuration, 1.0)
+
+                -- Use easeOutBack for satisfying bounce
+                local t = progress
+                local c1 = 1.70158
+                local c3 = c1 + 1
+                local easedProgress = 1 + c3 * math.pow(t - 1, 3) + c1 * math.pow(t - 1, 2)
+
+                -- Linear interpolation for X
+                tile.visualX = tile.sortStartX + (tile.sortTargetX - tile.sortStartX) * easedProgress
+
+                -- Parabolic arc for Y (peaks at midpoint)
+                local linearY = tile.sortStartY + (tile.sortTargetY - tile.sortStartY) * easedProgress
+                local arcOffset = -tile.sortArcHeight * (4 * progress * (1 - progress)) -- Parabola: peaks at 0.5
+                tile.visualY = linearY + arcOffset
+
+                if progress >= 1.0 then
+                    -- Animation complete
+                    tile.isAnimating = false
+                    tile.isSorting = false
+                    tile.sortAnimStart = nil
+                    tile.sortAnimDuration = nil
+                    tile.sortStartX = nil
+                    tile.sortStartY = nil
+                    tile.sortTargetX = nil
+                    tile.sortTargetY = nil
+                    tile.sortArcHeight = nil
+                    tile.visualX = tile.x
+                    tile.visualY = tile.y
+                end
+            end
+        end
+    end
 end
 
 return Hand
