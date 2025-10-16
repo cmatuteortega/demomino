@@ -19,7 +19,9 @@ local touchState = {
     -- Double-tap tracking for board tiles
     lastTappedBoardTile = nil,
     lastTapTime = 0,
-    doubleTapWindow = 0.5  -- 500ms window for double-tap
+    doubleTapWindow = 0.5,  -- 500ms window for double-tap
+    -- Hand reordering state
+    hoverInsertIndex = nil
 }
 
 -- Adjust drag threshold based on device type and context
@@ -586,17 +588,44 @@ function Touch.released(x, y, istouch, touchId)
         end
     elseif touchState.draggedTile and touchState.draggedFrom == "hand" then
         if Touch.isDragging() then
+            local handArea = UI.Layout.getHandArea()
             if isInBoardArea(x, y) then
+                -- Try to place on board
                 local wasPlaced = Touch.placeTileOnBoard(touchState.draggedTile, touchState.draggedIndex, x, y)
                 -- If placement failed, animate back to hand
                 if not wasPlaced then
                     Touch.animateTileToHandPosition(touchState.draggedTile, touchState.draggedIndex)
                 end
+            elseif y >= handArea.y and y <= handArea.y + handArea.height and touchState.hoverInsertIndex then
+                -- Dropped within hand area - reorder to hover position
+                local insertIndex = touchState.hoverInsertIndex
+                local tile = touchState.draggedTile
+
+                -- Insert at new position
+                Hand.insertTileAt(gameState.hand, tile, insertIndex)
+
+                -- Animate tile to its new position with a snappy feel
+                local targetX = tile.x
+                local targetY = tile.y
+                tile.isAnimating = true
+                UI.Animation.animateTo(tile, {
+                    visualX = targetX,
+                    visualY = targetY,
+                    dragScale = 1.0,
+                    dragOpacity = 1.0
+                }, 0.2, "easeOutBack", function()
+                    Touch.resetTileDragState(tile)
+                end)
+
+                -- Reset reordering state
+                touchState.hoverInsertIndex = nil
             else
-                -- Animate back to hand position
+                -- Dragged outside both hand and board - return to original position
                 Touch.animateTileToHandPosition(touchState.draggedTile, touchState.draggedIndex)
+                touchState.hoverInsertIndex = nil
             end
         else
+            -- Just a tap - select tile
             Hand.selectTile(gameState.hand, touchState.draggedTile)
             Touch.resetTileDragState(touchState.draggedTile)
         end
@@ -609,6 +638,7 @@ function Touch.released(x, y, istouch, touchId)
     touchState.draggedFrom = nil
     touchState.draggedIndex = nil
     touchState.isDraggingMap = false
+    touchState.hoverInsertIndex = nil
     -- Clear active dragging flag (but preserve manualCameraMode)
     if gameState.currentMap then
         gameState.currentMap.userDragging = false
@@ -637,11 +667,11 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                         gameState.currentMap.cameraAnimation = nil
                     end
                 end
-                
+
                 -- Update camera position based on drag
                 local dragDistance = touchState.startX - x
                 local newCameraX = touchState.mapDragStartCameraX + dragDistance
-                
+
                 -- Apply camera bounds checking
                 local maxCameraX = math.max(0, gameState.currentMap.totalWidth - gameState.screen.width)
                 gameState.currentMap.cameraX = math.max(0, math.min(maxCameraX, newCameraX))
@@ -649,17 +679,31 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
             end
             return
         end
-        
+
         -- Update drag position for dragged tile
         if touchState.draggedTile then
             touchState.draggedTile.dragX = x
             touchState.draggedTile.dragY = y
-            
+
             -- Set dragging state when we exceed threshold
             if Touch.isDragging() and not touchState.draggedTile.isDragging then
                 touchState.draggedTile.isDragging = true
-                touchState.draggedTile.dragScale = 1.05 -- Slightly bigger when dragging
-                touchState.draggedTile.dragOpacity = 0.9 -- Slightly transparent
+                touchState.draggedTile.dragScale = 1.08 -- Slightly bigger when dragging
+                touchState.draggedTile.dragOpacity = 0.95 -- Slightly transparent
+            end
+
+            -- Handle hand reordering - track hover position
+            if touchState.draggedFrom == "hand" and touchState.draggedTile.isDragging then
+                local handArea = UI.Layout.getHandArea()
+                -- Check if hovering over hand area
+                if y >= handArea.y and y <= handArea.y + handArea.height then
+                    -- Calculate insertion index based on hover position
+                    local insertIndex = Hand.getInsertionIndex(gameState.hand, touchState.draggedTile, x)
+                    touchState.hoverInsertIndex = insertIndex
+                else
+                    -- Not hovering over hand
+                    touchState.hoverInsertIndex = nil
+                end
             end
         end
     end
@@ -1058,7 +1102,7 @@ function Touch.returnTileToHand(tile)
     handTile.orientation = "vertical"  -- Reset to hand orientation
     handTile.selected = false
 
-    -- Use Hand module function to properly add the tile
+    -- Add to end of hand (preserve custom order)
     Hand.addTiles(gameState.hand, {handTile})
 
     -- Play tile return sound
