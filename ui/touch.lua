@@ -1024,6 +1024,9 @@ function Touch.checkGameEnd()
         -- Player won this round, show victory screen with continue button
         -- Don't increment round counter yet - wait for player to click continue
 
+        -- Trigger victory phrase animation
+        triggerVictoryPhrase()
+
         -- Award coins based on hands remaining
         local handsLeft = gameState.maxHandsPerRound - gameState.handsPlayed
         local baseCoins = handsLeft * 2

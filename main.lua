@@ -66,6 +66,30 @@ function love.load()
             shake = 0,
             color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], UI.Colors.FONT_RED[4]}
         },
+        scoreIdleAnimation = {  -- Idle floating animation for score
+            floatOffset = 0,
+            phase = 0  -- Random phase offset for variety
+        },
+        displayedRemainingScore = 666,  -- Score display value for countdown animation
+        scoreCountdownSpeed = 0,  -- Speed of countdown animation (points per second)
+        -- Victory phrase animation system
+        victoryPhrase = nil,  -- Current victory phrase text
+        victoryPhraseAnimation = {  -- Animation properties for victory phrase
+            xOffset = -500,  -- Start off-screen left
+            opacity = 0,
+            scale = 1.0
+        },
+        -- Formula display animation system
+        formulaDisplayValue = 0,  -- Currently displayed formula value (for counting animation)
+        formulaTargetValue = 0,  -- Target value to count toward
+        formulaCountSpeed = 0,  -- Speed of formula counting (points per second)
+        formulaAnimation = {  -- Animation properties for formula display
+            scale = 1.0,
+            shake = 0,
+            opacity = 1.0,
+            yOffset = 0,  -- For transfer animation
+            color = {1, 0.8, 0.2, 1}  -- Gold by default
+        },
         -- Currency system
         coins = 0,  -- Starting currency
         startRoundCoins = 0,  -- Coins at start of round for bonus calculation
@@ -160,7 +184,7 @@ function initializeGame(isNewRound)
         discardButton = {scale = 1.0, pressed = false},
         sortButton = {scale = 1.0, pressed = false}
     }
-    
+
     -- If not a new round, reset everything including round progress
     if not isNewRound then
         gameState.currentRound = 1
@@ -168,6 +192,14 @@ function initializeGame(isNewRound)
 
     -- Target score is always fixed at 666
     gameState.targetScore = 666
+
+    -- Initialize score display animations
+    gameState.displayedRemainingScore = gameState.targetScore
+    gameState.scoreCountdownSpeed = 0
+    gameState.scoreIdleAnimation = {
+        floatOffset = 0,
+        phase = love.math.random() * 2 * math.pi  -- Random phase for variety
+    }
     
     -- Position tiles will be handled in first draw call
 end
@@ -195,6 +227,14 @@ function initializeCombatRound()
 
     -- Track coins at start of round for bonus calculation
     gameState.startRoundCoins = gameState.coins
+
+    -- Initialize score display animations
+    gameState.displayedRemainingScore = gameState.targetScore
+    gameState.scoreCountdownSpeed = 0
+    gameState.scoreIdleAnimation = {
+        floatOffset = 0,
+        phase = love.math.random() * 2 * math.pi  -- Random phase for variety
+    }
 
     -- STEP 2: Create fresh deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
@@ -230,31 +270,117 @@ function initializeCombatRound()
     -- These should persist across combat rounds
 end
 
+function triggerVictoryPhrase()
+    local phrases = {
+        "TOTAL DOMINATION",
+        "DOMINO EFFECT",
+        "CHAIN REACTION",
+        "CONNECTING THE DOTS",
+        "SPOT ON!",
+        "PIP PERFECT",
+        "BONE TO PICK",
+        "BAD TO THE BONE",
+        "DOMINATRIX",
+        "DO RE MI NO",
+        "DOMINATING!"
+    }
+
+    -- Select random phrase
+    gameState.victoryPhrase = phrases[love.math.random(1, #phrases)]
+
+    -- Reset animation state
+    gameState.victoryPhraseAnimation = {
+        xOffset = -500,  -- Start off-screen left
+        opacity = 0,
+        scale = 1.0
+    }
+
+    -- Animate in from left (like hand tiles)
+    UI.Animation.animateTo(gameState.victoryPhraseAnimation, {xOffset = 0, opacity = 1}, 0.8, "easeOutBack")
+end
+
+function updateScoreIdleAnimation(dt)
+    local time = love.timer.getTime()
+
+    -- Floating animation - 3px range, 2.5 second cycle (same as hand tiles)
+    local floatPhase = time * 2.5 + gameState.scoreIdleAnimation.phase
+    gameState.scoreIdleAnimation.floatOffset = math.sin(floatPhase) * 3
+end
+
+function updateScoreCountdown(dt)
+    -- Rapidly animate the displayed score down to the actual remaining score
+    local actualRemaining = math.max(0, gameState.targetScore - gameState.score)
+
+    if gameState.displayedRemainingScore > actualRemaining then
+        -- Count down rapidly (80 points per second for smooth visual effect)
+        gameState.displayedRemainingScore = gameState.displayedRemainingScore - gameState.scoreCountdownSpeed * dt
+
+        -- Don't overshoot the target
+        if gameState.displayedRemainingScore < actualRemaining then
+            gameState.displayedRemainingScore = actualRemaining
+            gameState.scoreCountdownSpeed = 0
+        end
+    else
+        gameState.displayedRemainingScore = actualRemaining
+    end
+
+    -- Extra safeguard: never go below 0
+    gameState.displayedRemainingScore = math.max(0, gameState.displayedRemainingScore)
+end
+
+function updateFormulaCountAnimation(dt)
+    -- Animate the formula display value counting toward target
+    if gameState.formulaDisplayValue < gameState.formulaTargetValue then
+        -- Count up
+        gameState.formulaDisplayValue = gameState.formulaDisplayValue + gameState.formulaCountSpeed * dt
+
+        -- Don't overshoot
+        if gameState.formulaDisplayValue > gameState.formulaTargetValue then
+            gameState.formulaDisplayValue = gameState.formulaTargetValue
+            gameState.formulaCountSpeed = 0
+        end
+    elseif gameState.formulaDisplayValue > gameState.formulaTargetValue then
+        -- Count down (for multiplication animation)
+        gameState.formulaDisplayValue = gameState.formulaDisplayValue - gameState.formulaCountSpeed * dt
+
+        -- Don't overshoot
+        if gameState.formulaDisplayValue < gameState.formulaTargetValue then
+            gameState.formulaDisplayValue = gameState.formulaTargetValue
+            gameState.formulaCountSpeed = 0
+        end
+    end
+end
+
 function updateScore(newScore, bonusInfo)
     if newScore ~= gameState.score then
         local difference = newScore - gameState.score
         gameState.previousScore = gameState.score
         gameState.score = newScore
-        
+
+        -- Trigger rapid countdown animation (speed: points to count per second)
+        -- Make it fast enough to be snappy but visible: 150 points per second
+        local remainingDifference = gameState.displayedRemainingScore - math.max(0, gameState.targetScore - newScore)
+        gameState.scoreCountdownSpeed = math.max(150, remainingDifference * 2)  -- At least 150/sec, or faster for big changes
+
         -- Create score popup animation
         local scoreX = gameState.screen.width - UI.Layout.scale(120)
         local scoreY = UI.Layout.scale(50)
-        
+
         UI.Animation.createScorePopup(difference, scoreX, scoreY, bonusInfo and bonusInfo.hasBonus)
-        
+
         -- Animate the score display itself
         gameState.scoreAnimation = {
             scale = 1.0,
             shake = 0,
             color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], UI.Colors.FONT_RED[4]}
         }
-        
+
         local color = UI.Colors.FONT_RED
         if bonusInfo and bonusInfo.hasBonus then
             color = UI.Colors.FONT_RED_DARK
             gameState.scoreAnimation.shake = 3
         end
-        
+
         UI.Animation.animateTo(gameState.scoreAnimation, {scale = 1.3}, 0.2, "easeOutBack", function()
             UI.Animation.animateTo(gameState.scoreAnimation, {scale = 1.0}, 0.3, "easeOutQuart")
             gameState.scoreAnimation.color = {color[1], color[2], color[3], color[4]}
@@ -442,11 +568,23 @@ function startScoringSequence(tiles)
         accumulatedValue = 0,
         showingMultiplier = false,
         showingFinal = false,
-        phase = "scoring_tiles",  -- "scoring_tiles", "multiplying", "final"
+        phase = "scoring_tiles",  -- "scoring_tiles", "multiplying", "final", "transferring"
         timer = 0,
         tileAnimDelay = 0.4,
         finalTileAnimating = false,
         waitingForFinalTile = false
+    }
+
+    -- Initialize formula display at 0
+    gameState.formulaDisplayValue = 0
+    gameState.formulaTargetValue = 0
+    gameState.formulaCountSpeed = 0
+    gameState.formulaAnimation = {
+        scale = 1.0,
+        shake = 0,
+        opacity = 1.0,
+        yOffset = 0,
+        color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}  -- White for summing phase
     }
 
     -- Sort tiles from left to right for visual consistency
@@ -480,8 +618,13 @@ function updateScoringSequence(dt)
                     -- Add this tile's value to accumulated
                     local tileValue = Domino.getValue(tile)
                     local isDouble = Domino.isDouble(tile)
-                    seq.accumulatedValue = seq.accumulatedValue + tileValue + (isDouble and 10 or 0)
-                    
+                    local addedValue = tileValue + (isDouble and 10 or 0)
+                    seq.accumulatedValue = seq.accumulatedValue + addedValue
+
+                    -- Set formula target and trigger counting animation
+                    gameState.formulaTargetValue = seq.accumulatedValue
+                    gameState.formulaCountSpeed = math.max(100, addedValue * 3)  -- Speed based on added value
+
                     -- Animate the tile with shake effect
                     animateTileScoring(tile)
                     
@@ -493,13 +636,44 @@ function updateScoringSequence(dt)
             end
         end
     elseif seq.phase == "multiplying" then
-        -- Immediately move to final result
-        seq.phase = "final"
-        seq.showingFinal = true
-        seq.timer = 0
+        -- Wait for formula to reach accumulated value, then show multiplier
+        if gameState.formulaDisplayValue >= seq.accumulatedValue - 1 then
+            -- Show multiplier and calculate final score
+            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+            local finalScore = breakdown.total
+
+            -- Animate to final multiplied value
+            gameState.formulaTargetValue = finalScore
+            gameState.formulaCountSpeed = math.max(150, (finalScore - seq.accumulatedValue) * 2)
+
+            -- Change color to pink for multiplication
+            gameState.formulaAnimation.color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+
+            seq.phase = "final"
+            seq.showingFinal = true
+            seq.timer = 0
+        end
     elseif seq.phase == "final" then
-        -- Immediately complete the scoring sequence
-        completeScoringSequence()
+        -- Wait for formula to reach final value, then transfer
+        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+        if gameState.formulaDisplayValue >= breakdown.total - 1 then
+            -- Brief wait before transferring
+            if seq.timer >= 0.2 then
+                seq.phase = "transferring"
+                seq.timer = 0
+
+                -- Start transfer animation: move formula up and fade out (faster)
+                UI.Animation.animateTo(gameState.formulaAnimation, {yOffset = -50, opacity = 0}, 0.5, "easeOutQuart", function()
+                    -- Transfer complete, update score
+                    completeScoringSequence()
+                end)
+
+                -- Change color to black (outline) for transfer
+                gameState.formulaAnimation.color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1}
+            end
+        end
+    elseif seq.phase == "transferring" then
+        -- Just wait for animation to complete (handled by callback)
     end
 end
 
@@ -658,6 +832,9 @@ function love.update(dt)
         Hand.update(dt)
         Board.update(dt)
         updateScoringSequence(dt)
+        updateScoreIdleAnimation(dt)
+        updateScoreCountdown(dt)
+        updateFormulaCountAnimation(dt)
     elseif gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" then
         -- Update fusion hand using regular Hand.update logic
         if gameState.fusionHand then
@@ -691,6 +868,7 @@ function love.draw()
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
         UI.Renderer.drawCoins()
+        UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
