@@ -233,6 +233,9 @@ function Touch.released(x, y, istouch, touchId)
             -- Check for music toggle
             if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
                 UI.Audio.toggleMusic()
+            -- Check for SFX toggle
+            elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
+                UI.Audio.toggleSFX()
             -- Check for close button
             elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
                 gameState.settingsMenuOpen = false
@@ -260,6 +263,9 @@ function Touch.released(x, y, istouch, touchId)
         -- Check for music toggle
         if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
             UI.Audio.toggleMusic()
+        -- Check for SFX toggle
+        elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
+            UI.Audio.toggleSFX()
         -- Check for restart button
         elseif gameState.settingsRestartBounds and isPointInRect(x, y, gameState.settingsRestartBounds) then
             gameState.settingsMenuOpen = false
@@ -634,6 +640,11 @@ function Touch.released(x, y, istouch, touchId)
                     dragOpacity = 1.0
                 }, 0.2, "easeOutBack", function()
                     Touch.resetTileDragState(tile)
+
+                    -- Play placement sound when tile is repositioned in hand
+                    if UI.Audio and UI.Audio.playTilePlaced then
+                        UI.Audio.playTilePlaced()
+                    end
                 end)
 
                 -- Reset reordering state

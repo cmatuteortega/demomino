@@ -1073,7 +1073,7 @@ function UI.Renderer.drawSettingsMenu()
     -- Menu panel (taller if not from title screen)
     local panelWidth = UI.Layout.scale(300)
     local fromTitle = gameState.settingsFromTitle or false
-    local panelHeight = fromTitle and UI.Layout.scale(200) or UI.Layout.scale(300)
+    local panelHeight = fromTitle and UI.Layout.scale(220) or UI.Layout.scale(340)
     local panelX = (screenWidth - panelWidth) / 2
     local panelY = (screenHeight - panelHeight) / 2
 
@@ -1091,16 +1091,30 @@ function UI.Renderer.drawSettingsMenu()
     UI.Fonts.drawText("SETTINGS", panelX + panelWidth / 2, panelY + UI.Layout.scale(30), "large", titleColor, "center")
 
     -- Music toggle option
-    local optionY = panelY + UI.Layout.scale(80)
+    local musicY = panelY + UI.Layout.scale(70)
     local musicText = gameState.musicEnabled and "Music: ON" or "Music: OFF"
     local musicColor = gameState.musicEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(musicText, panelX + panelWidth / 2, optionY, "medium", musicColor, "center")
+    UI.Fonts.drawText(musicText, panelX + panelWidth / 2, musicY, "medium", musicColor, "center")
 
     -- Store music toggle button bounds
     local optionHeight = UI.Layout.scale(30)
     gameState.settingsMusicToggleBounds = {
         x = panelX,
-        y = optionY - optionHeight / 2,
+        y = musicY - optionHeight / 2,
+        width = panelWidth,
+        height = optionHeight
+    }
+
+    -- SFX toggle option
+    local sfxY = panelY + UI.Layout.scale(110)
+    local sfxText = gameState.sfxEnabled and "SFX: ON" or "SFX: OFF"
+    local sfxColor = gameState.sfxEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText(sfxText, panelX + panelWidth / 2, sfxY, "medium", sfxColor, "center")
+
+    -- Store SFX toggle button bounds
+    gameState.settingsSFXToggleBounds = {
+        x = panelX,
+        y = sfxY - optionHeight / 2,
         width = panelWidth,
         height = optionHeight
     }
@@ -1108,7 +1122,7 @@ function UI.Renderer.drawSettingsMenu()
     -- Only show game-related buttons if not from title screen
     if not fromTitle then
         -- Restart Run button
-        local restartY = panelY + UI.Layout.scale(130)
+        local restartY = panelY + UI.Layout.scale(170)
         local buttonWidth = UI.Layout.scale(150)
         local buttonHeight = UI.Layout.scale(40)
         local buttonX = panelX + (panelWidth - buttonWidth) / 2
@@ -1125,7 +1139,7 @@ function UI.Renderer.drawSettingsMenu()
         gameState.settingsRestartBounds = {x = buttonX, y = restartY, width = buttonWidth, height = buttonHeight}
 
         -- Return to Title button
-        local returnY = panelY + UI.Layout.scale(185)
+        local returnY = panelY + UI.Layout.scale(225)
         buttonX = panelX + (panelWidth - buttonWidth) / 2
 
         UI.Colors.setBackground()

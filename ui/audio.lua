@@ -4,9 +4,12 @@ UI.Audio = {}
 local music = nil
 local placeTileSounds = {}
 local returnTileSound = nil
+local chipLoopSounds = {}
+local currentChipLoopSource = nil
 
-local musicVolume = 0.15  -- Background music at 15%
-local sfxVolume = 0.5     -- Sound effects at 50%
+local musicVolume = 0.3  -- Background music at 15%
+local sfxVolume = 1     -- Sound effects at 50%
+local chipLoopVolumeMultiplier = 0.25  -- Chip loops at 70% of sfxVolume (30% quieter)
 
 function UI.Audio.load()
     -- Load background music
@@ -37,6 +40,20 @@ function UI.Audio.load()
     if #placeTileSounds > 0 then
         returnTileSound = placeTileSounds[1]
     end
+
+    -- Load chip loop sound effects (for coin animations)
+    local chipLoopPaths = {
+        "sounds/fx/chip_loop_1.mp3",
+        "sounds/fx/chip_loop_2.mp3"
+    }
+
+    for i, path in ipairs(chipLoopPaths) do
+        if love.filesystem.getInfo(path) then
+            local sound = love.audio.newSource(path, "static")
+            sound:setVolume(sfxVolume * chipLoopVolumeMultiplier)
+            table.insert(chipLoopSounds, sound)
+        end
+    end
 end
 
 function UI.Audio.playMusic()
@@ -52,6 +69,10 @@ function UI.Audio.stopMusic()
 end
 
 function UI.Audio.playTilePlaced()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
     if #placeTileSounds > 0 then
         -- Pick a random sound variant for variety
         local randomIndex = love.math.random(1, #placeTileSounds)
@@ -63,6 +84,10 @@ function UI.Audio.playTilePlaced()
 end
 
 function UI.Audio.playTileReturned()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
     if returnTileSound then
         -- Clone the sound so multiple can play simultaneously
         returnTileSound:clone():play()
@@ -84,6 +109,9 @@ function UI.Audio.setSFXVolume(volume)
     if returnTileSound then
         returnTileSound:setVolume(sfxVolume)
     end
+    for _, sound in ipairs(chipLoopSounds) do
+        sound:setVolume(sfxVolume * chipLoopVolumeMultiplier)
+    end
 end
 
 function UI.Audio.toggleMusic()
@@ -98,8 +126,52 @@ function UI.Audio.toggleMusic()
     end
 end
 
+function UI.Audio.toggleSFX()
+    if not gameState then return end
+
+    gameState.sfxEnabled = not gameState.sfxEnabled
+end
+
 function UI.Audio.isMusicEnabled()
     return gameState and gameState.musicEnabled or false
+end
+
+function UI.Audio.isSFXEnabled()
+    return gameState and gameState.sfxEnabled or false
+end
+
+function UI.Audio.playChipLoop()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if #chipLoopSounds == 0 then
+        return
+    end
+
+    -- Stop current chip loop if playing
+    if currentChipLoopSource and currentChipLoopSource:isPlaying() then
+        currentChipLoopSource:stop()
+    end
+
+    -- Pick a random chip loop sound
+    local randomIndex = love.math.random(1, #chipLoopSounds)
+    local sound = chipLoopSounds[randomIndex]
+
+    -- Clone and play
+    currentChipLoopSource = sound:clone()
+    currentChipLoopSource:play()
+end
+
+function UI.Audio.stopChipLoop()
+    if currentChipLoopSource and currentChipLoopSource:isPlaying() then
+        currentChipLoopSource:stop()
+        currentChipLoopSource = nil
+    end
+end
+
+function UI.Audio.isChipLoopPlaying()
+    return currentChipLoopSource and currentChipLoopSource:isPlaying()
 end
 
 return UI.Audio
