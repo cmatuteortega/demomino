@@ -70,7 +70,7 @@ function love.load()
             floatOffset = 0,
             phase = 0  -- Random phase offset for variety
         },
-        displayedRemainingScore = 666,  -- Score display value for countdown animation
+        displayedRemainingScore = 1,  -- Score display value for countdown animation
         scoreCountdownSpeed = 0,  -- Speed of countdown animation (points per second)
         -- Victory phrase animation system
         victoryPhrase = nil,  -- Current victory phrase text
@@ -116,6 +116,14 @@ function love.load()
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
         challengeStates = {},  -- State data for each challenge
+        maxTilesCounterAnimation = {  -- Animation for max tiles counter
+            color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+            scale = 1.0
+        },
+        bannedNumberCounterAnimation = {  -- Animation for banned number counter
+            color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+            scale = 1.0
+        },
         -- Settings system
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
@@ -184,6 +192,14 @@ function initializeGame(isNewRound)
         discardButton = {scale = 1.0, pressed = false},
         sortButton = {scale = 1.0, pressed = false}
     }
+    gameState.maxTilesCounterAnimation = {
+        color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+        scale = 1.0
+    }
+    gameState.bannedNumberCounterAnimation = {
+        color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+        scale = 1.0
+    }
 
     -- If not a new round, reset everything including round progress
     if not isNewRound then
@@ -223,6 +239,14 @@ function initializeCombatRound()
         playButton = {scale = 1.0, pressed = false},
         discardButton = {scale = 1.0, pressed = false},
         sortButton = {scale = 1.0, pressed = false}
+    }
+    gameState.maxTilesCounterAnimation = {
+        color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+        scale = 1.0
+    }
+    gameState.bannedNumberCounterAnimation = {
+        color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
+        scale = 1.0
     }
 
     -- Track coins at start of round for bonus calculation

@@ -771,6 +771,28 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
                 easing = "easeOutQuart"
             })
 
+            -- Trigger counter animation: white → pink → red → white
+            gameState.maxTilesCounterAnimation.color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]}
+            gameState.maxTilesCounterAnimation.scale = 1.0
+
+            -- Color animation sequence
+            UI.Animation.animateTo(gameState.maxTilesCounterAnimation.color,
+                {[1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2], [3] = UI.Colors.FONT_PINK[3]},
+                0.15, "easeOutQuart", function()
+                UI.Animation.animateTo(gameState.maxTilesCounterAnimation.color,
+                    {[1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2], [3] = UI.Colors.FONT_RED[3]},
+                    0.15, "easeOutQuart", function()
+                    UI.Animation.animateTo(gameState.maxTilesCounterAnimation.color,
+                        {[1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2], [3] = UI.Colors.FONT_WHITE[3]},
+                        0.3, "easeOutQuart")
+                end)
+            end)
+
+            -- Scale animation: punch out and back
+            UI.Animation.animateTo(gameState.maxTilesCounterAnimation, {scale = 1.3}, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(gameState.maxTilesCounterAnimation, {scale = 1.0}, 0.2, "easeOutQuart")
+            end)
+
             return false
         end
     end
@@ -991,6 +1013,38 @@ function Touch.playPlacedTiles()
         for _, tile in ipairs(gameState.placedTiles) do
             if not tile.isAnchor then
                 table.insert(tilesToScore, tile)
+            end
+        end
+
+        -- Check if any tiles contain banned number and trigger animation
+        local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
+        if bannedNumber then
+            local hasBannedTile = false
+            for _, tile in ipairs(tilesToScore) do
+                if tile.left == bannedNumber or tile.right == bannedNumber then
+                    hasBannedTile = true
+                    break
+                end
+            end
+
+            if hasBannedTile then
+                -- Trigger counter animation: white → red → white
+                gameState.bannedNumberCounterAnimation.color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]}
+                gameState.bannedNumberCounterAnimation.scale = 1.0
+
+                -- Color animation: white → red → white
+                UI.Animation.animateTo(gameState.bannedNumberCounterAnimation.color,
+                    {[1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2], [3] = UI.Colors.FONT_RED[3]},
+                    0.2, "easeOutQuart", function()
+                    UI.Animation.animateTo(gameState.bannedNumberCounterAnimation.color,
+                        {[1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2], [3] = UI.Colors.FONT_WHITE[3]},
+                        0.4, "easeOutQuart")
+                end)
+
+                -- Scale animation: punch out and back
+                UI.Animation.animateTo(gameState.bannedNumberCounterAnimation, {scale = 1.3}, 0.1, "easeOutBack", function()
+                    UI.Animation.animateTo(gameState.bannedNumberCounterAnimation, {scale = 1.0}, 0.2, "easeOutQuart")
+                end)
             end
         end
 

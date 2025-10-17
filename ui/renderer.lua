@@ -863,15 +863,53 @@ function UI.Renderer.drawScore(score)
         currentX = currentX + charWidth
     end
 
-    -- Draw challenges below round counter on right side
-    local displayInfo = Challenges.getDisplayInfo(gameState)
-    if #displayInfo > 0 then
-        local challengeStartY = rightY + UI.Layout.scale(35)  -- Just below round counter
-        for i, challenge in ipairs(displayInfo) do
-            local challengeText = challenge.icon .. " " .. challenge.text
-            local challengeColor = challenge.color or UI.Colors.FONT_WHITE
-            UI.Fonts.drawText(challengeText, rightX, challengeStartY + (i - 1) * UI.Layout.scale(25), "medium", challengeColor, "right")
+    -- Draw challenge counters below round counter
+    local bigScoreFont = UI.Fonts.get("bigScore")
+    local formulaScoreFont = UI.Fonts.get("formulaScore")
+    local roundHeight = bigScoreFont:getHeight()
+    local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
+    local currentCounterY = rightY + roundHeight - UI.Layout.scale(5)  -- Start position below round
+
+    -- Floating animation: same wave effect as score digits
+    local floatPhase = time * 2.5
+    local floatOffset = math.sin(floatPhase) * 2  -- 2px range for smaller text
+
+    -- Draw max tiles counter if that challenge is active
+    local maxTiles = Challenges.getMaxTilesLimit(gameState)
+    if maxTiles then
+        -- Count non-anchor tiles only
+        local tilesPlaced = 0
+        for _, tile in ipairs(gameState.placedTiles) do
+            if not tile.isAnchor then
+                tilesPlaced = tilesPlaced + 1
+            end
         end
+
+        local counterText = tilesPlaced .. "/" .. maxTiles
+        local counterColor = gameState.maxTilesCounterAnimation.color or UI.Colors.FONT_WHITE
+        local counterScale = gameState.maxTilesCounterAnimation.scale or 1.0
+
+        UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(3),
+            scale = counterScale * 0.5  -- Half the size
+        })
+
+        currentCounterY = currentCounterY + counterFontHeight + UI.Layout.scale(5)  -- Move down for next counter
+    end
+
+    -- Draw banned number counter if that challenge is active
+    local bannedNumber = Challenges.getBannedNumber(gameState)
+    if bannedNumber then
+        local counterText = "Ø " .. bannedNumber
+        local counterColor = gameState.bannedNumberCounterAnimation.color or UI.Colors.FONT_WHITE
+        local counterScale = gameState.bannedNumberCounterAnimation.scale or 1.0
+
+        UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(3),
+            scale = counterScale * 0.5  -- Half the size
+        })
     end
 
     -- Draw tiles left counter in bottom right corner with same offset as other corner UI elements
