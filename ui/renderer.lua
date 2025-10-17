@@ -809,13 +809,59 @@ function UI.Renderer.drawScore(score)
     local rightX = gameState.screen.width - UI.Layout.scale(40)
     local rightY = UI.Layout.scale(20)
 
-    -- Draw round counter at top right with shadow
-    local roundText = "Round " .. gameState.currentRound
+    -- Convert round number to Roman numerals
+    local function toRoman(num)
+        local romanNumerals = {
+            {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+            {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+            {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}
+        }
+        local result = ""
+        for _, pair in ipairs(romanNumerals) do
+            local value, numeral = pair[1], pair[2]
+            while num >= value do
+                result = result .. numeral
+                num = num - value
+            end
+        end
+        return result
+    end
+
+    -- Draw round counter with wave animation per character (like score)
+    local roundText = toRoman(gameState.currentRound) .. "."
     local roundColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawAnimatedText(roundText, rightX, rightY, "title", roundColor, "right", {
-        shadow = true,
-        shadowOffset = UI.Layout.scale(3)
-    })
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("bigScore")
+    local currentX = rightX
+
+    -- Calculate total width to position from right
+    local totalWidth = 0
+    for i = 1, #roundText do
+        local char = roundText:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Start from right and draw each character with wave animation
+    currentX = rightX - totalWidth
+    for i = 1, #roundText do
+        local char = roundText:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation: same as score digits
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", roundColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
 
     -- Draw challenges below round counter on right side
     local displayInfo = Challenges.getDisplayInfo(gameState)
@@ -921,7 +967,7 @@ end
 function UI.Renderer.drawCoins()
     local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
 
-    local text = gameState.coins .. " $"
+    local text = gameState.coins .. "$"
 
     -- Draw text at its own position with shadow
     UI.Fonts.drawAnimatedText(text, textX, textY, "title", {1, 0.9, 0.3, 1}, "left", {
@@ -1548,7 +1594,7 @@ function UI.Renderer.drawTilesMenu()
     UI.Fonts.drawText("TILE SHOP", centerX, UI.Layout.scale(30), "title", titleColor, "center")
 
     -- Show current coins in top right
-    local coinsText = "Coins: " .. gameState.coins .. " $"
+    local coinsText = "Coins: " .. gameState.coins .. "$"
     local coinsColor = {1, 0.9, 0.3, 1}
     UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
 
@@ -1596,7 +1642,7 @@ function UI.Renderer.drawArtifactsMenu()
     UI.Fonts.drawText("ARTIFACTS VAULT", centerX, UI.Layout.scale(60), "title", titleColor, "center")
 
     -- Show current coins in top right
-    local coinsText = "Coins: " .. gameState.coins .. " $"
+    local coinsText = "Coins: " .. gameState.coins .. "$"
     local coinsColor = {1, 0.9, 0.3, 1}
     UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
 
@@ -1623,7 +1669,7 @@ function UI.Renderer.drawContractsMenu()
     UI.Fonts.drawText("CONTRACTS BOARD", centerX, UI.Layout.scale(60), "title", titleColor, "center")
 
     -- Show current coins in top right
-    local coinsText = "Coins: " .. gameState.coins .. " $"
+    local coinsText = "Coins: " .. gameState.coins .. "$"
     local coinsColor = {1, 0.9, 0.3, 1}
     UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
 
@@ -1709,7 +1755,7 @@ function UI.Renderer.drawTileOffers()
 
         -- Draw cost text (2 coins per tile)
         local costColor = {1, 0.9, 0.3, 1}  -- Gold color
-        UI.Fonts.drawText("2 $", x + tileWidth / 2, y + tileHeight * 0.88, "small", costColor, "center")
+        UI.Fonts.drawText("2$", x + tileWidth / 2, y + tileHeight * 0.88, "small", costColor, "center")
 
         -- Store button bounds for touch handling
         gameState.tileOfferButtons[i] = {x = x, y = y, width = tileWidth, height = tileHeight}
@@ -1745,7 +1791,7 @@ function UI.Renderer.drawConfirmTileButton()
     love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
 
     -- Button text
-    local buttonText = "BUY (" .. totalCost .. " $)"
+    local buttonText = "BUY (" .. totalCost .. "$)"
     if not hasSelection then
         buttonText = "SELECT TILES"
     elseif not canAfford then
@@ -2477,7 +2523,7 @@ function UI.Renderer.drawFuseButton()
     love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
 
     -- Button text
-    local buttonText = "FUSE (1 $)"
+    local buttonText = "FUSE (1$)"
     if not hasEnoughTiles then
         buttonText = "SELECT 2 TILES"
     elseif not canAfford then

@@ -1040,7 +1040,7 @@ function Touch.checkGameEnd()
             local centerX = gameState.screen.width / 2
             local centerY = gameState.screen.height / 2
 
-            UI.Animation.createFloatingText(handsLeft .. " HANDS LEFT = " .. baseCoins .. " $",
+            UI.Animation.createFloatingText(handsLeft .. " HANDS LEFT = " .. baseCoins .. "$",
                 centerX, centerY + UI.Layout.scale(100), {
                 color = {1, 0.9, 0.3, 1},
                 fontSize = "medium",
@@ -1052,7 +1052,7 @@ function Touch.checkGameEnd()
             })
 
             if bonusCoins > 0 then
-                UI.Animation.createFloatingText("BONUS: +" .. bonusCoins .. " $",
+                UI.Animation.createFloatingText("BONUS: +" .. bonusCoins .. "$",
                     centerX, centerY + UI.Layout.scale(140), {
                     color = {1, 1, 0.5, 1},
                     fontSize = "medium",
