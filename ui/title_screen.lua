@@ -158,7 +158,7 @@ function UI.TitleScreen.startNewGame()
 
     -- Reset ALL game state completely
     gameState.currentRound = 1
-    gameState.targetScore = gameState.baseTargetScore
+    gameState.targetScore = 666
     gameState.coins = 0
     gameState.startRoundCoins = 0
     gameState.tileCollection = {}
@@ -213,8 +213,8 @@ function UI.TitleScreen.continueGame()
 
     -- Restore game state from save
     gameState.currentRound = saveData.currentRound or 1
-    gameState.targetScore = saveData.targetScore or 3
-    gameState.baseTargetScore = saveData.baseTargetScore or 3
+    gameState.targetScore = 666  -- Always fixed at 666
+    gameState.baseTargetScore = 666
     gameState.coins = saveData.coins or 0
     gameState.isBossRound = saveData.isBossRound or false
 

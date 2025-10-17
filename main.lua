@@ -54,8 +54,8 @@ function love.load()
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
-        baseTargetScore = 3,
-        targetScore = 3,
+        baseTargetScore = 666,
+        targetScore = 666,
         maxHandsPerRound = 3,
         scoringSequence = nil,
         currentMap = nil,
@@ -164,11 +164,10 @@ function initializeGame(isNewRound)
     -- If not a new round, reset everything including round progress
     if not isNewRound then
         gameState.currentRound = 1
-        gameState.targetScore = gameState.baseTargetScore
-    else
-        -- Calculate target score for current round (doubles each round)
-        gameState.targetScore = gameState.baseTargetScore * (2 ^ (gameState.currentRound - 1))
     end
+
+    -- Target score is always fixed at 666
+    gameState.targetScore = 666
     
     -- Position tiles will be handled in first draw call
 end

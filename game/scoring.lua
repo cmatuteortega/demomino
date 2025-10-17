@@ -64,23 +64,8 @@ function Scoring.getScoreBreakdown(tiles)
     
     local baseValue = tileValues + (doubleCount * 10)
     
-    -- Calculate multiplier (number of tiles with recurring number)
-    local numberCounts = {}
-    for _, tile in ipairs(tiles) do
-        local left = tile.left
-        local right = tile.right
-        numberCounts[left] = (numberCounts[left] or 0) + 1
-        if left ~= right then  -- Don't double-count doubles
-            numberCounts[right] = (numberCounts[right] or 0) + 1
-        end
-    end
-    
-    local maxCount = 0
-    for _, count in pairs(numberCounts) do
-        maxCount = math.max(maxCount, count)
-    end
-    
-    local multiplier = math.max(maxCount, 1)  -- At least 1x multiplier
+    -- Calculate multiplier (number of tiles on board)
+    local multiplier = #tiles
     local total = baseValue * multiplier
     
     return {

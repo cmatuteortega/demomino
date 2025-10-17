@@ -299,7 +299,8 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.continueToMapButton and isPointInRect(x, y, gameState.continueToMapButton) then
             -- Now increment round counter when player continues
             gameState.currentRound = gameState.currentRound + 1
-            gameState.targetScore = gameState.baseTargetScore * (2 ^ (gameState.currentRound - 1))
+            -- Target score is always fixed at 666
+            gameState.targetScore = 666
 
             -- Update best round stats
             Save.updateBestRound(gameState.currentRound)

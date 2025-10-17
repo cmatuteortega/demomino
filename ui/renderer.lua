@@ -662,66 +662,101 @@ function UI.Renderer.drawPlacedTiles()
 end
 
 function UI.Renderer.drawScore(score)
-    local x = gameState.screen.width - UI.Layout.scale(20)
-    local y = UI.Layout.scale(20)
-    
-    local text = tostring(score)
-    
+    -- Left side: All game info with mobile-safe margin
+    local leftX = UI.Layout.scale(40)  -- Margin for mobile devices
+    local leftY = UI.Layout.scale(20)
+
+    -- 1. Draw round counter at top left
+    local roundText = "Round " .. gameState.currentRound
+    local roundColor = UI.Colors.FONT_WHITE
+    UI.Fonts.drawText(roundText, leftX, leftY, "title", roundColor, "left")
+
+    -- 2. Draw countdown score below round counter (666 - current score)
+    local scoreY = leftY + UI.Layout.scale(50)
+    local remainingScore = math.max(0, gameState.targetScore - score)
+    local scoreText = tostring(remainingScore)
+
     local animProps = {}
     if gameState.scoreAnimation then
         animProps.scale = gameState.scoreAnimation.scale or 1
         animProps.shake = gameState.scoreAnimation.shake or 0
     end
-    
-    local color = UI.Colors.FONT_RED
+
+    local scoreColor = UI.Colors.FONT_RED
     if gameState.scoreAnimation and gameState.scoreAnimation.color then
-        color = gameState.scoreAnimation.color
+        scoreColor = gameState.scoreAnimation.color
     end
-    
-    -- Draw main score with extra large font
-    UI.Fonts.drawAnimatedText(text, x, y, "bigScore", color, "right", animProps)
-    
-    -- Draw target score underneath main score with more spacing
-    local targetText = "/" .. gameState.targetScore
-    local targetColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(targetText, x, y + UI.Layout.scale(65), "large", targetColor, "right")
-    
-    -- Draw round counter on the LEFT side with bigger font
-    local leftX = UI.Layout.scale(20)
-    local leftY = UI.Layout.scale(20)
 
-    -- Draw round counter on left with bigger font
-    local roundText = "Round " .. gameState.currentRound
-    local roundColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(roundText, leftX, leftY, "title", roundColor, "left")
+    UI.Fonts.drawAnimatedText(scoreText, leftX, scoreY, "bigScore", scoreColor, "left", animProps)
 
-    -- Draw current round challenge below round counter
-    local displayInfo = Challenges.getDisplayInfo(gameState)
-    if #displayInfo > 0 then
-        local challengeY = leftY + UI.Layout.scale(50)
-        for i, challenge in ipairs(displayInfo) do
-            local challengeText = challenge.icon .. " " .. challenge.text
-            local challengeColor = challenge.color or UI.Colors.FONT_WHITE
-            UI.Fonts.drawText(challengeText, leftX, challengeY + (i - 1) * UI.Layout.scale(25), "medium", challengeColor, "left")
+    -- 3. Draw scoring formula below score (when tiles are placed)
+    local hasPlacedTiles = #gameState.placedTiles > 0
+    local canPlay = hasPlacedTiles and Validation.canConnectTiles(gameState.placedTiles)
+
+    if hasPlacedTiles and canPlay then
+        local breakdown = Scoring.getScoreBreakdown(gameState.placedTiles)
+
+        local time = love.timer.getTime()
+        local formulaY = scoreY + UI.Layout.scale(70)
+
+        -- Show different formula based on scoring sequence state
+        local formulaColor = UI.Colors.FONT_RED
+        local formulaScale = 1 + math.sin(time * 3) * 0.06
+
+        if gameState.scoringSequence then
+            -- During scoring sequence, show progressive calculation
+            local accumulated = gameState.scoringSequence.accumulatedValue or 0
+
+            if gameState.scoringSequence.showingMultiplier then
+                -- Show full formula as one unit
+                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = ?"
+                UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", formulaColor, "left", {scale = formulaScale})
+            elseif gameState.scoringSequence.showingFinal then
+                -- Show full formula as one unit
+                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = +" .. breakdown.total
+                UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", formulaColor, "left", {scale = formulaScale})
+            else
+                -- Building up the base value - animate the accumulated number
+                local baseText = tostring(accumulated)
+                local multiplierText = " × " .. breakdown.multiplier
+
+                -- Draw base value part (animated) first
+                local baseAnimProps = {scale = formulaScale}
+                if gameState.scoringSequence.formulaAnimation then
+                    baseAnimProps.scale = baseAnimProps.scale * (gameState.scoringSequence.formulaAnimation.scale or 1)
+                    baseAnimProps.shake = gameState.scoringSequence.formulaAnimation.shake or 0
+                end
+
+                -- Calculate width of base text for positioning multiplier
+                local font = UI.Fonts.get("title")
+                local baseWidth = font:getWidth(baseText) * (baseAnimProps.scale or 1)
+
+                UI.Fonts.drawAnimatedText(baseText, leftX, formulaY, "title", formulaColor, "left", baseAnimProps)
+
+                -- Draw multiplier part (static) to the right of base value
+                UI.Fonts.drawAnimatedText(multiplierText, leftX + baseWidth, formulaY, "title", formulaColor, "left", {scale = formulaScale})
+            end
+        else
+            -- Before play, only show multiplier hint
+            local formulaText = "? × " .. breakdown.multiplier .. " = ?"
+            local goldColor = {1, 0.8, 0.2, 1}
+            UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", goldColor, "left", {scale = formulaScale})
         end
     end
 
-    -- Draw goal text in CENTER, aligned with round counter
-    local centerX = gameState.screen.width / 2
-    local goalColor = UI.Colors.FONT_PINK
-    local goalScale = 1 + math.sin(love.timer.getTime() * 2) * 0.03
+    -- Right side: Round challenges
+    local rightX = gameState.screen.width - UI.Layout.scale(40)
+    local rightY = UI.Layout.scale(20)
 
-    if gameState.gamePhase == "won" then
-        -- Show victory message instead of goal
-        goalColor = {1, 0.8, 0.2, 1}  -- Gold color
-        goalScale = 1 + math.sin(love.timer.getTime() * 3) * 0.08  -- More dramatic pulse
-        UI.Fonts.drawAnimatedText("TOTAL DOMINATION!",
-            centerX, leftY, "large", goalColor, "center", {scale = goalScale})
-    else
-        UI.Fonts.drawAnimatedText("Goal: Reach " .. gameState.targetScore .. " points!",
-            centerX, leftY, "large", goalColor, "center", {scale = goalScale})
+    local displayInfo = Challenges.getDisplayInfo(gameState)
+    if #displayInfo > 0 then
+        for i, challenge in ipairs(displayInfo) do
+            local challengeText = challenge.icon .. " " .. challenge.text
+            local challengeColor = challenge.color or UI.Colors.FONT_WHITE
+            UI.Fonts.drawText(challengeText, rightX, rightY + (i - 1) * UI.Layout.scale(30), "medium", challengeColor, "right")
+        end
     end
-    
+
     -- Draw tiles left counter in bottom right
     local tilesLeft = #gameState.deck
     local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
@@ -729,63 +764,8 @@ function UI.Renderer.drawScore(score)
     local tilesColor = UI.Colors.FONT_WHITE
     local bottomRightX = gameState.screen.width - UI.Layout.scale(20)
     local bottomRightY = gameState.screen.height - UI.Layout.scale(30)
-    
+
     UI.Fonts.drawText(tilesText, bottomRightX, bottomRightY, "medium", tilesColor, "right")
-    
-    -- Show scoring preview if tiles are placed and can play
-    local hasPlacedTiles = #gameState.placedTiles > 0
-    local canPlay = hasPlacedTiles and Validation.canConnectTiles(gameState.placedTiles)
-    
-    if hasPlacedTiles and canPlay then
-        local breakdown = Scoring.getScoreBreakdown(gameState.placedTiles)
-        
-        local time = love.timer.getTime()
-        local formulaY = y + UI.Layout.scale(90)
-        
-        -- Show different formula based on scoring sequence state
-        local formulaColor = UI.Colors.FONT_RED
-        local formulaScale = 1 + math.sin(time * 3) * 0.06
-        
-        if gameState.scoringSequence then
-            -- During scoring sequence, show progressive calculation
-            local accumulated = gameState.scoringSequence.accumulatedValue or 0
-            
-            if gameState.scoringSequence.showingMultiplier then
-                -- Show full formula as one unit
-                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = ?"
-                UI.Fonts.drawAnimatedText(formulaText, x, formulaY, "title", formulaColor, "right", {scale = formulaScale})
-            elseif gameState.scoringSequence.showingFinal then
-                -- Show full formula as one unit
-                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = +" .. breakdown.total
-                UI.Fonts.drawAnimatedText(formulaText, x, formulaY, "title", formulaColor, "right", {scale = formulaScale})
-            else
-                -- Building up the base value - animate only the number part
-                local baseText = tostring(accumulated)
-                local multiplierText = " × " .. breakdown.multiplier
-                
-                -- Calculate positions for separate drawing
-                local font = UI.Fonts.get("title")
-                local multiplierWidth = font:getWidth(multiplierText)
-                
-                -- Draw multiplier part (static)
-                UI.Fonts.drawAnimatedText(multiplierText, x, formulaY, "title", formulaColor, "right", {scale = formulaScale})
-                
-                -- Draw base value part (animated) to the left of multiplier
-                local baseAnimProps = {scale = formulaScale}
-                if gameState.scoringSequence.formulaAnimation then
-                    baseAnimProps.scale = baseAnimProps.scale * (gameState.scoringSequence.formulaAnimation.scale or 1)
-                    baseAnimProps.shake = gameState.scoringSequence.formulaAnimation.shake or 0
-                end
-                
-                UI.Fonts.drawAnimatedText(baseText, x - multiplierWidth, formulaY, "title", formulaColor, "right", baseAnimProps)
-            end
-        else
-            -- Before play, only show multiplier hint
-            local formulaText = "? × " .. breakdown.multiplier .. " = ?"
-            local goldColor = {1, 0.8, 0.2, 1}
-            UI.Fonts.drawAnimatedText(formulaText, x, formulaY, "title", goldColor, "right", {scale = formulaScale})
-        end
-    end
 end
 
 function UI.Renderer.drawButton(text, x, y, width, height, pressed, animScale)
@@ -1240,8 +1220,9 @@ function UI.Renderer.drawGameOver()
 
         UI.Fonts.drawAnimatedText(titleText, centerX, centerY - UI.Layout.scale(80), "title", titleColor, "center", titleAnimProps)
 
-        -- Score with pulse animation
-        local scoreText = "Final Score: " .. gameState.score .. "/" .. gameState.targetScore
+        -- Score with pulse animation (showing remaining countdown)
+        local remainingScore = math.max(0, gameState.targetScore - gameState.score)
+        local scoreText = "Remaining: " .. remainingScore
         local scoreColor = UI.Colors.FONT_RED
         local scoreScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
 
@@ -1297,8 +1278,9 @@ function UI.Renderer.drawMap()
     
     UI.Fonts.drawAnimatedText(titleText, centerX, UI.Layout.scale(40), "title", titleColor, "center", titleAnimProps)
     
-    -- Current round info
-    local roundText = "Round " .. gameState.currentRound .. " - Score: " .. gameState.score
+    -- Current round info (showing remaining countdown)
+    local remainingScore = math.max(0, gameState.targetScore - gameState.score)
+    local roundText = "Round " .. gameState.currentRound .. " - Remaining: " .. remainingScore
     local roundColor = UI.Colors.FONT_WHITE
     UI.Fonts.drawText(roundText, centerX, UI.Layout.scale(80), "medium", roundColor, "center")
     
