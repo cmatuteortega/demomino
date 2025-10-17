@@ -196,16 +196,18 @@ end
 
 function UI.Layout.getSettingsButtonPosition()
     local buttonSize = UI.Layout.scale(40)
-    local padding = UI.Layout.scale(20)
+    local margin = UI.Layout.scale(40)  -- Increased margin from screen border
+    local handArea = UI.Layout.getHandArea()
+    local buttonHeight = UI.Layout.getButtonSize()
 
-    local x = padding
-    local y = gameState.screen.height - buttonSize - padding
+    local x = margin
+    local y = handArea.y + handArea.height + UI.Layout.scale(10)  -- Same vertical position as play/discard/sort buttons
 
     return x, y, buttonSize
 end
 
 function UI.Layout.getCoinDisplayPosition()
-    local padding = UI.Layout.scale(20)
+    local margin = UI.Layout.scale(40)
     local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
 
     -- Position for coin counter text

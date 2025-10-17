@@ -662,110 +662,238 @@ function UI.Renderer.drawPlacedTiles()
 end
 
 function UI.Renderer.drawScore(score)
-    -- Left side: All game info with mobile-safe margin
+    -- Left side: Score display only
     local leftX = UI.Layout.scale(40)  -- Margin for mobile devices
     local leftY = UI.Layout.scale(20)
 
-    -- 1. Draw round counter at top left
-    local roundText = "Round " .. gameState.currentRound
-    local roundColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(roundText, leftX, leftY, "title", roundColor, "left")
+    -- Draw countdown score (666 - current score) with wave animation per digit
+    local scoreY = leftY
 
-    -- 2. Draw countdown score below round counter (666 - current score)
-    local scoreY = leftY + UI.Layout.scale(50)
-    local remainingScore = math.max(0, gameState.targetScore - score)
-    local scoreText = tostring(remainingScore)
-
-    local animProps = {}
-    if gameState.scoreAnimation then
-        animProps.scale = gameState.scoreAnimation.scale or 1
-        animProps.shake = gameState.scoreAnimation.shake or 0
-    end
+    -- Use animated countdown value instead of instant calculation
+    local displayScore = gameState.displayedRemainingScore or math.max(0, gameState.targetScore - score)
+    -- Clamp to 0 and always display 3 digits with leading zeros
+    displayScore = math.max(0, displayScore)
+    local scoreText = string.format("%03d", math.floor(displayScore))
 
     local scoreColor = UI.Colors.FONT_RED
     if gameState.scoreAnimation and gameState.scoreAnimation.color then
         scoreColor = gameState.scoreAnimation.color
     end
 
-    UI.Fonts.drawAnimatedText(scoreText, leftX, scoreY, "bigScore", scoreColor, "left", animProps)
+    -- Get base animation properties
+    local baseScale = 1.0
+    local baseShake = 0
+    if gameState.scoreAnimation then
+        baseScale = gameState.scoreAnimation.scale or 1
+        baseShake = gameState.scoreAnimation.shake or 0
+    end
 
-    -- 3. Draw scoring formula below score (when tiles are placed)
-    local hasPlacedTiles = #gameState.placedTiles > 0
-    local canPlay = hasPlacedTiles and Validation.canConnectTiles(gameState.placedTiles)
+    -- Draw score digits with wave offset
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("bigScore")
+    local currentX = leftX
 
-    if hasPlacedTiles and canPlay then
-        local breakdown = Scoring.getScoreBreakdown(gameState.placedTiles)
+    for i = 1, #scoreText do
+        local digit = scoreText:sub(i, i)
+        local digitWidth = font:getWidth(digit)
 
+        -- Wave animation: 3px range, 2.5 second cycle, phase offset per digit
+        local phase = time * 2.5 + (i - 1) * 0.4  -- 0.4 radian offset per digit
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = baseScale,
+            shake = baseShake
+        }
+
+        UI.Fonts.drawAnimatedText(digit, currentX, scoreY + waveOffset, "bigScore", scoreColor, "left", animProps)
+
+        -- Move X position for next digit (accounting for scale)
+        currentX = currentX + digitWidth * baseScale
+    end
+
+    -- 3. Draw scoring formula below score (only during scoring sequence)
+    local formulaY = scoreY + UI.Layout.scale(80) + (gameState.formulaAnimation.yOffset or 0)
+
+    -- Only show formula during active scoring sequence
+    if gameState.scoringSequence then
         local time = love.timer.getTime()
-        local formulaY = scoreY + UI.Layout.scale(70)
+        local formulaColor = gameState.formulaAnimation.color or {1, 0.8, 0.2, 1}
+        local formulaOpacity = gameState.formulaAnimation.opacity or 1.0
+        local formulaScale = gameState.formulaAnimation.scale or 1.0
 
-        -- Show different formula based on scoring sequence state
-        local formulaColor = UI.Colors.FONT_RED
-        local formulaScale = 1 + math.sin(time * 3) * 0.06
+        -- Apply color with opacity
+        local displayColor = {formulaColor[1], formulaColor[2], formulaColor[3], formulaOpacity}
 
         if gameState.scoringSequence then
-            -- During scoring sequence, show progressive calculation
-            local accumulated = gameState.scoringSequence.accumulatedValue or 0
+            local seq = gameState.scoringSequence
+            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+            local displayValue = math.floor(gameState.formulaDisplayValue)
 
-            if gameState.scoringSequence.showingMultiplier then
-                -- Show full formula as one unit
-                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = ?"
-                UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", formulaColor, "left", {scale = formulaScale})
-            elseif gameState.scoringSequence.showingFinal then
-                -- Show full formula as one unit
-                local formulaText = accumulated .. " × " .. breakdown.multiplier .. " = +" .. breakdown.total
-                UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", formulaColor, "left", {scale = formulaScale})
-            else
-                -- Building up the base value - animate the accumulated number
-                local baseText = tostring(accumulated)
-                local multiplierText = " × " .. breakdown.multiplier
+            if seq.phase == "scoring_tiles" then
+                -- Show counting value with wave animation per digit (like main score)
+                local valueText = tostring(displayValue)
+                local font = UI.Fonts.get("formulaScore")
+                local currentX = leftX
 
-                -- Draw base value part (animated) first
-                local baseAnimProps = {scale = formulaScale}
-                if gameState.scoringSequence.formulaAnimation then
-                    baseAnimProps.scale = baseAnimProps.scale * (gameState.scoringSequence.formulaAnimation.scale or 1)
-                    baseAnimProps.shake = gameState.scoringSequence.formulaAnimation.shake or 0
+                for i = 1, #valueText do
+                    local digit = valueText:sub(i, i)
+                    local digitWidth = font:getWidth(digit)
+                    local phase = time * 2.5 + (i - 1) * 0.4
+                    local waveOffset = math.sin(phase) * 2
+
+                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
+                        scale = formulaScale,
+                        shadow = true,
+                        shadowOffset = UI.Layout.scale(3)
+                    })
+
+                    currentX = currentX + digitWidth * formulaScale
                 end
 
-                -- Calculate width of base text for positioning multiplier
-                local font = UI.Fonts.get("title")
-                local baseWidth = font:getWidth(baseText) * (baseAnimProps.scale or 1)
+            elseif seq.phase == "multiplying" or seq.phase == "final" then
+                -- Show value with multiplier
+                local valueText = tostring(displayValue)
+                local multiplierText = " × " .. breakdown.multiplier
+                local font = UI.Fonts.get("formulaScore")
 
-                UI.Fonts.drawAnimatedText(baseText, leftX, formulaY, "title", formulaColor, "left", baseAnimProps)
+                -- Draw value with wave animation
+                local currentX = leftX
+                for i = 1, #valueText do
+                    local digit = valueText:sub(i, i)
+                    local digitWidth = font:getWidth(digit)
+                    local phase = time * 2.5 + (i - 1) * 0.4
+                    local waveOffset = math.sin(phase) * 2
 
-                -- Draw multiplier part (static) to the right of base value
-                UI.Fonts.drawAnimatedText(multiplierText, leftX + baseWidth, formulaY, "title", formulaColor, "left", {scale = formulaScale})
+                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
+                        scale = formulaScale,
+                        shadow = true,
+                        shadowOffset = UI.Layout.scale(3)
+                    })
+
+                    currentX = currentX + digitWidth * formulaScale
+                end
+
+                -- Draw multiplier
+                UI.Fonts.drawAnimatedText(multiplierText, currentX + UI.Layout.scale(5), formulaY, "formulaScore", displayColor, "left", {
+                    scale = formulaScale,
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(3)
+                })
+
+            elseif seq.phase == "transferring" then
+                -- Show final value moving up and fading
+                local valueText = tostring(displayValue)
+                local font = UI.Fonts.get("formulaScore")
+                local currentX = leftX
+
+                for i = 1, #valueText do
+                    local digit = valueText:sub(i, i)
+                    local digitWidth = font:getWidth(digit)
+
+                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY, "formulaScore", displayColor, "left", {
+                        scale = formulaScale,
+                        shadow = true,
+                        shadowOffset = UI.Layout.scale(3)
+                    })
+
+                    currentX = currentX + digitWidth * formulaScale
+                end
             end
-        else
-            -- Before play, only show multiplier hint
-            local formulaText = "? × " .. breakdown.multiplier .. " = ?"
-            local goldColor = {1, 0.8, 0.2, 1}
-            UI.Fonts.drawAnimatedText(formulaText, leftX, formulaY, "title", goldColor, "left", {scale = formulaScale})
         end
     end
 
-    -- Right side: Round challenges
+    -- Right side: Round counter and challenges
     local rightX = gameState.screen.width - UI.Layout.scale(40)
     local rightY = UI.Layout.scale(20)
 
+    -- Draw round counter at top right with shadow
+    local roundText = "Round " .. gameState.currentRound
+    local roundColor = UI.Colors.FONT_WHITE
+    UI.Fonts.drawAnimatedText(roundText, rightX, rightY, "title", roundColor, "right", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3)
+    })
+
+    -- Draw challenges below round counter on right side
     local displayInfo = Challenges.getDisplayInfo(gameState)
     if #displayInfo > 0 then
+        local challengeStartY = rightY + UI.Layout.scale(35)  -- Just below round counter
         for i, challenge in ipairs(displayInfo) do
             local challengeText = challenge.icon .. " " .. challenge.text
             local challengeColor = challenge.color or UI.Colors.FONT_WHITE
-            UI.Fonts.drawText(challengeText, rightX, rightY + (i - 1) * UI.Layout.scale(30), "medium", challengeColor, "right")
+            UI.Fonts.drawText(challengeText, rightX, challengeStartY + (i - 1) * UI.Layout.scale(25), "medium", challengeColor, "right")
         end
     end
 
-    -- Draw tiles left counter in bottom right
+    -- Draw tiles left counter in bottom right corner with same offset as other corner UI elements
     local tilesLeft = #gameState.deck
     local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
     local tilesText = "Tiles: " .. tilesLeft .. "/" .. totalTiles
     local tilesColor = UI.Colors.FONT_WHITE
-    local bottomRightX = gameState.screen.width - UI.Layout.scale(20)
-    local bottomRightY = gameState.screen.height - UI.Layout.scale(30)
 
-    UI.Fonts.drawText(tilesText, bottomRightX, bottomRightY, "medium", tilesColor, "right")
+    -- Use same margin as other corner elements (score counter uses 40px)
+    local margin = UI.Layout.scale(40)
+    local bottomRightX = gameState.screen.width - margin
+    local bottomRightY = gameState.screen.height - margin
+
+    UI.Fonts.drawAnimatedText(tilesText, bottomRightX, bottomRightY, "large", tilesColor, "right", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3)
+    })
+end
+
+function UI.Renderer.drawVictoryPhrase()
+    if not gameState.victoryPhrase then
+        return
+    end
+
+    -- Draw victory phrase in center of screen with wave animation
+    local time = love.timer.getTime()
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    local phraseColor = UI.Colors.FONT_WHITE
+    local phraseOpacity = gameState.victoryPhraseAnimation.opacity or 1.0
+    local phraseXOffset = gameState.victoryPhraseAnimation.xOffset or 0
+    local phraseScale = gameState.victoryPhraseAnimation.scale or 1.0
+
+    local font = UI.Fonts.get("bigScore")
+
+    -- Calculate total width of phrase to center it
+    local totalWidth = 0
+    for i = 1, #gameState.victoryPhrase do
+        local char = gameState.victoryPhrase:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char) * phraseScale
+    end
+
+    -- Start position (center - half width + xOffset for slide animation)
+    local startX = centerX - totalWidth / 2 + phraseXOffset
+
+    -- Draw each character with wave animation
+    local currentX = startX
+    for i = 1, #gameState.victoryPhrase do
+        local char = gameState.victoryPhrase:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation: same as score digits
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = phraseScale,
+            opacity = phraseOpacity
+        }
+
+        local displayColor = {phraseColor[1], phraseColor[2], phraseColor[3], phraseOpacity}
+        UI.Fonts.drawAnimatedText(char, currentX, centerY + waveOffset, "bigScore", displayColor, "left", animProps)
+
+        currentX = currentX + charWidth * phraseScale
+    end
 end
 
 function UI.Renderer.drawButton(text, x, y, width, height, pressed, animScale)
@@ -795,8 +923,11 @@ function UI.Renderer.drawCoins()
 
     local text = gameState.coins .. " $"
 
-    -- Draw text at its own position
-    UI.Fonts.drawText(text, textX, textY, "large", {1, 0.9, 0.3, 1}, "left")
+    -- Draw text at its own position with shadow
+    UI.Fonts.drawAnimatedText(text, textX, textY, "title", {1, 0.9, 0.3, 1}, "left", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3)
+    })
 
     if coinSprite then
         local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
