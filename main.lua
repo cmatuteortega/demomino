@@ -236,6 +236,14 @@ function initializeCombatRound()
         phase = love.math.random() * 2 * math.pi  -- Random phase for variety
     }
 
+    -- Reset victory phrase from previous round
+    gameState.victoryPhrase = nil
+    gameState.victoryPhraseAnimation = {
+        xOffset = -500,
+        opacity = 0,
+        scale = 1.0
+    }
+
     -- STEP 2: Create fresh deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
@@ -728,7 +736,7 @@ function completeScoringSequence()
     
     if hasBonus then
         UI.Animation.createFloatingText("NICE COMBO!", centerX, centerY, {
-            color = {1, 0.8, 0.2, 1},
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1},
             fontSize = "large",
             duration = 2.5,
             riseDistance = 100,
