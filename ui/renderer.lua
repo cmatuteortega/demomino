@@ -888,11 +888,12 @@ function UI.Renderer.drawScore(score)
         local counterText = tilesPlaced .. "/" .. maxTiles
         local counterColor = gameState.maxTilesCounterAnimation.color or UI.Colors.FONT_WHITE
         local counterScale = gameState.maxTilesCounterAnimation.scale or 1.0
+        local actualScale = counterScale * 0.5
 
         UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
-            scale = counterScale * 0.5  -- Half the size
+            scale = actualScale
         })
 
         currentCounterY = currentCounterY + counterFontHeight + UI.Layout.scale(5)  -- Move down for next counter
@@ -904,11 +905,12 @@ function UI.Renderer.drawScore(score)
         local counterText = "ø " .. bannedNumber
         local counterColor = gameState.bannedNumberCounterAnimation.color or UI.Colors.FONT_WHITE
         local counterScale = gameState.bannedNumberCounterAnimation.scale or 1.0
+        local actualScale = counterScale * 0.5
 
         UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
-            scale = counterScale * 0.5  -- Half the size
+            scale = actualScale
         })
     end
 
@@ -1023,8 +1025,8 @@ function UI.Renderer.drawCoinSprites()
         local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
         local spriteScale = math.max(minScale * 2.0, 1.0)
 
-        -- Position coin stack at its own position
-        local coinStartX = stackX
+        -- Position coin stack 20px left of layout position
+        local coinStartX = stackX - UI.Layout.scale(20)
         local coinBaseY = stackY
 
         -- PART 1: Draw settled coins
@@ -1089,26 +1091,35 @@ function UI.Renderer.drawCoinText()
 
     local text = gameState.coins .. "$"
 
-    -- Draw coin breakdown above money counter (only when shown)
+    -- Calculate coin counter width for breakdown positioning
+    local coinFont = UI.Fonts.get("title")
+    local coinTextWidth = coinFont:getWidth(text)
+
+    -- Draw coin breakdown to the right of money counter (vertical list)
     if gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
-        local lineHeight = font:getHeight() + UI.Layout.scale(3)
-        local breakdownX = textX  -- Same X position as money counter
+        local lineHeight = font:getHeight() + UI.Layout.scale(5)
+        -- Position breakdown to the right of coin counter text, with spacing
+        local breakdownX = textX + coinTextWidth + UI.Layout.scale(20)
 
-        -- Start from the top breakdown item and draw upward
-        for i = #gameState.coinBreakdown, 1, -1 do  -- Draw from bottom to top
+        for i = 1, #gameState.coinBreakdown do
             local entry = gameState.coinBreakdown[i]
-            local yPos = textY - ((#gameState.coinBreakdown - i + 1) * lineHeight) - UI.Layout.scale(5)  -- Above money counter
 
-            local whiteColor = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], entry.opacity}
-            UI.Fonts.drawAnimatedText(entry.text, breakdownX, yPos, "large", whiteColor, "left", {
-                shadow = true,
-                shadowOffset = UI.Layout.scale(2)
-            })
+            -- Only show items with opacity > 0 (animating in)
+            if entry.opacity > 0 then
+                -- Stack items upward from coin counter
+                local yPos = textY - (i * lineHeight) + (entry.yOffset or 0) + UI.Layout.scale(37)
+
+                local whiteColor = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], entry.opacity}
+                UI.Fonts.drawAnimatedText(entry.text, breakdownX, yPos, "large", whiteColor, "left", {
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(2)
+                })
+            end
         end
     end
 
-    -- Draw money counter text with pink color
+    -- Draw money counter text with pink color (left-aligned, to the right of settings button)
     UI.Fonts.drawAnimatedText(text, textX, textY, "title", UI.Colors.FONT_PINK, "left", {
         shadow = true,
         shadowOffset = UI.Layout.scale(3)
@@ -1445,7 +1456,7 @@ function UI.Renderer.drawGameOver()
     if gameState.gamePhase == "won" then
         -- Victory overlay - show "NEXT >>" text in bottom-right area
         local time = love.timer.getTime()
-        local horizontalMargin = UI.Layout.scale(80)  -- More left from edge
+        local horizontalMargin = UI.Layout.scale(40)  -- Same as victory phrase and challenge counters
         local verticalMargin = UI.Layout.scale(80)    -- More up from bottom
 
         -- Get font and calculate text dimensions

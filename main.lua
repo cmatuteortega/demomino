@@ -119,8 +119,9 @@ function love.load()
             chipLoopActive = false,  -- Whether chip loop sound should be playing
             firstCoinLanded = false  -- Track when first coin lands to start sound
         },
-        -- Coin breakdown display (shown above money counter)
-        coinBreakdown = {},  -- Array of {text = "+2$ hands", opacity = 1.0}
+        -- Coin breakdown display (shown to the right of money counter)
+        coinBreakdown = {},  -- Array of {text = "+2$ hands", opacity = 1.0, coins = 2, animated = false, yOffset = 0}
+        coinBreakdownQueue = {},  -- Queue of breakdown items waiting to animate sequentially
         -- Deckbuilding system
         tileCollection = {},  -- All tiles the player has unlocked
         offeredTiles = {},    -- Tiles currently being offered in tiles menu
@@ -273,6 +274,7 @@ function initializeCombatRound()
 
     -- Clear coin breakdown display
     gameState.coinBreakdown = {}
+    gameState.coinBreakdownQueue = {}
 
     -- Track coins at start of round for bonus calculation
     gameState.startRoundCoins = gameState.coins
@@ -449,7 +451,9 @@ function updateScore(newScore, bonusInfo)
 end
 
 function updateCoins(newCoins, bonusInfo)
-    local difference = newCoins - gameState.coins
+    -- Use targetCoins if it exists (coins are still animating), otherwise use settled coins
+    local previousTarget = gameState.coinsAnimation.targetCoins or gameState.coins
+    local difference = newCoins - previousTarget
 
     if difference > 0 then
         -- Gaining coins - trigger falling animation
@@ -463,7 +467,7 @@ function updateCoins(newCoins, bonusInfo)
         local spriteScale = math.max(minScale * 2.0, 1.0)
 
         -- Create falling coin objects for each new coin
-        local oldCoins = gameState.coins
+        local oldCoins = previousTarget
         for i = 1, difference do
             local coinIndex = oldCoins + i
 
@@ -471,7 +475,7 @@ function updateCoins(newCoins, bonusInfo)
             local stackIndex = math.floor((coinIndex - 1) / 15)
             local coinInStack = ((coinIndex - 1) % 15) + 1
 
-            local coinStartX = stackX  -- Stack starts at stack position
+            local coinStartX = stackX - UI.Layout.scale(20)  -- Stack starts 20px left of layout position
             local stackOffsetX = stackIndex * (8 * spriteScale)  -- Move RIGHT for new stacks
             local targetX = coinStartX + stackOffsetX
             local targetY = stackY - ((coinInStack - 1) * 4 * spriteScale)
@@ -560,10 +564,12 @@ function updateFallingCoins(dt)
             -- Update X position (drift toward target)
             coin.currentX = coin.startX + (coin.targetX - coin.startX) * easedProgress
 
-            if progress >= 1.0 then
+            -- Start settling phase earlier - when coin is still 15 pixels above target
+            local settleStartOffset = 15
+            if coin.currentY >= coin.targetY - settleStartOffset then
                 coin.phase = "settling"
                 coin.settleElapsed = 0
-                coin.currentY = coin.targetY
+                coin.settleStartY = coin.currentY  -- Remember where settling started
                 coin.currentX = coin.targetX
 
                 -- Start chip loop when first coin lands
@@ -583,8 +589,9 @@ function updateFallingCoins(dt)
             local c3 = c1 + 1
             local bounce = 1 + c3 * math.pow(progress - 1, 3) + c1 * math.pow(progress - 1, 2)
 
-            -- Slight downward bounce
-            coin.currentY = coin.targetY + (10 * (1 - bounce))
+            -- Settle from wherever it started settling down to target with bounce
+            local settleDistance = (coin.settleStartY or coin.targetY) - coin.targetY
+            coin.currentY = coin.targetY + (settleDistance * (1 - progress)) + (10 * (1 - bounce))
 
             if progress >= 1.0 then
                 coin.phase = "settled"
@@ -614,6 +621,47 @@ function updateFallingCoins(dt)
             UI.Audio.stopChipLoop()
             gameState.coinsAnimation.chipLoopActive = false
             gameState.coinsAnimation.firstCoinLanded = false
+        end
+    end
+end
+
+function updateCoinBreakdownAnimation(dt)
+    -- Process the queue of breakdown items waiting to animate
+    if #gameState.coinBreakdownQueue > 0 then
+        local currentItem = gameState.coinBreakdownQueue[1]
+
+        if not currentItem.animationStarted then
+            -- Start animating this item
+            currentItem.animationStarted = true
+            currentItem.elapsed = 0
+            currentItem.opacity = 0
+            currentItem.yOffset = 20  -- Start slightly below
+
+            -- Add to visible breakdown list
+            table.insert(gameState.coinBreakdown, currentItem)
+
+            -- Trigger coin addition animation - use coinsAnimation.targetCoins to track cumulative
+            -- This ensures each item adds to the previous target, not the settled amount
+            local currentTarget = gameState.coinsAnimation.targetCoins or gameState.coins
+            updateCoins(currentTarget + currentItem.coins, {hasBonus = false})
+        end
+
+        -- Animate opacity and position
+        currentItem.elapsed = currentItem.elapsed + dt
+        local progress = math.min(currentItem.elapsed / 0.3, 1.0)  -- 300ms animation
+
+        -- Ease out for smooth appearance
+        local easedProgress = 1 - math.pow(1 - progress, 3)
+        currentItem.opacity = easedProgress
+        currentItem.yOffset = 20 * (1 - easedProgress)
+
+        if progress >= 1.0 then
+            currentItem.animated = true
+            currentItem.opacity = 1.0
+            currentItem.yOffset = 0
+
+            -- Remove from queue
+            table.remove(gameState.coinBreakdownQueue, 1)
         end
     end
 end
@@ -883,6 +931,7 @@ function love.update(dt)
     UI.Animation.update(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)
+    updateCoinBreakdownAnimation(dt)
     updateChipLoopSound()
 
     if gameState.gamePhase == "playing" then

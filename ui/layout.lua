@@ -210,15 +210,32 @@ function UI.Layout.getCoinDisplayPosition()
     local margin = UI.Layout.scale(40)  -- Same margin as score counter
     local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
 
-    -- Position for coin counter text (leftmost side, same offset as score counter)
-    local textX = margin  -- Same as score counter's left margin
-    local textY = settingsY - UI.Layout.scale(55)  -- Positioned 20px above settings button
+    -- Position for coin counter text (aligned with tile counter at bottom, to the right of settings button)
+    local bottomY = gameState.screen.height - margin  -- Same Y as tile counter
+    local textX = settingsX + settingsSize + UI.Layout.scale(20) + UI.Layout.scale(25)  -- 30px left adjustment
+    local textY = bottomY - UI.Layout.scale(23)  -- 10px up adjustment
 
     -- Position for coin stack (original position, independent of text position)
     local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(70)  -- 10px to the right
     local stackY = settingsY - UI.Layout.scale(80)  -- 20px higher
 
     return textX, textY, stackX, stackY
+end
+
+function UI.Layout.getCoinCounterBounds()
+    local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
+    local font = UI.Fonts and UI.Fonts.get("title")
+
+    -- Estimate bounds based on typical coin text width (e.g., "999$")
+    local estimatedWidth = font and (font:getWidth("999$")) or UI.Layout.scale(100)
+    local estimatedHeight = font and font:getHeight() or UI.Layout.scale(40)
+
+    return {
+        x = textX,
+        y = textY - estimatedHeight / 2,
+        width = estimatedWidth,
+        height = estimatedHeight
+    }
 end
 
 return UI.Layout

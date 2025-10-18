@@ -1161,19 +1161,51 @@ function Touch.checkGameEnd()
         local totalCoins = winCoins + handsCoins + discardsCoins + interestCoins
 
         if totalCoins > 0 then
-            updateCoins(gameState.coins + totalCoins, {hasBonus = false})
-
-            -- Build coin breakdown display (shown above money counter)
+            -- Clear existing breakdown and queue
             gameState.coinBreakdown = {}
-            table.insert(gameState.coinBreakdown, {text = "+1$ win", opacity = 1.0})
+            gameState.coinBreakdownQueue = {}
+
+            -- Queue coin breakdown items for sequential animation
+            table.insert(gameState.coinBreakdownQueue, {
+                text = "+1$ win",
+                opacity = 0,
+                coins = winCoins,
+                animated = false,
+                yOffset = 20,
+                animationStarted = false
+            })
+
             if handsCoins > 0 then
-                table.insert(gameState.coinBreakdown, {text = "+" .. handsCoins .. "$ hands", opacity = 1.0})
+                table.insert(gameState.coinBreakdownQueue, {
+                    text = "+" .. handsCoins .. "$ hands",
+                    opacity = 0,
+                    coins = handsCoins,
+                    animated = false,
+                    yOffset = 20,
+                    animationStarted = false
+                })
             end
+
             if discardsCoins > 0 then
-                table.insert(gameState.coinBreakdown, {text = "+" .. discardsCoins .. "$ discards", opacity = 1.0})
+                table.insert(gameState.coinBreakdownQueue, {
+                    text = "+" .. discardsCoins .. "$ discards",
+                    opacity = 0,
+                    coins = discardsCoins,
+                    animated = false,
+                    yOffset = 20,
+                    animationStarted = false
+                })
             end
+
             if interestCoins > 0 then
-                table.insert(gameState.coinBreakdown, {text = "+" .. interestCoins .. "$ interest", opacity = 1.0})
+                table.insert(gameState.coinBreakdownQueue, {
+                    text = "+" .. interestCoins .. "$ interest",
+                    opacity = 0,
+                    coins = interestCoins,
+                    animated = false,
+                    yOffset = 20,
+                    animationStarted = false
+                })
             end
         end
 
