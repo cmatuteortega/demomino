@@ -10,7 +10,7 @@ local scoreAnimatingSound = nil
 local endScoreAnimatingSound = nil
 local currentScoreAnimatingSource = nil
 
-local musicVolume = 0.25  -- Background music at 15%
+local musicVolume = 0.  -- Background music at 15%
 local sfxVolume = 1     -- Sound effects at 50%
 local sfxVolumeBoost = 1.3     -- Sound effects at 50%
 local chipLoopVolumeMultiplier = 0.25  -- Chip loops at 70% of sfxVolume (30% quieter)

@@ -180,6 +180,38 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle title screen button presses
+    if gameState.gamePhase == "title_screen" then
+        -- Check for NEW GAME> button press
+        if gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.titleNewGameButtonPressed = true
+        end
+
+        -- Check for CONTINUE> button press
+        if gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.titleContinueButtonPressed = true
+        end
+        return
+    end
+
     -- Prevent input during scoring sequence
     if gameState.scoringSequence then
         return
@@ -281,14 +313,70 @@ function Touch.released(x, y, istouch, touchId)
             return
         end
 
-        -- Check for button presses on title screen
-        local buttonName = UI.TitleScreen.getButtonAtPoint(x, y)
-        if buttonName then
-            UI.TitleScreen.handleButtonPress(buttonName)
+        -- Handle NEW GAME> button release
+        if touchState.titleNewGameButtonPressed and gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
+            -- Only advance if we pressed the button AND released over it
+            -- Animate to white with a callback to transition after the flash
+            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- After white flash, start new game
+                UI.TitleScreen.startNewGame()
+                -- Reset color to pink for next time
+                gameState.titleNewGameButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
+            end)
+        elseif touchState.titleNewGameButtonPressed then
+            -- Released outside button - reset color back to pink
+            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
+        end
+
+        -- Handle CONTINUE> button release
+        if touchState.titleContinueButtonPressed and gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
+            -- Only advance if we pressed the button AND released over it
+            -- Animate to white with a callback to transition after the flash
+            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- After white flash, continue game
+                UI.TitleScreen.continueGame()
+                -- Reset color to pink for next time
+                gameState.titleContinueButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
+            end)
+        elseif touchState.titleContinueButtonPressed then
+            -- Released outside button - reset color back to pink
+            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
         end
 
         touchState.isPressed = false
         touchState.touchId = nil
+        touchState.titleNewGameButtonPressed = false
+        touchState.titleContinueButtonPressed = false
         return
     end
 
@@ -315,6 +403,9 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsFromTitle = false
             -- Auto-save current progress before returning to title
             Save.saveGame(gameState)
+            -- Reset title tiles for re-animation
+            gameState.titleTilesInitialized = false
+            gameState.titleTiles = {}
             -- Return to title screen
             gameState.gamePhase = "title_screen"
         -- Check for close button
@@ -385,6 +476,9 @@ function Touch.released(x, y, istouch, touchId)
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
             -- Delete save when returning to title from lost screen (game is over)
             Save.deleteSave()
+            -- Reset title tiles for re-animation
+            gameState.titleTilesInitialized = false
+            gameState.titleTiles = {}
             -- Return to title screen
             gameState.gamePhase = "title_screen"
         end

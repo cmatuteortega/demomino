@@ -1,12 +1,137 @@
 UI = UI or {}
 UI.TitleScreen = {}
 
--- Store button bounds for touch detection
-local buttons = {
-    newGame = nil,
-    continue = nil,
-    options = nil
-}
+-- Initialize title tiles for DEMOMINO animation
+function UI.TitleScreen.initializeTitleTiles()
+    if gameState.titleTilesInitialized then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Define the 4 tiles spelling DEMOMINO (horizontal orientation, letters on left/right halves)
+    local tileData = {
+        {letters = {"D", "E"}},
+        {letters = {"M", "O"}},
+        {letters = {"M", "I"}},
+        {letters = {"N", "O"}}
+    }
+
+    -- Calculate tile positioning (tiles will be horizontal/tilted, positioned next to each other)
+    -- Get tilted sprite to calculate sizing
+    local sampleSprite = dominoTiltedSprites and dominoTiltedSprites["00"]
+    if not sampleSprite or not sampleSprite.sprite then
+        return
+    end
+
+    -- Calculate scale to fit 4 tiles within screen width with 200px total margin (100px each side)
+    local margin = UI.Layout.scale(200)
+    local availableWidth = screenWidth - margin
+    local gapBetweenTiles = UI.Layout.scale(15)  -- Small gap between tiles
+
+    -- Total width needed: 4 tiles + 3 gaps
+    -- availableWidth = (4 * spriteWidth * scale) + (3 * gap)
+    -- solve for scale
+    local totalGaps = 3 * gapBetweenTiles
+    local spriteWidthNeeded = (availableWidth - totalGaps) / 4
+    local baseScale = spriteWidthNeeded / sampleSprite.sprite:getWidth()
+
+    local spriteWidth = sampleSprite.sprite:getWidth() * baseScale
+    local tileSpacing = spriteWidth + gapBetweenTiles
+
+    -- Center tiles based on screen center, not borders
+    -- For 4 tiles: tile positions are at -1.5, -0.5, +0.5, +1.5 spacing from center
+    local centerX = screenWidth / 2
+    local targetY = screenHeight * 0.28  -- Position at 28% from top
+
+    gameState.titleTiles = {}
+
+    for i, data in ipairs(tileData) do
+        -- Position tiles symmetrically around center
+        -- i=1: -1.5 spacing, i=2: -0.5 spacing, i=3: +0.5 spacing, i=4: +1.5 spacing
+        local offsetFromCenter = (i - 2.5) * tileSpacing
+        local targetX = centerX + offsetFromCenter
+
+        -- Create tile object with animation properties
+        local tile = {
+            letters = data.letters,
+            targetX = targetX,
+            targetY = targetY,
+            currentX = targetX,
+            currentY = -UI.Layout.scale(200),  -- Start off-screen top
+            scale = baseScale,
+            floatPhase = (i - 1) * 0.5,  -- Offset phase for variety
+            floatOffset = 0,
+            opacity = 1.0,
+            rotation = 0
+        }
+
+        table.insert(gameState.titleTiles, tile)
+
+        -- Trigger fall-in animation with stagger
+        UI.Animation.animateTo(tile, {currentY = targetY}, 0.8, "easeOutBack", nil)
+    end
+
+    gameState.titleTilesInitialized = true
+end
+
+-- Update title tile idle animations
+function UI.TitleScreen.updateTitleTileAnimations(dt)
+    if not gameState.titleTiles or #gameState.titleTiles == 0 then
+        return
+    end
+
+    local time = love.timer.getTime()
+
+    for _, tile in ipairs(gameState.titleTiles) do
+        -- Floating animation - 3px range, 2.5 second cycle (same as hand tiles)
+        local floatPhase = time * 2.5 + tile.floatPhase
+        tile.floatOffset = math.sin(floatPhase) * 3
+    end
+end
+
+-- Draw a single title tile with letters (horizontal orientation)
+local function drawTitleTile(tile)
+    -- Get horizontal/tilted domino sprite (using 0-0 as clean base)
+    local spriteData = dominoTiltedSprites and dominoTiltedSprites["00"]
+
+    if not spriteData or not spriteData.sprite then
+        return
+    end
+
+    local sprite = spriteData.sprite
+    local spriteScale = tile.scale
+
+    -- Apply floating offset
+    local drawX = tile.currentX
+    local drawY = tile.currentY + tile.floatOffset
+
+    -- Draw domino sprite (horizontal orientation)
+    love.graphics.setColor(1, 1, 1, tile.opacity)
+    love.graphics.draw(sprite, drawX, drawY, tile.rotation, spriteScale, spriteScale,
+        sprite:getWidth()/2, sprite:getHeight()/2)
+
+    -- Draw letters using same positioning logic as X tile numbers (horizontal orientation)
+    -- Horizontal/tilted: left half is on the left, right half is on the right
+    local leftX = drawX - sprite:getWidth() * spriteScale / 4
+    local rightX = drawX + sprite:getWidth() * spriteScale / 4
+    local verticalOffset = -3 * spriteScale - UI.Layout.scale(40)  -- Base offset plus adjustment plus 50px up
+
+    -- Black color for letters
+    local blackColor = {0.1, 0.1, 0.1, tile.opacity}
+
+    -- Draw left letter (bigger font, scaled down 20%)
+    UI.Fonts.drawAnimatedText(tile.letters[1], leftX, drawY + verticalOffset, "bigScore", blackColor, "center",
+        {opacity = tile.opacity, scale = 0.8})
+
+    -- Draw right letter (bigger font, scaled down 20%)
+    UI.Fonts.drawAnimatedText(tile.letters[2], rightX, drawY + verticalOffset, "bigScore", blackColor, "center",
+        {opacity = tile.opacity, scale = 0.8})
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
 
 -- Draw the title screen
 function UI.TitleScreen.draw()
@@ -16,15 +141,16 @@ function UI.TitleScreen.draw()
     -- Background
     UI.Renderer.drawBackground()
 
-    -- Title with animated effects
-    local titleY = screenHeight * 0.25
-    local titleScale = 1 + math.sin(love.timer.getTime() * 1.5) * 0.08
-    local titleAnimProps = {scale = titleScale}
+    -- Initialize title tiles on first draw
+    UI.TitleScreen.initializeTitleTiles()
 
-    UI.Fonts.drawAnimatedText("DEMOMINO", screenWidth / 2, titleY, "title", UI.Colors.FONT_PINK, "center", titleAnimProps)
+    -- Draw animated title tiles
+    for _, tile in ipairs(gameState.titleTiles) do
+        drawTitleTile(tile)
+    end
 
     -- Subtitle
-    local subtitleY = titleY + UI.Layout.scale(50)
+    local subtitleY = screenHeight * 0.3 + UI.Layout.scale(80)
     UI.Fonts.drawText("Domino Deckbuilder", screenWidth / 2, subtitleY, "medium", UI.Colors.FONT_WHITE, "center")
 
     -- Best round display
@@ -35,120 +161,150 @@ function UI.TitleScreen.draw()
         UI.Fonts.drawText(bestRoundText, screenWidth / 2, bestRoundY, "small", UI.Colors.FONT_PINK, "center")
     end
 
-    -- Button configuration
-    local buttonWidth = UI.Layout.scale(200)
-    local buttonHeight = UI.Layout.scale(50)
-    local buttonCenterX = screenWidth / 2
-    local buttonSpacing = UI.Layout.scale(70)
-    local firstButtonY = screenHeight * 0.55
-
     -- Check if there's a saved game
     local hasSave = Save.hasSavedGame()
 
-    -- NEW GAME button
-    local newGameY = firstButtonY
-    buttons.newGame = {
-        x = buttonCenterX - buttonWidth / 2,
-        y = newGameY - buttonHeight / 2,
-        width = buttonWidth,
-        height = buttonHeight
-    }
-    UI.TitleScreen.drawButton("NEW GAME", buttonCenterX, newGameY, buttonWidth, buttonHeight, UI.Colors.FONT_WHITE)
+    -- Draw title screen buttons (NEW GAME and optionally CONTINUE, centered as a group)
+    UI.TitleScreen.drawTitleButtons(hasSave)
 
-    -- CONTINUE button (only if save exists)
+    -- Settings button (bottom-left corner, same as main game)
+    UI.Renderer.drawSettingsButton()
+
+    -- Settings menu overlay (if open)
+    UI.Renderer.drawSettingsMenu()
+end
+
+-- Draw title screen buttons (NEW GAME and optionally CONTINUE)
+function UI.TitleScreen.drawTitleButtons(hasSave)
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local time = love.timer.getTime()
+
+    -- Get font and calculate text dimensions
+    local font = UI.Fonts.get("bigScore")
+    local newGameText = "-NEW-"
+    local continueText = "-RESUME-"
+    local buttonSpacing = UI.Layout.scale(40)
+    local margin = UI.Layout.scale(40)
+
+    -- Calculate widths
+    local newGameWidth = 0
+    for i = 1, #newGameText do
+        newGameWidth = newGameWidth + font:getWidth(newGameText:sub(i, i))
+    end
+
+    local continueWidth = 0
     if hasSave then
-        local continueY = newGameY + buttonSpacing
-        buttons.continue = {
-            x = buttonCenterX - buttonWidth / 2,
-            y = continueY - buttonHeight / 2,
-            width = buttonWidth,
-            height = buttonHeight
-        }
-        -- Add pulsing effect to continue button
-        local pulseScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
-        UI.TitleScreen.drawButton("CONTINUE", buttonCenterX, continueY, buttonWidth, buttonHeight, UI.Colors.FONT_PINK, pulseScale)
+        for i = 1, #continueText do
+            continueWidth = continueWidth + font:getWidth(continueText:sub(i, i))
+        end
+    end
+
+    -- Calculate total group width
+    local totalWidth = hasSave and (continueWidth + buttonSpacing + newGameWidth) or newGameWidth
+
+    -- Check if buttons fit on screen, scale down if needed
+    local fontScale = 1.0
+    local availableWidth = screenWidth - (margin * 2)
+    if totalWidth > availableWidth then
+        fontScale = availableWidth / totalWidth
+    end
+
+    -- Recalculate widths with scale
+    newGameWidth = newGameWidth * fontScale
+    if hasSave then
+        continueWidth = continueWidth * fontScale
+        totalWidth = continueWidth + buttonSpacing + newGameWidth
     else
-        buttons.continue = nil
+        totalWidth = newGameWidth
     end
 
-    -- OPTIONS button
-    local optionsY = hasSave and (firstButtonY + buttonSpacing * 2) or (firstButtonY + buttonSpacing)
-    buttons.options = {
-        x = buttonCenterX - buttonWidth / 2,
-        y = optionsY - buttonHeight / 2,
-        width = buttonWidth,
-        height = buttonHeight
+    -- Position group centered on screen
+    local verticalMargin = UI.Layout.scale(80)
+    local groupCenterX = screenWidth / 2
+    local groupStartX = groupCenterX - totalWidth / 2
+    local textY = screenHeight - font:getHeight() * fontScale - verticalMargin + 5
+
+    -- Draw CONTINUE> button (if save exists)
+    if hasSave then
+        local continueX = groupStartX
+        local textColor = gameState.titleContinueButtonAnimation.color or UI.Colors.FONT_PINK
+
+        -- Add pulsing effect
+        local pulseFactor = math.sin(time * 3) * 0.1 + 0.9
+        local pulsingColor = {
+            textColor[1] * pulseFactor,
+            textColor[2] * pulseFactor,
+            textColor[3] * pulseFactor,
+            textColor[4]
+        }
+
+        -- Draw each character with wave animation
+        local currentX = continueX
+        for i = 1, #continueText do
+            local char = continueText:sub(i, i)
+            local charWidth = font:getWidth(char) * fontScale
+
+            -- Wave animation
+            local phase = time * 2.5 + (i - 1) * 0.2
+            local waveOffset = math.sin(phase) * 3
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4),
+                scale = fontScale
+            }
+
+            UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", pulsingColor, "left", animProps)
+
+            currentX = currentX + charWidth
+        end
+
+        -- Store text bounds for touch handling
+        local padding = UI.Layout.scale(20)
+        gameState.titleContinueButtonBounds = {
+            x = continueX - padding,
+            y = textY - padding,
+            width = continueWidth + padding * 2,
+            height = font:getHeight() * fontScale + padding * 2
+        }
+    else
+        gameState.titleContinueButtonBounds = nil
+    end
+
+    -- Draw NEW GAME> button
+    local newGameX = hasSave and (groupStartX + continueWidth + buttonSpacing) or groupStartX
+    local textColor = gameState.titleNewGameButtonAnimation.color or UI.Colors.FONT_WHITE
+
+    -- Draw each character with wave animation
+    local currentX = newGameX
+    for i = 1, #newGameText do
+        local char = newGameText:sub(i, i)
+        local charWidth = font:getWidth(char) * fontScale
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = fontScale
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store text bounds for touch handling
+    local padding = UI.Layout.scale(20)
+    gameState.titleNewGameButtonBounds = {
+        x = newGameX - padding,
+        y = textY - padding,
+        width = newGameWidth + padding * 2,
+        height = font:getHeight() * fontScale + padding * 2
     }
-    UI.TitleScreen.drawButton("OPTIONS", buttonCenterX, optionsY, buttonWidth, buttonHeight, UI.Colors.FONT_WHITE)
-
-    -- Version/credits at bottom
-    local creditsY = screenHeight - UI.Layout.scale(30)
-    UI.Fonts.drawText("Made with LÖVE", screenWidth / 2, creditsY, "small", UI.Colors.OUTLINE, "center")
-end
-
--- Draw a single button
-function UI.TitleScreen.drawButton(text, centerX, centerY, width, height, textColor, scale)
-    scale = scale or 1
-
-    local x = centerX - width / 2
-    local y = centerY - height / 2
-
-    -- Apply scale
-    if scale ~= 1 then
-        love.graphics.push()
-        love.graphics.translate(centerX, centerY)
-        love.graphics.scale(scale, scale)
-        love.graphics.translate(-centerX, -centerY)
-    end
-
-    -- Button background
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", x, y, width, height, UI.Layout.scale(8))
-
-    -- Button outline
-    UI.Colors.setOutline()
-    love.graphics.setLineWidth(UI.Layout.scale(3))
-    love.graphics.rectangle("line", x, y, width, height, UI.Layout.scale(8))
-
-    -- Button text
-    UI.Fonts.drawText(text, centerX, centerY, "button", textColor, "center")
-
-    if scale ~= 1 then
-        love.graphics.pop()
-    end
-
-    -- Reset
-    UI.Colors.resetWhite()
-end
-
--- Check if a point is inside a button
-function UI.TitleScreen.getButtonAtPoint(x, y)
-    local function isInButton(button)
-        if not button then return false end
-        return x >= button.x and x <= button.x + button.width and
-               y >= button.y and y <= button.y + button.height
-    end
-
-    if isInButton(buttons.newGame) then
-        return "newGame"
-    elseif isInButton(buttons.continue) then
-        return "continue"
-    elseif isInButton(buttons.options) then
-        return "options"
-    end
-
-    return nil
-end
-
--- Handle button press
-function UI.TitleScreen.handleButtonPress(buttonName)
-    if buttonName == "newGame" then
-        UI.TitleScreen.startNewGame()
-    elseif buttonName == "continue" then
-        UI.TitleScreen.continueGame()
-    elseif buttonName == "options" then
-        UI.TitleScreen.openOptions()
-    end
 end
 
 -- Start a new game
@@ -255,12 +411,6 @@ function UI.TitleScreen.continueGame()
 
     -- Go to map phase (player can choose where to go)
     gameState.gamePhase = "map"
-end
-
--- Open options from title screen
-function UI.TitleScreen.openOptions()
-    gameState.settingsMenuOpen = true
-    gameState.settingsFromTitle = true  -- Flag to indicate we came from title screen
 end
 
 return UI.TitleScreen

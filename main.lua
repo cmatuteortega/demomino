@@ -145,7 +145,16 @@ function love.load()
         -- Settings system
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
-        sfxEnabled = true  -- Track sound effects state
+        sfxEnabled = true,  -- Track sound effects state
+        -- Title screen animation system
+        titleTiles = {},  -- Array of 4 animated domino tiles for DEMOMINO
+        titleTilesInitialized = false,  -- Track if title tiles have been set up
+        titleNewGameButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        },
+        titleContinueButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        }
     }
     
     UI.Fonts.load()
@@ -940,7 +949,9 @@ function love.update(dt)
     updateCoinBreakdownAnimation(dt)
     updateChipLoopSound()
 
-    if gameState.gamePhase == "playing" then
+    if gameState.gamePhase == "title_screen" then
+        UI.TitleScreen.updateTitleTileAnimations(dt)
+    elseif gameState.gamePhase == "playing" then
         Hand.update(dt)
         Board.update(dt)
         updateScoringSequence(dt)
