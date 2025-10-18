@@ -2070,15 +2070,33 @@ end
 
 -- Draw a single path connection between two nodes
 function UI.Renderer.drawPathConnection(map, fromNode, toNode)
+    -- Only show paths that are reachable from the current node going forward
+    if not map.currentNode then
+        return
+    end
+
+    -- Skip paths from levels before the current node
+    if fromNode.depth < map.currentNode.depth then
+        return
+    end
+
+    -- Get all nodes reachable from current node
+    local reachableNodes = Map.getReachableNodes(map, map.currentNode)
+
+    -- Only draw if both nodes in this connection are reachable from current position
+    if not reachableNodes[fromNode.id] or not reachableNodes[toNode.id] then
+        return
+    end
+
     -- Determine path color based on availability
     local isPathAvailable = false
     local isPathCompleted = false
-    
+
     if map.completedNodes[fromNode.id] then
         isPathAvailable = Map.isNodeAvailable(map, toNode.id)
         isPathCompleted = map.completedNodes[toNode.id]
     end
-    
+
     -- Set path color
     if isPathCompleted then
         love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.8) -- Pink for completed paths
@@ -2087,35 +2105,9 @@ function UI.Renderer.drawPathConnection(map, fromNode, toNode)
     else
         love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.6) -- Dark for unavailable paths
     end
-    
+
     -- Draw line between nodes
     love.graphics.line(fromNode.x, fromNode.y, toNode.x, toNode.y)
-    
-    -- Add arrow indicator for path direction
-    local arrowSize = UI.Layout.scale(8)
-    local dx = toNode.x - fromNode.x
-    local dy = toNode.y - fromNode.y
-    local length = math.sqrt(dx * dx + dy * dy)
-    
-    if length > 0 then
-        -- Normalize direction
-        dx = dx / length
-        dy = dy / length
-        
-        -- Position arrow 75% along the path
-        local arrowX = fromNode.x + dx * length * 0.75
-        local arrowY = fromNode.y + dy * length * 0.75
-        
-        -- Calculate arrow points
-        local perpX = -dy * arrowSize
-        local perpY = dx * arrowSize
-        
-        love.graphics.polygon("fill", 
-            arrowX + dx * arrowSize, arrowY + dy * arrowSize,
-            arrowX - dx * arrowSize + perpX * 0.5, arrowY - dy * arrowSize + perpY * 0.5,
-            arrowX - dx * arrowSize - perpX * 0.5, arrowY - dy * arrowSize - perpY * 0.5
-        )
-    end
 end
 
 -- Draw visual backgrounds and indicators for nodes
@@ -2157,17 +2149,11 @@ function UI.Renderer.drawNodeBackground(map, node, radius)
     local selectedRotation = 0
     
     if isCurrentNode then
-        -- Current node shows selected sprite with pulsing animation
+        -- Current node shows selected sprite (static)
         showSelected = true
-        local pulse = 1 + math.sin(love.timer.getTime() * 4) * 0.1
-        spriteScale = baseScale * pulse
-        -- Add rotation for current node
-        selectedRotation = math.sin(love.timer.getTime() * 2) * 0.1
     elseif isAvailable then
-        -- Available nodes show selected sprite
+        -- Available nodes show selected sprite (static)
         showSelected = true
-        -- Subtle floating rotation for available nodes
-        selectedRotation = math.sin(love.timer.getTime() * 1.5) * 0.05
     end
     -- Completed and unavailable nodes only show base sprite
     
@@ -2300,24 +2286,21 @@ function UI.Renderer.getMapTileHighlight(map, tile)
             local isPathCompleted = (map.completedNodes[fromNode.id] and map.completedNodes[toNode.id])
             
             if isPathFromCurrent then
-                -- Path from current node - bright blue with flow effect
-                local flow = math.sin(time * 3 + tile.x * 0.01) * 0.2
+                -- Path from current node - static bright blue
                 return {
-                    glow = 0.3 + flow,
+                    glow = 0.3,
                     color = {0.4, 0.9, 1, 1}
                 }
             elseif isPathToCurrent then
-                -- Path leading to current node - green with reverse flow
-                local reverseFlow = math.sin(time * 3 - tile.x * 0.01) * 0.15
+                -- Path leading to current node - static green
                 return {
-                    glow = 0.25 + reverseFlow,
+                    glow = 0.25,
                     color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], 1}
                 }
             elseif isPathAvailable then
-                -- Available path - cyan with gentle pulse
-                local pulse = math.sin(time * 2) * 0.1
+                -- Available path - static cyan
                 return {
-                    glow = 0.2 + pulse,
+                    glow = 0.2,
                     color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}
                 }
             elseif isPathCompleted then

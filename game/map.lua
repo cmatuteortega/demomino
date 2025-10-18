@@ -979,14 +979,14 @@ function Map.calculateNodePositions(map, screenWidth, screenHeight)
     
     -- Calculate level spacing: exactly 2 horizontal tiles between nodes
     -- [Node] → [H-Tile] → [H-Tile] → [Node]
-    local levelSpacing = nodeWidth + 2 * horizontalWidth
-    
+    local levelSpacing = nodeWidth + 2 * horizontalWidth - UI.Layout.scale(2)
+
     -- Adjust vertical spacing for diagonal paths - accommodate 2 vertical tiles
     -- Need space for 2 vertical tiles plus gaps for diagonal path sequences
     local tileGap = UI.Layout.scale(2)
     local pathSpacing = math.max(UI.Layout.scale(90), 2 * verticalHeight + 3 * tileGap)
     -- Reduce row spacing by half the height of a vertical tile
-    pathSpacing = pathSpacing - verticalHeight * 0.2
+    pathSpacing = pathSpacing - verticalHeight * 0.2 - UI.Layout.scale(2)
     
     local numLevels = #map.levels
     local maxPathsInLevel = 0
@@ -1312,13 +1312,13 @@ function Map.createHorizontalChain(fromNode, toNode, pathValues)
     if direction > 0 then
         -- Moving right: position first tile so its left edge is at source node's right edge
         -- Tile center = source node right edge + half tile width
-        startX = fromNode.x + nodeEdgeOffset + pathTileHalfWidth
+        startX = fromNode.position.x + nodeEdgeOffset + pathTileHalfWidth
     else
-        -- Moving left: position first tile so its right edge is at source node's left edge  
+        -- Moving left: position first tile so its right edge is at source node's left edge
         -- Tile center = source node left edge - half tile width
-        startX = fromNode.x - nodeEdgeOffset - pathTileHalfWidth
+        startX = fromNode.position.x - nodeEdgeOffset - pathTileHalfWidth
     end
-    local y = fromNode.y
+    local y = fromNode.position.y
     
     -- Create a continuous domino chain with connecting values
     local chainValues = Map.generateConnectingChain(numTiles, pathValues)
@@ -1326,7 +1326,7 @@ function Map.createHorizontalChain(fromNode, toNode, pathValues)
     -- Create tiles with proper spacing
     for i = 1, numTiles do
         local tileValue = chainValues[i]
-        
+
         local tile = Domino.new(tileValue[1], tileValue[2])
         tile.isMapTile = true
         tile.isPathTile = true
@@ -1334,13 +1334,13 @@ function Map.createHorizontalChain(fromNode, toNode, pathValues)
         tile.fromNode = fromNode
         tile.toNode = toNode
         tile.visible = false -- Path tiles are hidden initially
-        
+
         -- Position tiles with proper spacing to prevent overlap
         tile.worldX = startX + (i - 1) * tileSpacing * direction
         tile.worldY = y
         tile.x = tile.worldX
         tile.y = tile.worldY
-        
+
         table.insert(tiles, tile)
     end
     
@@ -1375,8 +1375,8 @@ function Map.createBridgeChain(fromNode, toNode, pathValues)
     
     -- Position tiles edge-to-edge starting from destination node working backwards
     -- Pattern: [DestNode] ← [H1] ← [H2] ← [V] ← [H3] ← [H4] ← [SourceNode]
-    local y = fromNode.y -- All tiles at same row level
-    local destinationLeftEdge = toNode.x - nodeWidth / 2
+    local y = fromNode.position.y -- All tiles at same row level
+    local destinationLeftEdge = toNode.position.x - nodeWidth / 2
     
     -- Tile 1: First horizontal (immediately left of destination node)
     local tile1 = Domino.new(chainValues[1][1], chainValues[1][2])
@@ -1497,19 +1497,19 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     startingHorizontalTile.fromNode = fromNode
     startingHorizontalTile.toNode = toNode
     startingHorizontalTile.visible = false -- Path tiles are hidden initially
-    
+
     -- Position so left edge touches source node's right edge
-    local sourceRightEdge = fromNode.x + nodeWidth / 2
+    local sourceRightEdge = fromNode.position.x + nodeWidth / 2
     startingHorizontalTile.worldX = sourceRightEdge + horizontalWidth / 2
-    startingHorizontalTile.worldY = fromNode.y
+    startingHorizontalTile.worldY = fromNode.position.y
     startingHorizontalTile.x = startingHorizontalTile.worldX
     startingHorizontalTile.y = startingHorizontalTile.worldY
     table.insert(tiles, startingHorizontalTile)
-    
+
     -- Position tiles working backwards from destination node
     -- Starting from destination node's left edge
-    local destinationLeftEdge = toNode.x - nodeWidth / 2
-    
+    local destinationLeftEdge = toNode.position.x - nodeWidth / 2
+
     -- Tile 2: Destination horizontal tile - its RIGHT edge touches destination node's LEFT edge
     local destinationHorizontalTile = Domino.new(chainValues[2][1], chainValues[2][2])
     destinationHorizontalTile.isMapTile = true
@@ -1518,10 +1518,10 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     destinationHorizontalTile.fromNode = fromNode
     destinationHorizontalTile.toNode = toNode
     destinationHorizontalTile.visible = false -- Path tiles are hidden initially
-    
+
     -- Position so right edge touches destination's left edge
     destinationHorizontalTile.worldX = destinationLeftEdge - horizontalWidth / 2
-    destinationHorizontalTile.worldY = toNode.y
+    destinationHorizontalTile.worldY = toNode.position.y
     destinationHorizontalTile.x = destinationHorizontalTile.worldX
     destinationHorizontalTile.y = destinationHorizontalTile.worldY
     table.insert(tiles, destinationHorizontalTile)
@@ -1541,18 +1541,18 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     
     -- Detect diagonal direction for different vertical tile positioning
     local isUpDiagonal = fromNode.path < toNode.path
-    
+
     if isUpDiagonal then
         -- For up diagonals: position vertical tiles upward with total offset of 2 tile heights
-        firstVerticalTile.worldY = toNode.y - verticalHeight * 0.32
+        firstVerticalTile.worldY = toNode.position.y - verticalHeight * 0.32 + UI.Layout.scale(2)
     else
         -- For down diagonals: position vertical tiles downward by 1/3 tile height + half tile height offset
-        firstVerticalTile.worldY = toNode.y + verticalHeight * 0.32
+        firstVerticalTile.worldY = toNode.position.y + verticalHeight * 0.32 - UI.Layout.scale(2)
     end
-    
+
     firstVerticalTile.x = firstVerticalTile.worldX
     firstVerticalTile.y = firstVerticalTile.worldY
-    
+
     -- Tile 4: Second vertical tile - positioned relative to the first vertical tile
     local secondVerticalTile = Domino.new(chainValues[4][1], chainValues[4][2])
     secondVerticalTile.isMapTile = true
@@ -1561,10 +1561,10 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     secondVerticalTile.fromNode = fromNode
     secondVerticalTile.toNode = toNode
     secondVerticalTile.visible = false -- Path tiles are hidden initially
-    
+
     -- Position overlapping with the first vertical tile for better visual connection
     secondVerticalTile.worldX = firstVerticalTile.worldX
-    
+
     if isUpDiagonal then
         -- For up diagonals: continue upward positioning (total 2 tile height offset)
         secondVerticalTile.worldY = firstVerticalTile.worldY - verticalHeight * 0.9
@@ -1574,7 +1574,7 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     end
     secondVerticalTile.x = secondVerticalTile.worldX
     secondVerticalTile.y = secondVerticalTile.worldY
-    
+
     -- Insert tiles in depth-sorted order: tiles with higher Y coordinates (lower rows) render on top
     if isUpDiagonal then
         -- For up diagonals: secondVertical has lower Y (upper row), firstVertical has higher Y (lower row)
@@ -1582,12 +1582,12 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
         table.insert(tiles, secondVerticalTile)
         table.insert(tiles, firstVerticalTile)
     else
-        -- For down diagonals: firstVertical has lower Y (upper row), secondVertical has higher Y (lower row)  
+        -- For down diagonals: firstVertical has lower Y (upper row), secondVertical has higher Y (lower row)
         -- Insert firstVertical first (renders behind), then secondVertical (renders on top)
         table.insert(tiles, firstVerticalTile)
         table.insert(tiles, secondVerticalTile)
     end
-    
+
     return tiles
 end
 
@@ -2395,7 +2395,7 @@ function Map.generatePreviewPath(map, fromNode, toNode)
     
     -- Generate temporary path tiles (similar to createPathTilesChain but marked as preview)
     local pathTiles = Map.createPathTilesChain(map, fromNode, toNode)
-    
+
     -- Mark tiles as preview tiles and set initial animation state
     for i, tile in ipairs(pathTiles) do
         tile.isPreviewTile = true
@@ -2404,7 +2404,7 @@ function Map.generatePreviewPath(map, fromNode, toNode)
         tile.scale = 0.8 -- Start slightly smaller
         tile.animationProgress = 0
         tile.visible = true -- Will be rendered but starts transparent
-        
+
         -- Special timing for L-shaped paths: delay the destination connecting tile
         if fromNode.path ~= toNode.path and i == 2 then
             -- This is the destination horizontal tile in a diagonal chain - delay it for L-shape effect
