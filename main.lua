@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -378,6 +378,9 @@ function updateScoreCountdown(dt)
         if gameState.displayedRemainingScore < actualRemaining then
             gameState.displayedRemainingScore = actualRemaining
             gameState.scoreCountdownSpeed = 0
+
+            -- Stop score animation sound and play end sound
+            UI.Audio.stopScoreAnimating()
         end
     else
         gameState.displayedRemainingScore = actualRemaining
@@ -416,10 +419,13 @@ function updateScore(newScore, bonusInfo)
         gameState.previousScore = gameState.score
         gameState.score = newScore
 
-        -- Trigger rapid countdown animation (speed: points to count per second)
-        -- Make it fast enough to be snappy but visible: 150 points per second
+        -- Trigger countdown animation (speed: points to count per second)
+        -- Slower to allow sound to play out more: 60 points per second
         local remainingDifference = gameState.displayedRemainingScore - math.max(0, gameState.targetScore - newScore)
-        gameState.scoreCountdownSpeed = math.max(150, remainingDifference * 2)  -- At least 150/sec, or faster for big changes
+        gameState.scoreCountdownSpeed = math.max(60, remainingDifference * 1.2)  -- At least 60/sec, or faster for big changes
+
+        -- Start score animation sound effect
+        UI.Audio.playScoreAnimating()
 
         -- Create score popup animation
         local scoreX = gameState.screen.width - UI.Layout.scale(120)

@@ -6,9 +6,13 @@ local placeTileSounds = {}
 local returnTileSound = nil
 local chipLoopSounds = {}
 local currentChipLoopSource = nil
+local scoreAnimatingSound = nil
+local endScoreAnimatingSound = nil
+local currentScoreAnimatingSource = nil
 
-local musicVolume = 0.3  -- Background music at 15%
+local musicVolume = 0.25  -- Background music at 15%
 local sfxVolume = 1     -- Sound effects at 50%
+local sfxVolumeBoost = 1.3     -- Sound effects at 50%
 local chipLoopVolumeMultiplier = 0.25  -- Chip loops at 70% of sfxVolume (30% quieter)
 
 function UI.Audio.load()
@@ -53,6 +57,20 @@ function UI.Audio.load()
             sound:setVolume(sfxVolume * chipLoopVolumeMultiplier)
             table.insert(chipLoopSounds, sound)
         end
+    end
+
+    -- Load score animation sound effects
+    local scoreAnimatingPath = "sounds/fx/score_animating.mp3"
+    if love.filesystem.getInfo(scoreAnimatingPath) then
+        scoreAnimatingSound = love.audio.newSource(scoreAnimatingPath, "static")
+        scoreAnimatingSound:setLooping(true)
+        scoreAnimatingSound:setVolume(sfxVolume)
+    end
+
+    local endScoreAnimatingPath = "sounds/fx/end_score_animating.mp3"
+    if love.filesystem.getInfo(endScoreAnimatingPath) then
+        endScoreAnimatingSound = love.audio.newSource(endScoreAnimatingPath, "static")
+        endScoreAnimatingSound:setVolume(sfxVolumeBoost)
     end
 end
 
@@ -111,6 +129,12 @@ function UI.Audio.setSFXVolume(volume)
     end
     for _, sound in ipairs(chipLoopSounds) do
         sound:setVolume(sfxVolume * chipLoopVolumeMultiplier)
+    end
+    if scoreAnimatingSound then
+        scoreAnimatingSound:setVolume(sfxVolume)
+    end
+    if endScoreAnimatingSound then
+        endScoreAnimatingSound:setVolume(sfxVolumeBoost)
     end
 end
 
@@ -172,6 +196,46 @@ end
 
 function UI.Audio.isChipLoopPlaying()
     return currentChipLoopSource and currentChipLoopSource:isPlaying()
+end
+
+function UI.Audio.playScoreAnimating()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if not scoreAnimatingSound then
+        return
+    end
+
+    -- Stop current score animating sound if playing
+    if currentScoreAnimatingSource and currentScoreAnimatingSource:isPlaying() then
+        currentScoreAnimatingSource:stop()
+    end
+
+    -- Clone and play the looping score animation sound
+    currentScoreAnimatingSource = scoreAnimatingSound:clone()
+    currentScoreAnimatingSource:play()
+end
+
+function UI.Audio.stopScoreAnimating()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    -- Stop the looping score animation sound
+    if currentScoreAnimatingSource and currentScoreAnimatingSource:isPlaying() then
+        currentScoreAnimatingSource:stop()
+        currentScoreAnimatingSource = nil
+    end
+
+    -- Play the end score animation sound (non-looping, full length)
+    if endScoreAnimatingSound then
+        endScoreAnimatingSound:clone():play()
+    end
+end
+
+function UI.Audio.isScoreAnimating()
+    return currentScoreAnimatingSource and currentScoreAnimatingSource:isPlaying()
 end
 
 return UI.Audio
