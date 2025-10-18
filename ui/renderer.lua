@@ -333,12 +333,12 @@ local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
         -- Horizontal/tilted: left half is on the left, right half is on the right
         local leftX = x - sprite:getWidth() * spriteScale / 4
         local rightX = x + sprite:getWidth() * spriteScale / 4
-        local verticalOffset = -8 * spriteScale  -- ADJUST THIS: negative = up, positive = down
+        local verticalOffset = -3 * spriteScale - 6  -- Base offset plus 3px up
 
         -- Draw left side number if >= 10
         if type(leftVal) == "number" and leftVal >= 10 then
             local text = tostring(leftVal)
-            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local fontSize = "title"
             local color = {0.2, 0.2, 0.2, 1}  -- Dark text
             UI.Fonts.drawText(text, leftX, y + verticalOffset, fontSize, color, "center")
         end
@@ -346,7 +346,7 @@ local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
         -- Draw right side number if >= 10
         if type(rightVal) == "number" and rightVal >= 10 then
             local text = tostring(rightVal)
-            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local fontSize = "title"
             local color = {0.2, 0.2, 0.2, 1}  -- Dark text
             UI.Fonts.drawText(text, rightX, y + verticalOffset, fontSize, color, "center")
         end
@@ -354,13 +354,13 @@ local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
         -- Vertical: top half = left value, bottom half = right value
         local topY = y - sprite:getHeight() * spriteScale / 4
         local bottomY = y + sprite:getHeight() * spriteScale / 4
-        local topVerticalOffset = -7 * spriteScale  -- ADJUST THIS: negative = up, positive = down
-        local bottomVerticalOffset = -11 * spriteScale  -- ADJUST THIS: negative = up, positive = down
+        local topVerticalOffset = -3 * spriteScale - 10  -- Base offset plus 5px up
+        local bottomVerticalOffset = -3 * spriteScale - 15  -- Base offset plus 5px up
 
         -- Draw top number if >= 10
         if type(leftVal) == "number" and leftVal >= 10 then
             local text = tostring(leftVal)
-            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local fontSize = "title"
             local color = {0.2, 0.2, 0.2, 1}  -- Dark text
             UI.Fonts.drawText(text, x, topY + topVerticalOffset, fontSize, color, "center")
         end
@@ -368,7 +368,7 @@ local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
         -- Draw bottom number if >= 10
         if type(rightVal) == "number" and rightVal >= 10 then
             local text = tostring(rightVal)
-            local fontSize = "title"  -- ADJUST THIS: "small", "medium", "large", "title"
+            local fontSize = "title"
             local color = {0.2, 0.2, 0.2, 1}  -- Dark text
             UI.Fonts.drawText(text, x, bottomY + bottomVerticalOffset, fontSize, color, "center")
         end

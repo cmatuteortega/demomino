@@ -97,22 +97,32 @@ function Board.getTileDisplayWidth(tile, dynamicScale)
     -- Get the appropriate sprite for this domino
     local leftVal, rightVal = tile.left, tile.right
 
+    -- Replace values >= 10 with "x" for sprite lookup (same logic as renderer)
+    local leftSpriteVal = leftVal
+    local rightSpriteVal = rightVal
+    if type(leftVal) == "number" and leftVal >= 10 then
+        leftSpriteVal = "x"
+    end
+    if type(rightVal) == "number" and rightVal >= 10 then
+        rightSpriteVal = "x"
+    end
+
     -- Generate sprite key - for special tiles, use string concatenation directly
     local spriteKey
-    if type(leftVal) == "string" or type(rightVal) == "string" then
-        -- Special tile: use direct concatenation
-        spriteKey = leftVal .. rightVal
+    if type(leftSpriteVal) == "string" or type(rightSpriteVal) == "string" then
+        -- Special tile or X tile: use direct concatenation
+        spriteKey = leftSpriteVal .. rightSpriteVal
     else
         -- Regular tile: use min/max for consistency
-        local minVal = math.min(leftVal, rightVal)
-        local maxVal = math.max(leftVal, rightVal)
+        local minVal = math.min(leftSpriteVal, rightSpriteVal)
+        local maxVal = math.max(leftSpriteVal, rightSpriteVal)
         spriteKey = minVal .. maxVal
     end
 
     local spriteData
     if tile.orientation == "horizontal" then
-        -- Use tilted sprites for board tiles
-        local tiltedKey = leftVal .. rightVal
+        -- Use tilted sprites for board tiles (use sprite values with "x" replacement)
+        local tiltedKey = leftSpriteVal .. rightSpriteVal
         spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
     else
         -- Use vertical sprites for hand tiles

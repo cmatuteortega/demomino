@@ -927,7 +927,9 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
         -- Remove using the actual current index, not the potentially stale handIndex
         table.remove(gameState.hand, actualIndex)
         Board.arrangePlacedTiles()
-        Hand.updatePositions(gameState.hand)
+        Hand.updatePositions(gameState.hand, true)  -- Skip auto-sort to preserve hand order
+        -- Update hand signature to prevent auto-sorting on next frame
+        gameState.hand._lastSignature = Hand.getHandSignature(gameState.hand)
 
         -- Play tile placement sound
         UI.Audio.playTilePlaced()

@@ -239,6 +239,9 @@ function Hand.removeSelectedTiles(hand)
     -- Animate remaining tiles to their new positions smoothly
     Hand.animateRemainingTilesToNewPositions(hand)
 
+    -- Update hand signature to prevent auto-sorting after removal
+    hand._lastSignature = Hand.getHandSignature(hand)
+
     return removed
 end
 

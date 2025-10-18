@@ -350,12 +350,28 @@ function Domino.fuseTiles(tile1, tile2)
 
     local fusedTile = Domino.new(newLeft, newRight, newLeftScore, newRightScore)
 
-    -- IMPORTANT: For vertical tiles, normalize orientation to avoid sprite inversion
-    -- Vertical sprites should never be inverted (180° rotation), only horizontal tiles can flip
-    -- If both sides are numeric and left > right, swap them to use base sprite
-    if type(fusedTile.left) == "number" and type(fusedTile.right) == "number" then
+    -- IMPORTANT: Normalize tile orientation to avoid sprite inversion issues
+    -- This ensures we always use the base sprite, not the inverted version
+    -- For tiles with numeric values (including those >= 10), normalize by putting smaller value on left
+
+    -- Check if both sides are effectively numeric (either pure number or have numeric scores)
+    local leftIsNumeric = type(fusedTile.left) == "number"
+    local rightIsNumeric = type(fusedTile.right) == "number"
+
+    if leftIsNumeric and rightIsNumeric then
+        -- Both are pure numeric values - normalize if left > right
         if fusedTile.left > fusedTile.right then
-            -- Swap to use base sprite instead of inverted version
+            fusedTile.left, fusedTile.right = fusedTile.right, fusedTile.left
+            fusedTile.leftScore, fusedTile.rightScore = fusedTile.rightScore, fusedTile.leftScore
+        end
+    elseif not Domino.isSpecialValue(fusedTile.left) and not Domino.isSpecialValue(fusedTile.right) then
+        -- Neither side is special (odd/even), so both have numeric scores
+        -- This handles cases where one or both sides are >= 10 but have score overrides
+        -- Normalize based on the actual numeric scores to avoid using inverted sprites
+        local leftScore = fusedTile.leftScore or fusedTile.left
+        local rightScore = fusedTile.rightScore or fusedTile.right
+
+        if type(leftScore) == "number" and type(rightScore) == "number" and leftScore > rightScore then
             fusedTile.left, fusedTile.right = fusedTile.right, fusedTile.left
             fusedTile.leftScore, fusedTile.rightScore = fusedTile.rightScore, fusedTile.leftScore
         end
