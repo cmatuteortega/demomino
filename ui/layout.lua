@@ -207,16 +207,16 @@ function UI.Layout.getSettingsButtonPosition()
 end
 
 function UI.Layout.getCoinDisplayPosition()
-    local margin = UI.Layout.scale(40)
+    local margin = UI.Layout.scale(40)  -- Same margin as score counter
     local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
 
-    -- Position for coin counter text
-    local textX = settingsX + settingsSize / 2 - UI.Layout.scale(20)  -- Move to the left
-    local textY = settingsY - UI.Layout.scale(60)
+    -- Position for coin counter text (leftmost side, same offset as score counter)
+    local textX = margin  -- Same as score counter's left margin
+    local textY = settingsY - UI.Layout.scale(55)  -- Positioned 20px above settings button
 
-    -- Position for coin stack (separate from text)
-    local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(60)
-    local stackY = settingsY - UI.Layout.scale(60)
+    -- Position for coin stack (original position, independent of text position)
+    local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(70)  -- 10px to the right
+    local stackY = settingsY - UI.Layout.scale(80)  -- 20px higher
 
     return textX, textY, stackX, stackY
 end

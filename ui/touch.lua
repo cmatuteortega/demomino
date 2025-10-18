@@ -146,8 +146,25 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
-    -- Prevent input during scoring sequence or when round is won
-    if gameState.scoringSequence or gameState.gamePhase == "won" then
+    -- Handle NEXT >> button press on victory screen
+    if gameState.gamePhase == "won" then
+        if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.nextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.nextButtonPressed = true
+        end
+        return
+    end
+
+    -- Prevent input during scoring sequence
+    if gameState.scoringSequence then
         return
     end
     
@@ -294,24 +311,38 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
-    -- Handle victory screen - Continue to Map button
+    -- Handle victory screen - NEXT >> text button release
     if gameState.gamePhase == "won" then
-        if gameState.continueToMapButton and isPointInRect(x, y, gameState.continueToMapButton) then
-            -- Now increment round counter when player continues
-            gameState.currentRound = gameState.currentRound + 1
-            -- Target score is always fixed at 666
-            gameState.targetScore = 666
-
-            -- Update best round stats
-            Save.updateBestRound(gameState.currentRound)
-
-            gameState.gamePhase = "map"
-
-            -- Auto-save progress after winning a combat round
-            Save.saveGame(gameState)
+        -- Only advance if we pressed the button AND released over it
+        if touchState.nextButtonPressed and gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
+            -- Animate to white with a callback to transition after the flash
+            UI.Animation.animateTo(gameState.nextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- After white flash, transition to map
+                gameState.currentRound = gameState.currentRound + 1
+                gameState.targetScore = TARGET_SCORE
+                Save.updateBestRound(gameState.currentRound)
+                gameState.gamePhase = "map"
+                Save.saveGame(gameState)
+            end)
+        else
+            -- Released outside button - reset color back to pink
+            if touchState.nextButtonPressed then
+                UI.Animation.animateTo(gameState.nextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_PINK[1],
+                    [2] = UI.Colors.FONT_PINK[2],
+                    [3] = UI.Colors.FONT_PINK[3],
+                    [4] = UI.Colors.FONT_PINK[4]
+                }, 0.3, "easeOutQuart")
+            end
         end
         touchState.isPressed = false
         touchState.touchId = nil
+        touchState.nextButtonPressed = false
         return
     end
 
@@ -1081,42 +1112,37 @@ function Touch.checkGameEnd()
         -- Trigger victory phrase animation
         triggerVictoryPhrase()
 
-        -- Award coins based on hands remaining
+        -- Award coins based on various factors
         local handsLeft = gameState.maxHandsPerRound - gameState.handsPlayed
-        local baseCoins = handsLeft * 2
-        local bonusCoins = math.floor(gameState.startRoundCoins / 5)
-        local totalCoins = baseCoins + bonusCoins
+        local discardsLeft = 2 - gameState.discardsUsed
+        local winCoins = 1  -- Always award 1 coin for winning
+        local handsCoins = handsLeft * 2
+        local discardsCoins = discardsLeft * 1
+        local interestCoins = math.floor(gameState.startRoundCoins / 5)
+        local totalCoins = winCoins + handsCoins + discardsCoins + interestCoins
 
         if totalCoins > 0 then
-            updateCoins(gameState.coins + totalCoins, {hasBonus = bonusCoins > 0})
+            updateCoins(gameState.coins + totalCoins, {hasBonus = false})
 
-            -- Show coin breakdown with floating text
-            local centerX = gameState.screen.width / 2
-            local centerY = gameState.screen.height / 2
-
-            UI.Animation.createFloatingText(handsLeft .. " HANDS LEFT = " .. baseCoins .. "$",
-                centerX, centerY + UI.Layout.scale(100), {
-                color = {1, 0.9, 0.3, 1},
-                fontSize = "medium",
-                duration = 2.5,
-                riseDistance = 60,
-                startScale = 0.7,
-                endScale = 1.2,
-                easing = "easeOutBack"
-            })
-
-            if bonusCoins > 0 then
-                UI.Animation.createFloatingText("BONUS: +" .. bonusCoins .. "$",
-                    centerX, centerY + UI.Layout.scale(140), {
-                    color = {1, 1, 0.5, 1},
-                    fontSize = "medium",
-                    duration = 2.5,
-                    riseDistance = 60,
-                    startScale = 0.7,
-                    endScale = 1.2,
-                    easing = "easeOutBack"
-                })
+            -- Build coin breakdown display (shown above money counter)
+            gameState.coinBreakdown = {}
+            table.insert(gameState.coinBreakdown, {text = "+1$ win", opacity = 1.0})
+            if handsCoins > 0 then
+                table.insert(gameState.coinBreakdown, {text = "+" .. handsCoins .. "$ hands", opacity = 1.0})
             end
+            if discardsCoins > 0 then
+                table.insert(gameState.coinBreakdown, {text = "+" .. discardsCoins .. "$ discards", opacity = 1.0})
+            end
+            if interestCoins > 0 then
+                table.insert(gameState.coinBreakdown, {text = "+" .. interestCoins .. "$ interest", opacity = 1.0})
+            end
+        end
+
+        -- Animate buttons down when game is won (before hand tiles animate out)
+        if gameState.buttonAnimations then
+            UI.Animation.animateTo(gameState.buttonAnimations.playButton, {yOffset = 200}, 0.8, "easeOutBack")
+            UI.Animation.animateTo(gameState.buttonAnimations.discardButton, {yOffset = 200}, 0.8, "easeOutBack")
+            UI.Animation.animateTo(gameState.buttonAnimations.sortButton, {yOffset = 200}, 0.8, "easeOutBack")
         end
 
         -- Animate hand tiles discarding before showing victory screen
@@ -1280,33 +1306,6 @@ end
 -- Trigger satisfying progression animation when moving to a new node
 function Touch.triggerNodeProgressionAnimation(node)
     if not node or not node.tile then return end
-    
-    local centerX = gameState.screen.width / 2
-    local centerY = gameState.screen.height / 2
-    
-    -- Create celebration text for node advancement
-    local celebrationTexts = {
-        "PATH CHOSEN!",
-        "ADVANCING!",
-        "GOOD CHOICE!",
-        "ONWARD!"
-    }
-    local randomText = celebrationTexts[love.math.random(1, #celebrationTexts)]
-    
-    UI.Animation.createFloatingText(randomText, centerX, centerY - UI.Layout.scale(50), {
-        color = {0.2, 1, 0.3, 1},
-        fontSize = "large",
-        duration = 2.0,
-        riseDistance = 80,
-        startScale = 0.3,
-        endScale = 1.5,
-        bounce = true,
-        easing = "easeOutElastic"
-    })
-    
-    -- Add score bonus animation for node progression
-    local bonusPoints = node.nodeType == "final" and 100 or 25
-    UI.Animation.createScorePopup(bonusPoints, centerX + UI.Layout.scale(100), centerY, true)
     
     -- Animate the node tile itself with a satisfying effect
     local tile = node.tile

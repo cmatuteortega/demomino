@@ -868,7 +868,7 @@ function UI.Renderer.drawScore(score)
     local formulaScoreFont = UI.Fonts.get("formulaScore")
     local roundHeight = bigScoreFont:getHeight()
     local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
-    local currentCounterY = rightY + roundHeight - UI.Layout.scale(5)  -- Start position below round
+    local currentCounterY = rightY + roundHeight - 20  -- Start position below round
 
     -- Floating animation: same wave effect as score digits
     local floatPhase = time * 2.5
@@ -901,7 +901,7 @@ function UI.Renderer.drawScore(score)
     -- Draw banned number counter if that challenge is active
     local bannedNumber = Challenges.getBannedNumber(gameState)
     if bannedNumber then
-        local counterText = "Ø " .. bannedNumber
+        local counterText = "ø " .. bannedNumber
         local counterColor = gameState.bannedNumberCounterAnimation.color or UI.Colors.FONT_WHITE
         local counterScale = gameState.bannedNumberCounterAnimation.scale or 1.0
 
@@ -934,10 +934,10 @@ function UI.Renderer.drawVictoryPhrase()
         return
     end
 
-    -- Draw victory phrase in center of screen with wave animation
+    -- Draw victory phrase right-aligned with proper margin
     local time = love.timer.getTime()
-    local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
+    local rightMargin = UI.Layout.scale(40)  -- Same margin as other right-aligned elements
 
     local phraseColor = UI.Colors.FONT_WHITE
     local phraseOpacity = gameState.victoryPhraseAnimation.opacity or 1.0
@@ -946,15 +946,29 @@ function UI.Renderer.drawVictoryPhrase()
 
     local font = UI.Fonts.get("bigScore")
 
-    -- Calculate total width of phrase to center it
-    local totalWidth = 0
+    -- Calculate available width (screen width - margins)
+    local maxWidth = gameState.screen.width - rightMargin - UI.Layout.scale(200)  -- 200px left margin
+
+    -- Calculate base width of phrase at scale 1.0
+    local baseWidth = 0
     for i = 1, #gameState.victoryPhrase do
         local char = gameState.victoryPhrase:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char) * phraseScale
+        baseWidth = baseWidth + font:getWidth(char)
     end
 
-    -- Start position (center - half width + xOffset for slide animation)
-    local startX = centerX - totalWidth / 2 + phraseXOffset
+    -- Calculate dynamic scale to fit within maxWidth
+    local dynamicScale = 1.0
+    if baseWidth * phraseScale > maxWidth then
+        dynamicScale = maxWidth / baseWidth
+    else
+        dynamicScale = phraseScale
+    end
+
+    -- Calculate total width with dynamic scale
+    local totalWidth = baseWidth * dynamicScale
+
+    -- Start position (right-aligned with margin + xOffset for slide animation)
+    local startX = gameState.screen.width - rightMargin - totalWidth + phraseXOffset
 
     -- Draw each character with wave animation
     local currentX = startX
@@ -969,14 +983,14 @@ function UI.Renderer.drawVictoryPhrase()
         local animProps = {
             shadow = true,
             shadowOffset = UI.Layout.scale(4),
-            scale = phraseScale,
+            scale = dynamicScale,  -- Use dynamic scale instead of phraseScale
             opacity = phraseOpacity
         }
 
         local displayColor = {phraseColor[1], phraseColor[2], phraseColor[3], phraseOpacity}
         UI.Fonts.drawAnimatedText(char, currentX, centerY + waveOffset, "bigScore", displayColor, "left", animProps)
 
-        currentX = currentX + charWidth * phraseScale
+        currentX = currentX + charWidth * dynamicScale  -- Use dynamic scale for positioning
     end
 end
 
@@ -1002,16 +1016,8 @@ function UI.Renderer.drawButton(text, x, y, width, height, pressed, animScale)
     UI.Fonts.drawAnimatedText(text, x + width/2, y + height/2, "button", color, "center", animProps)
 end
 
-function UI.Renderer.drawCoins()
+function UI.Renderer.drawCoinSprites()
     local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
-
-    local text = gameState.coins .. "$"
-
-    -- Draw text at its own position with shadow
-    UI.Fonts.drawAnimatedText(text, textX, textY, "title", {1, 0.9, 0.3, 1}, "left", {
-        shadow = true,
-        shadowOffset = UI.Layout.scale(3)
-    })
 
     if coinSprite then
         local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
@@ -1078,6 +1084,37 @@ function UI.Renderer.drawCoins()
     end
 end
 
+function UI.Renderer.drawCoinText()
+    local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
+
+    local text = gameState.coins .. "$"
+
+    -- Draw coin breakdown above money counter (only when shown)
+    if gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
+        local font = UI.Fonts.get("large")  -- Smaller font
+        local lineHeight = font:getHeight() + UI.Layout.scale(3)
+        local breakdownX = textX  -- Same X position as money counter
+
+        -- Start from the top breakdown item and draw upward
+        for i = #gameState.coinBreakdown, 1, -1 do  -- Draw from bottom to top
+            local entry = gameState.coinBreakdown[i]
+            local yPos = textY - ((#gameState.coinBreakdown - i + 1) * lineHeight) - UI.Layout.scale(5)  -- Above money counter
+
+            local whiteColor = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], entry.opacity}
+            UI.Fonts.drawAnimatedText(entry.text, breakdownX, yPos, "large", whiteColor, "left", {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(2)
+            })
+        end
+    end
+
+    -- Draw money counter text with pink color
+    UI.Fonts.drawAnimatedText(text, textX, textY, "title", UI.Colors.FONT_PINK, "left", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3)
+    })
+end
+
 function UI.Renderer.drawChallenges()
     if not Challenges then
         return
@@ -1130,6 +1167,15 @@ function UI.Renderer.drawUI()
     local discardButtonX, discardButtonY = UI.Layout.getDiscardButtonPosition()
     local sortButtonWidth, sortButtonHeight = UI.Layout.getSortButtonSize()
     local sortButtonX, sortButtonY = UI.Layout.getSortButtonPosition()
+
+    -- Apply yOffset from button animations
+    local playYOffset = (gameState.buttonAnimations and gameState.buttonAnimations.playButton.yOffset) or 0
+    local discardYOffset = (gameState.buttonAnimations and gameState.buttonAnimations.discardButton.yOffset) or 0
+    local sortYOffset = (gameState.buttonAnimations and gameState.buttonAnimations.sortButton.yOffset) or 0
+
+    playButtonY = playButtonY + playYOffset
+    discardButtonY = discardButtonY + discardYOffset
+    sortButtonY = sortButtonY + sortYOffset
 
     -- Check if there are non-anchor tiles placed
     local nonAnchorTileCount = 0
@@ -1397,26 +1443,55 @@ function UI.Renderer.drawGameOver()
     local screenHeight = gameState.screen.height
 
     if gameState.gamePhase == "won" then
-        -- Victory overlay - just show Continue to Map button (board stays visible)
-        local buttonWidth = UI.Layout.scale(220)
-        local buttonHeight = UI.Layout.scale(60)
-        local buttonX = screenWidth - buttonWidth - UI.Layout.scale(40)
-        local buttonY = screenHeight - buttonHeight - UI.Layout.scale(40)
+        -- Victory overlay - show "NEXT >>" text in bottom-right area
+        local time = love.timer.getTime()
+        local horizontalMargin = UI.Layout.scale(80)  -- More left from edge
+        local verticalMargin = UI.Layout.scale(80)    -- More up from bottom
 
-        -- Button background with pulse
-        local pulseScale = 1 + math.sin(love.timer.getTime() * 3) * 0.05
-        UI.Colors.setBackgroundLight()
-        love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        -- Get font and calculate text dimensions
+        local font = UI.Fonts.get("bigScore")
+        local text = gameState.nextButtonText
+        local textColor = gameState.nextButtonAnimation.color or UI.Colors.FONT_PINK
 
-        -- Button outline
-        UI.Colors.setOutline()
-        love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+        -- Calculate total width of text for positioning
+        local totalWidth = 0
+        for i = 1, #text do
+            local char = text:sub(i, i)
+            totalWidth = totalWidth + font:getWidth(char)
+        end
 
-        -- Button text
-        UI.Fonts.drawAnimatedText("CONTINUE TO MAP", buttonX + buttonWidth/2, buttonY + buttonHeight/2, "button", UI.Colors.FONT_WHITE, "center", {scale = pulseScale})
+        -- Position in bottom-right area (moved up and left)
+        local textX = screenWidth - totalWidth - horizontalMargin
+        local textY = screenHeight - font:getHeight() - verticalMargin
 
-        -- Store button bounds for touch handling
-        gameState.continueToMapButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight}
+        -- Draw each character with wave animation (same as victory phrase)
+        local currentX = textX
+        for i = 1, #text do
+            local char = text:sub(i, i)
+            local charWidth = font:getWidth(char)
+
+            -- Wave animation
+            local phase = time * 2.5 + (i - 1) * 0.2
+            local waveOffset = math.sin(phase) * 3
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4)
+            }
+
+            UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+
+            currentX = currentX + charWidth
+        end
+
+        -- Store text bounds for touch handling (add padding for easier clicking)
+        local padding = UI.Layout.scale(20)
+        gameState.nextButtonBounds = {
+            x = textX - padding,
+            y = textY - padding,
+            width = totalWidth + padding * 2,
+            height = font:getHeight() + padding * 2
+        }
     else
         -- Loss screen (full overlay with existing behavior)
         -- Semi-transparent overlay

@@ -1,6 +1,9 @@
+-- Game Configuration
+TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
+
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
-    
+
     local screenWidth = love.graphics.getWidth()
     local screenHeight = love.graphics.getHeight()
     
@@ -54,8 +57,8 @@ function love.load()
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
-        baseTargetScore = 666,
-        targetScore = 666,
+        baseTargetScore = TARGET_SCORE,
+        targetScore = TARGET_SCORE,
         maxHandsPerRound = 3,
         scoringSequence = nil,
         currentMap = nil,
@@ -79,6 +82,12 @@ function love.load()
             opacity = 0,
             scale = 1.0
         },
+        -- Next button (NEXT >>) animation system
+        nextButtonText = "NEXT>",
+        nextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        nextButtonBounds = nil,  -- Clickable area bounds
         -- Formula display animation system
         formulaDisplayValue = 0,  -- Currently displayed formula value (for counting animation)
         formulaTargetValue = 0,  -- Target value to count toward
@@ -104,6 +113,8 @@ function love.load()
             chipLoopActive = false,  -- Whether chip loop sound should be playing
             firstCoinLanded = false  -- Track when first coin lands to start sound
         },
+        -- Coin breakdown display (shown above money counter)
+        coinBreakdown = {},  -- Array of {text = "+2$ hands", opacity = 1.0}
         -- Deckbuilding system
         tileCollection = {},  -- All tiles the player has unlocked
         offeredTiles = {},    -- Tiles currently being offered in tiles menu
@@ -188,9 +199,9 @@ function initializeGame(isNewRound)
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false},
-        discardButton = {scale = 1.0, pressed = false},
-        sortButton = {scale = 1.0, pressed = false}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -206,8 +217,8 @@ function initializeGame(isNewRound)
         gameState.currentRound = 1
     end
 
-    -- Target score is always fixed at 666
-    gameState.targetScore = 666
+    -- Target score is always fixed
+    gameState.targetScore = TARGET_SCORE
 
     -- Initialize score display animations
     gameState.displayedRemainingScore = gameState.targetScore
@@ -236,9 +247,9 @@ function initializeCombatRound()
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false},
-        discardButton = {scale = 1.0, pressed = false},
-        sortButton = {scale = 1.0, pressed = false}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -248,6 +259,14 @@ function initializeCombatRound()
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
         scale = 1.0
     }
+
+    -- Reset next button animation color to pink
+    gameState.nextButtonAnimation = {
+        color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+    }
+
+    -- Clear coin breakdown display
+    gameState.coinBreakdown = {}
 
     -- Track coins at start of round for bonus calculation
     gameState.startRoundCoins = gameState.coins
@@ -899,7 +918,8 @@ function love.draw()
         UI.Renderer.drawHand(gameState.hand)
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
-        UI.Renderer.drawCoins()
+        UI.Renderer.drawCoinSprites()  -- Draw coin sprites first
+        UI.Renderer.drawCoinText()  -- Draw coin text on top
         UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
