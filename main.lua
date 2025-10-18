@@ -64,6 +64,7 @@ function love.load()
         currentMap = nil,
         selectedNode = nil,  -- For node confirmation dialog
         isBossRound = false,  -- Track if current combat is the boss round
+        currentDay = 1,  -- Track which map/day the player is on
         scoreAnimation = {    -- Animation properties for score display
             scale = 1.0,
             shake = 0,
@@ -88,6 +89,11 @@ function love.load()
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
         nextButtonBounds = nil,  -- Clickable area bounds
+        -- Node confirmation NEXT> button animation
+        nodeConfirmationNextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        nodeConfirmationNextButton = nil,  -- Clickable area bounds
         -- Formula display animation system
         formulaDisplayValue = 0,  -- Currently displayed formula value (for counting animation)
         formulaTargetValue = 0,  -- Target value to count toward

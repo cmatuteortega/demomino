@@ -915,20 +915,21 @@ end
 -- Check if a touch point hits a domino tile
 function Map.isTileHit(tile, x, y)
     local tileWidth, tileHeight = UI.Layout.getTileSize()
-    
+
     -- Adjust size based on orientation
     if tile.orientation == "horizontal" then
         tileWidth, tileHeight = tileHeight, tileWidth
     end
-    
+
     -- Scale down for tiny map tiles
     tileWidth = tileWidth * 0.4
     tileHeight = tileHeight * 0.4
-    
-    -- Check rectangular collision
-    local halfWidth = tileWidth / 2
-    local halfHeight = tileHeight / 2
-    
+
+    -- Add generous padding for easier touch detection (2x larger hit area)
+    local touchPadding = 4.0
+    local halfWidth = (tileWidth / 2) * touchPadding
+    local halfHeight = (tileHeight / 2) * touchPadding
+
     return x >= tile.x - halfWidth and x <= tile.x + halfWidth and
            y >= tile.y - halfHeight and y <= tile.y + halfHeight
 end

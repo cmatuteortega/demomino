@@ -1460,9 +1460,9 @@ function UI.Renderer.drawGameOver()
             totalWidth = totalWidth + font:getWidth(char)
         end
 
-        -- Position in bottom-right area (moved up and left)
+        -- Position in bottom-right area (moved up and left, plus 5px down)
         local textX = screenWidth - totalWidth - horizontalMargin
-        local textY = screenHeight - font:getHeight() - verticalMargin
+        local textY = screenHeight - font:getHeight() - verticalMargin + 5
 
         -- Draw each character with wave animation (same as victory phrase)
         local currentX = textX
@@ -1553,27 +1553,42 @@ end
 function UI.Renderer.drawMap()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    
+
     -- Background
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-    
-    local centerX = screenWidth / 2
-    
-    -- Title
-    local titleText = "CHOOSE YOUR PATH"
-    local titleColor = UI.Colors.FONT_PINK
-    local titleScale = 1 + math.sin(love.timer.getTime() * 2) * 0.05
-    local titleAnimProps = {scale = titleScale}
-    
-    UI.Fonts.drawAnimatedText(titleText, centerX, UI.Layout.scale(40), "title", titleColor, "center", titleAnimProps)
-    
-    -- Current round info (showing remaining countdown)
-    local remainingScore = math.max(0, gameState.targetScore - gameState.score)
-    local roundText = "Round " .. gameState.currentRound .. " - Remaining: " .. remainingScore
-    local roundColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(roundText, centerX, UI.Layout.scale(80), "medium", roundColor, "center")
-    
+
+    -- DAY counter in top-left (same style as round counter in game)
+    local leftX = UI.Layout.scale(40)
+    local leftY = UI.Layout.scale(20)
+
+    -- Draw NIGHT counter with wave animation per character
+    local dayText = "Night " .. tostring(gameState.currentDay)
+    local dayColor = UI.Colors.FONT_RED
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("bigScore")
+    local currentX = leftX
+
+    for i = 1, #dayText do
+        local char = dayText:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation: same as score digits
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "bigScore", dayColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
     -- Draw the map if it exists
     if gameState.currentMap then
         UI.Renderer.drawMapNodes(gameState.currentMap)
@@ -1585,111 +1600,146 @@ function UI.Renderer.drawNodeConfirmation()
     if not gameState.selectedNode then
         return
     end
-    
+
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    
-    -- Side panel dimensions
-    local panelWidth = UI.Layout.scale(350)
-    local panelHeight = screenHeight * 0.8
-    local panelX = screenWidth - panelWidth - UI.Layout.scale(20)
-    local panelY = (screenHeight - panelHeight) / 2
-    
-    -- Panel background with slight transparency and shadow
-    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.3)
-    love.graphics.rectangle("fill", panelX + UI.Layout.scale(5), panelY + UI.Layout.scale(5), panelWidth, panelHeight, UI.Layout.scale(15))
-    
-    -- Panel background
-    love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.95)
-    love.graphics.rectangle("fill", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(15))
-    
-    -- Panel border
-    UI.Colors.setOutline()
-    love.graphics.setLineWidth(UI.Layout.scale(3))
-    love.graphics.rectangle("line", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(15))
-    
-    -- Node type title
+
+    -- Node name mapping
     local nodeTypeTexts = {
-        combat = "COMBAT NODE",
-        tiles = "TILES NODE", 
-        artifacts = "ARTIFACTS NODE",
-        contracts = "CONTRACTS NODE"
+        combat = "DISPUTE",
+        tiles = "ALCHEMY",
+        artifacts = "TOOLS",
+        contracts = "MAGIK"
     }
-    
-    local nodeTypeColors = {
-        combat = UI.Colors.FONT_RED,
-        tiles = UI.Colors.FONT_PINK,
-        artifacts = UI.Colors.FONT_PINK,
-        contracts = UI.Colors.FONT_PINK
-    }
-    
+
     local nodeType = gameState.selectedNode.nodeType
-    local titleText = nodeTypeTexts[nodeType] or "UNKNOWN NODE"
-    local titleColor = nodeTypeColors[nodeType] or UI.Colors.FONT_WHITE
-    
-    local panelCenterX = panelX + panelWidth / 2
-    
-    UI.Fonts.drawText(titleText, panelCenterX, panelY + UI.Layout.scale(50), "large", titleColor, "center")
-    
-    -- Node description
-    local descriptions = {
-        combat = "Enter combat to gain score\nand progress through the\nround",
-        tiles = "Browse available domino\ntiles for your deck",
-        artifacts = "Discover powerful artifacts\nto enhance your abilities", 
-        contracts = "Review and accept contracts\nfor special objectives"
+    local nodeName = nodeTypeTexts[nodeType] or "UNKNOWN"
+
+    -- Draw node name in top-right (same style as round counter)
+    local rightX = screenWidth - UI.Layout.scale(40)
+    local rightY = UI.Layout.scale(20)
+
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("bigScore")
+    local nameColor = UI.Colors.FONT_WHITE
+
+    -- Calculate total width to position from right
+    local totalWidth = 0
+    for i = 1, #nodeName do
+        local char = nodeName:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Start from right and draw each character with wave animation
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeName do
+        local char = nodeName:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation: same as round counter
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", nameColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Draw subtitle below node name
+    local nodeSubtitles = {
+        combat = "CHALLENGE FOR PROFIT",
+        tiles = "TAILOR YOUR TILES",
+        artifacts = "USEFUL ARTIFACTS",
+        contracts = "DEAL WITH THE DEVIL"
     }
-    
-    local description = descriptions[nodeType] or "Unknown node type"
-    local descColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(description, panelCenterX, panelY + UI.Layout.scale(130), "medium", descColor, "center")
-    
-    -- Buttons
-    local buttonWidth = UI.Layout.scale(130)
-    local buttonHeight = UI.Layout.scale(45)
-    local buttonSpacing = UI.Layout.scale(15)
-    local buttonStartY = panelY + panelHeight - UI.Layout.scale(140)
-    
-    -- GO button
-    local goButtonX = panelCenterX - buttonWidth/2
-    local goButtonY = buttonStartY
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", goButtonX, goButtonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", goButtonX, goButtonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
-    
-    UI.Fonts.drawText("GO", goButtonX + buttonWidth/2, goButtonY + buttonHeight/2, "button", {1, 1, 1, 1}, "center")
-    
-    -- CANCEL button  
-    local cancelButtonX = panelCenterX - buttonWidth/2
-    local cancelButtonY = buttonStartY + buttonHeight + buttonSpacing
-    UI.Colors.setBackground()
-    love.graphics.rectangle("fill", cancelButtonX, cancelButtonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", cancelButtonX, cancelButtonY, buttonWidth, buttonHeight, UI.Layout.scale(8))
-    
-    UI.Fonts.drawText("CANCEL", cancelButtonX + buttonWidth/2, cancelButtonY + buttonHeight/2, "button", {1, 1, 1, 1}, "center")
-    
-    -- Add a close X button in the top right corner
-    local closeButtonSize = UI.Layout.scale(30)
-    local closeButtonX = panelX + panelWidth - closeButtonSize - UI.Layout.scale(10)
-    local closeButtonY = panelY + UI.Layout.scale(10)
-    love.graphics.setColor(UI.Colors.BACKGROUND[1], UI.Colors.BACKGROUND[2], UI.Colors.BACKGROUND[3], 0.8)
-    love.graphics.rectangle("fill", closeButtonX, closeButtonY, closeButtonSize, closeButtonSize, UI.Layout.scale(5))
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", closeButtonX, closeButtonY, closeButtonSize, closeButtonSize, UI.Layout.scale(5))
-    
-    -- Draw X
-    love.graphics.setLineWidth(UI.Layout.scale(2))
-    love.graphics.line(closeButtonX + closeButtonSize * 0.25, closeButtonY + closeButtonSize * 0.25, 
-                       closeButtonX + closeButtonSize * 0.75, closeButtonY + closeButtonSize * 0.75)
-    love.graphics.line(closeButtonX + closeButtonSize * 0.75, closeButtonY + closeButtonSize * 0.25, 
-                       closeButtonX + closeButtonSize * 0.25, closeButtonY + closeButtonSize * 0.75)
-    
-    -- Store button bounds for touch handling
-    gameState.confirmationButtons = {
-        go = {x = goButtonX, y = goButtonY, width = buttonWidth, height = buttonHeight},
-        cancel = {x = cancelButtonX, y = cancelButtonY, width = buttonWidth, height = buttonHeight},
-        close = {x = closeButtonX, y = closeButtonY, width = closeButtonSize, height = closeButtonSize}
+
+    local subtitle = nodeSubtitles[nodeType] or ""
+    local subtitleFont = UI.Fonts.get("title")  -- title font is ~1/3 size of bigScore (40px vs 96px)
+    local subtitleColor = UI.Colors.FONT_PINK
+    local subtitleY = rightY + font:getHeight() - UI.Layout.scale(5)  -- Closer gap, accounting for wave offset
+
+    -- Calculate total width of subtitle to position from right
+    local subtitleWidth = 0
+    for i = 1, #subtitle do
+        local char = subtitle:sub(i, i)
+        subtitleWidth = subtitleWidth + subtitleFont:getWidth(char)
+    end
+
+    -- Draw subtitle with wave animation (title font size, pink)
+    local subtitleX = rightX - subtitleWidth
+    currentX = subtitleX
+    for i = 1, #subtitle do
+        local char = subtitle:sub(i, i)
+        local charWidth = subtitleFont:getWidth(char)
+
+        -- Wave animation: same pattern but with smaller font
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 1  -- Smaller wave for smaller text
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(2),
+            scale = 1.0,
+            shake = 0
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, subtitleY + waveOffset, "title", subtitleColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- NEXT> button in bottom-right (on map screen)
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin = UI.Layout.scale(20)
+
+    local text = "NEXT>"
+    local textColor = gameState.nodeConfirmationNextButtonAnimation.color or UI.Colors.FONT_PINK
+
+    -- Calculate total width of text for positioning
+    totalWidth = 0
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Position in bottom-right area
+    local textX = screenWidth - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    -- Draw each character with wave animation
+    currentX = textX
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store button bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(20)
+    gameState.nodeConfirmationNextButton = {
+        x = textX - padding,
+        y = textY - padding,
+        width = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
     }
 end
 
@@ -2007,44 +2057,6 @@ function UI.Renderer.drawMapNodes(map)
                 UI.Renderer.drawPreviewTile(map, tile)
             end
         end
-    end
-    
-    -- Debug: Show total tile count and visibility
-    if map.tiles then
-        local nodeCount = 0
-        local visibleNodeCount = 0
-        local pathCount = 0
-        local visiblePathCount = 0
-        for _, tile in ipairs(map.tiles) do
-            if tile.mapNode then
-                nodeCount = nodeCount + 1
-                -- Count visible node sprites (completed, current, or start)
-                local node = tile.mapNode
-                local isCompleted = map.completedNodes[node.id]
-                local isCurrent = map.currentNode and map.currentNode.id == node.id
-                local isStart = node.nodeType == "start"
-                if isCompleted or isCurrent or isStart then
-                    visibleNodeCount = visibleNodeCount + 1
-                end
-            elseif tile.isPathTile then
-                pathCount = pathCount + 1
-                if tile.visible then
-                    visiblePathCount = visiblePathCount + 1
-                end
-            end
-        end
-        
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.print("Nodes: " .. visibleNodeCount .. "/" .. nodeCount .. ", Paths: " .. visiblePathCount .. "/" .. pathCount .. ", Total: " .. #map.tiles, 10, screenHeight - 60)
-        
-        -- Debug: Print first few tile positions
-        local debugText = ""
-        for i = 1, math.min(3, #map.tiles) do
-            local tile = map.tiles[i]
-            local tileType = tile.mapNode and "N" or (tile.isPathTile and "P" or "?")
-            debugText = debugText .. tileType .. "(" .. math.floor(tile.x) .. "," .. math.floor(tile.y) .. ") "
-        end
-        love.graphics.print(debugText, 10, screenHeight - 40)
     end
 end
 

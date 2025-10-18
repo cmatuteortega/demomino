@@ -146,6 +146,23 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle NEXT> button press on node confirmation screen
+    if gameState.gamePhase == "node_confirmation" then
+        if gameState.nodeConfirmationNextButton and isPointInRect(x, y, gameState.nodeConfirmationNextButton) then
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.nodeConfirmationNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.nodeConfirmationNextButtonPressed = true
+        end
+        return
+    end
+
     -- Handle NEXT >> button press on victory screen
     if gameState.gamePhase == "won" then
         if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
@@ -328,6 +345,14 @@ function Touch.released(x, y, istouch, touchId)
                 Save.updateBestRound(gameState.currentRound)
                 gameState.gamePhase = "map"
                 Save.saveGame(gameState)
+
+                -- Reset victory NEXT> button color to pink for next time
+                gameState.nextButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
             end)
         else
             -- Released outside button - reset color back to pink
@@ -382,7 +407,15 @@ function Touch.released(x, y, istouch, touchId)
                     -- Show confirmation dialog instead of immediately entering node
                     gameState.selectedNode = clickedNode
                     gameState.gamePhase = "node_confirmation"
-                    
+
+                    -- Reset node confirmation NEXT> button color to pink
+                    gameState.nodeConfirmationNextButtonAnimation.color = {
+                        UI.Colors.FONT_PINK[1],
+                        UI.Colors.FONT_PINK[2],
+                        UI.Colors.FONT_PINK[3],
+                        UI.Colors.FONT_PINK[4]
+                    }
+
                     -- Trigger path preview animation
                     Map.updatePreviewPath(gameState.currentMap, clickedNode.id)
                 end
@@ -399,67 +432,65 @@ function Touch.released(x, y, istouch, touchId)
         touchState.touchId = nil
         return
     elseif gameState.gamePhase == "node_confirmation" then
-        -- Handle confirmation dialog interactions
-        if gameState.confirmationButtons then
-            local goButton = gameState.confirmationButtons.go
-            local cancelButton = gameState.confirmationButtons.cancel
-            local closeButton = gameState.confirmationButtons.close
-            
-            if isPointInRect(x, y, goButton) then
-                -- GO button pressed - enter the selected node
+        -- Handle NEXT> button release
+        -- Only advance if we pressed the button AND released over it
+        if touchState.nodeConfirmationNextButtonPressed and gameState.nodeConfirmationNextButton and isPointInRect(x, y, gameState.nodeConfirmationNextButton) then
+            -- Animate to white with a callback to transition after the flash
+            UI.Animation.animateTo(gameState.nodeConfirmationNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- After white flash, enter the selected node
                 Touch.enterSelectedNode()
-                touchState.isPressed = false
-                touchState.touchId = nil
-                return
-            elseif isPointInRect(x, y, cancelButton) or isPointInRect(x, y, closeButton) then
-                -- CANCEL/CLOSE button pressed - return to map
-                gameState.selectedNode = nil
-                gameState.gamePhase = "map"
-                
-                -- Clear path preview animation
-                if gameState.currentMap then
-                    Map.clearPreviewPath(gameState.currentMap)
-                end
-                
-                touchState.isPressed = false
-                touchState.touchId = nil
-                return
+            end)
+        else
+            -- Released outside button - reset color back to pink
+            if touchState.nodeConfirmationNextButtonPressed then
+                UI.Animation.animateTo(gameState.nodeConfirmationNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_PINK[1],
+                    [2] = UI.Colors.FONT_PINK[2],
+                    [3] = UI.Colors.FONT_PINK[3],
+                    [4] = UI.Colors.FONT_PINK[4]
+                }, 0.3, "easeOutQuart")
             end
-        end
-        
-        -- If touch is not on the confirmation panel, allow map interaction
-        -- Check if touch is outside the panel area
-        local screenWidth = gameState.screen.width
-        local screenHeight = gameState.screen.height
-        local panelWidth = UI.Layout.scale(350)
-        local panelHeight = screenHeight * 0.8
-        local panelX = screenWidth - panelWidth - UI.Layout.scale(20)
-        local panelY = (screenHeight - panelHeight) / 2
-        
-        local isOutsidePanel = not (x >= panelX and x <= panelX + panelWidth and 
-                                   y >= panelY and y <= panelY + panelHeight)
-        
-        if isOutsidePanel then
-            -- Allow map interaction - check for new node selection or map dragging
-            if gameState.currentMap then
+
+            -- If not clicking NEXT> button, treat as cancel - check for map interaction
+            if not touchState.nodeConfirmationNextButtonPressed and gameState.currentMap then
                 if Touch.isDragging() then
                     -- Was dragging the map - no further action needed, camera was updated in moved()
                     touchState.isDraggingMap = false
                 else
-                    -- Was a tap outside panel - check for node selection
+                    -- Was a tap - check for node selection
                     local clickedNode = Map.getNodeAt(gameState.currentMap, x, y)
                     if clickedNode and Map.isNodeAvailable(gameState.currentMap, clickedNode.id) then
                         -- Select new node (replace current selection)
                         gameState.selectedNode = clickedNode
                         -- Stay in confirmation phase with new node
-                        
+
                         -- Trigger path preview animation for new selection
                         Map.updatePreviewPath(gameState.currentMap, clickedNode.id)
+
+                        -- Reset button color for new selection
+                        gameState.nodeConfirmationNextButtonAnimation.color = {
+                            UI.Colors.FONT_PINK[1],
+                            UI.Colors.FONT_PINK[2],
+                            UI.Colors.FONT_PINK[3],
+                            UI.Colors.FONT_PINK[4]
+                        }
+                    else
+                        -- Clicked empty area - cancel selection and return to map
+                        gameState.selectedNode = nil
+                        gameState.gamePhase = "map"
+
+                        -- Clear path preview animation
+                        Map.clearPreviewPath(gameState.currentMap)
                     end
                 end
             end
         end
-        
+
         -- Clean up map drag state
         touchState.isDraggingMap = false
         if gameState.currentMap then
@@ -467,6 +498,7 @@ function Touch.released(x, y, istouch, touchId)
         end
         touchState.isPressed = false
         touchState.touchId = nil
+        touchState.nodeConfirmationNextButtonPressed = false
         return
     elseif gameState.gamePhase == "tiles_menu" then
         -- Handle mode toggle buttons
@@ -728,6 +760,11 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                         gameState.currentMap.cameraAnimating = false
                         gameState.currentMap.cameraAnimation = nil
                     end
+                    -- Update the drag start camera position when we actually start dragging
+                    touchState.mapDragStartCameraX = gameState.currentMap.cameraX
+                    -- Also update start position to current position when drag begins
+                    touchState.startX = x
+                    touchState.startY = y
                 end
 
                 -- Update camera position based on drag
@@ -1151,6 +1188,7 @@ function Touch.checkGameEnd()
 
             -- If this was a boss round, generate a completely new map
             if gameState.isBossRound then
+                gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
                 gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
                 gameState.isBossRound = false
             else

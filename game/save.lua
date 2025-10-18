@@ -16,6 +16,7 @@ function Save.saveGame(gameState)
         currentRound = gameState.currentRound or 1,
         targetScore = gameState.targetScore or 3,
         baseTargetScore = gameState.baseTargetScore or 3,
+        currentDay = gameState.currentDay or 1,
 
         -- Currency
         coins = gameState.coins or 0,

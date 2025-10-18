@@ -217,6 +217,7 @@ function UI.TitleScreen.continueGame()
     gameState.baseTargetScore = TARGET_SCORE
     gameState.coins = saveData.coins or 0
     gameState.isBossRound = saveData.isBossRound or false
+    gameState.currentDay = saveData.currentDay or 1
 
     -- Restore tile collection
     gameState.tileCollection = {}
