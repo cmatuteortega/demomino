@@ -9,6 +9,11 @@ local currentChipLoopSource = nil
 local scoreAnimatingSound = nil
 local endScoreAnimatingSound = nil
 local currentScoreAnimatingSource = nil
+local buttonTapSound = nil
+local buttonReleaseSound = nil
+local buttonDefaultSound = nil
+local playButtonSound = nil
+local discardButtonSound = nil
 
 local musicVolume = 0.15  -- Background music at 15%
 local sfxVolume = 1     -- Sound effects at 50%
@@ -71,6 +76,37 @@ function UI.Audio.load()
     if love.filesystem.getInfo(endScoreAnimatingPath) then
         endScoreAnimatingSound = love.audio.newSource(endScoreAnimatingPath, "static")
         endScoreAnimatingSound:setVolume(sfxVolumeBoost)
+    end
+
+    -- Load UI button sounds
+    local buttonTapPath = "sounds/ui/button_tap.mp3"
+    if love.filesystem.getInfo(buttonTapPath) then
+        buttonTapSound = love.audio.newSource(buttonTapPath, "static")
+        buttonTapSound:setVolume(sfxVolume)
+    end
+
+    local buttonReleasePath = "sounds/ui/button_release.mp3"
+    if love.filesystem.getInfo(buttonReleasePath) then
+        buttonReleaseSound = love.audio.newSource(buttonReleasePath, "static")
+        buttonReleaseSound:setVolume(sfxVolume)
+    end
+
+    local buttonDefaultPath = "sounds/ui/button_default.mp3"
+    if love.filesystem.getInfo(buttonDefaultPath) then
+        buttonDefaultSound = love.audio.newSource(buttonDefaultPath, "static")
+        buttonDefaultSound:setVolume(sfxVolume)
+    end
+
+    local playButtonPath = "sounds/ui/play_button.mp3"
+    if love.filesystem.getInfo(playButtonPath) then
+        playButtonSound = love.audio.newSource(playButtonPath, "static")
+        playButtonSound:setVolume(sfxVolume*0.2)
+    end
+
+    local discardButtonPath = "sounds/ui/discard_button.mp3"
+    if love.filesystem.getInfo(discardButtonPath) then
+        discardButtonSound = love.audio.newSource(discardButtonPath, "static")
+        discardButtonSound:setVolume(sfxVolume*0.2)
     end
 end
 
@@ -135,6 +171,21 @@ function UI.Audio.setSFXVolume(volume)
     end
     if endScoreAnimatingSound then
         endScoreAnimatingSound:setVolume(sfxVolumeBoost)
+    end
+    if buttonTapSound then
+        buttonTapSound:setVolume(sfxVolume)
+    end
+    if buttonReleaseSound then
+        buttonReleaseSound:setVolume(sfxVolume)
+    end
+    if buttonDefaultSound then
+        buttonDefaultSound:setVolume(sfxVolume)
+    end
+    if playButtonSound then
+        playButtonSound:setVolume(sfxVolume)
+    end
+    if discardButtonSound then
+        discardButtonSound:setVolume(sfxVolume)
     end
 end
 
@@ -236,6 +287,56 @@ end
 
 function UI.Audio.isScoreAnimating()
     return currentScoreAnimatingSource and currentScoreAnimatingSource:isPlaying()
+end
+
+function UI.Audio.playButtonTap()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if buttonTapSound then
+        buttonTapSound:clone():play()
+    end
+end
+
+function UI.Audio.playButtonRelease()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if buttonReleaseSound then
+        buttonReleaseSound:clone():play()
+    end
+end
+
+function UI.Audio.playButtonDefault()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if buttonDefaultSound then
+        buttonDefaultSound:clone():play()
+    end
+end
+
+function UI.Audio.playPlayButton()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if playButtonSound then
+        playButtonSound:clone():play()
+    end
+end
+
+function UI.Audio.playDiscardButton()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if discardButtonSound then
+        discardButtonSound:clone():play()
+    end
 end
 
 return UI.Audio

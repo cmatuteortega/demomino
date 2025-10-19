@@ -133,6 +133,7 @@ function Touch.pressed(x, y, istouch, touchId)
     for _, phase in ipairs(phasesWithSettings) do
         if gameState.gamePhase == phase and gameState.settingsButtonBounds then
             if isPointInRect(x, y, gameState.settingsButtonBounds) then
+                UI.Audio.playButtonDefault()
                 gameState.settingsMenuOpen = true
                 return
             end
@@ -150,6 +151,9 @@ function Touch.pressed(x, y, istouch, touchId)
     -- Handle NEXT> button press on node confirmation screen
     if gameState.gamePhase == "node_confirmation" then
         if gameState.nodeConfirmationNextButton and isPointInRect(x, y, gameState.nodeConfirmationNextButton) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
             -- Change color from pink to red on press
             UI.Animation.animateTo(gameState.nodeConfirmationNextButtonAnimation.color, {
                 [1] = UI.Colors.FONT_RED[1],
@@ -167,6 +171,9 @@ function Touch.pressed(x, y, istouch, touchId)
     -- Handle NEXT >> button press on victory screen
     if gameState.gamePhase == "won" then
         if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
             -- Change color from pink to red on press
             UI.Animation.animateTo(gameState.nextButtonAnimation.color, {
                 [1] = UI.Colors.FONT_RED[1],
@@ -185,6 +192,9 @@ function Touch.pressed(x, y, istouch, touchId)
     if gameState.gamePhase == "title_screen" then
         -- Check for NEW GAME> button press
         if gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
             -- Change color from pink to red on press
             UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
                 [1] = UI.Colors.FONT_RED[1],
@@ -199,6 +209,9 @@ function Touch.pressed(x, y, istouch, touchId)
 
         -- Check for CONTINUE> button press
         if gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
             -- Change color from pink to red on press
             UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
                 [1] = UI.Colors.FONT_RED[1],
@@ -217,9 +230,10 @@ function Touch.pressed(x, y, istouch, touchId)
     if gameState.scoringSequence then
         return
     end
-    
+
     local sortButtonBounds = getSortButtonBounds()
     if isPointInRect(x, y, sortButtonBounds) then
+        UI.Audio.playButtonDefault()
         animateButtonPress("sortButton")
         Touch.sortHandTiles()
         return
@@ -227,8 +241,9 @@ function Touch.pressed(x, y, istouch, touchId)
 
     local playButtonBounds = getPlayButtonBounds()
     if isPointInRect(x, y, playButtonBounds) then
-        animateButtonPress("playButton")
         if #gameState.placedTiles > 0 then
+            UI.Audio.playPlayButton()
+            animateButtonPress("playButton")
             Touch.playPlacedTiles()
         end
         return
@@ -237,7 +252,10 @@ function Touch.pressed(x, y, istouch, touchId)
     local discardButtonBounds = getDiscardButtonBounds()
     if isPointInRect(x, y, discardButtonBounds) then
         animateButtonPress("discardButton")
-        Touch.discardSelectedTiles()
+        local discarded = Touch.discardSelectedTiles()
+        if discarded then
+            UI.Audio.playDiscardButton()
+        end
         return
     end
 
@@ -299,12 +317,15 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.settingsMenuOpen then
             -- Check for music toggle
             if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
+                UI.Audio.playButtonDefault()
                 UI.Audio.toggleMusic()
             -- Check for SFX toggle
             elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
+                UI.Audio.playButtonDefault()
                 UI.Audio.toggleSFX()
             -- Check for close button
             elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+                UI.Audio.playButtonDefault()
                 gameState.settingsMenuOpen = false
                 gameState.settingsFromTitle = false
             end
@@ -317,6 +338,9 @@ function Touch.released(x, y, istouch, touchId)
         -- Handle NEW GAME> button release
         if touchState.titleNewGameButtonPressed and gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
             -- Only advance if we pressed the button AND released over it
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
             -- Animate to white with a callback to transition after the flash
             UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
                 [1] = UI.Colors.FONT_WHITE[1],
@@ -347,6 +371,9 @@ function Touch.released(x, y, istouch, touchId)
         -- Handle CONTINUE> button release
         if touchState.titleContinueButtonPressed and gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
             -- Only advance if we pressed the button AND released over it
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
             -- Animate to white with a callback to transition after the flash
             UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
                 [1] = UI.Colors.FONT_WHITE[1],
@@ -385,12 +412,15 @@ function Touch.released(x, y, istouch, touchId)
     if gameState.settingsMenuOpen then
         -- Check for music toggle
         if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
+            UI.Audio.playButtonDefault()
             UI.Audio.toggleMusic()
         -- Check for SFX toggle
         elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
+            UI.Audio.playButtonDefault()
             UI.Audio.toggleSFX()
         -- Check for restart button
         elseif gameState.settingsRestartBounds and isPointInRect(x, y, gameState.settingsRestartBounds) then
+            UI.Audio.playButtonDefault()
             gameState.settingsMenuOpen = false
             gameState.settingsFromTitle = false
             Save.deleteSave()  -- Clear save when restarting
@@ -400,6 +430,7 @@ function Touch.released(x, y, istouch, touchId)
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
+            UI.Audio.playButtonDefault()
             gameState.settingsMenuOpen = false
             gameState.settingsFromTitle = false
             -- Auto-save current progress before returning to title
@@ -411,6 +442,7 @@ function Touch.released(x, y, istouch, touchId)
             gameState.gamePhase = "title_screen"
         -- Check for close button
         elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+            UI.Audio.playButtonDefault()
             gameState.settingsMenuOpen = false
             gameState.settingsFromTitle = false
         end
@@ -424,6 +456,9 @@ function Touch.released(x, y, istouch, touchId)
     if gameState.gamePhase == "won" then
         -- Only advance if we pressed the button AND released over it
         if touchState.nextButtonPressed and gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
             -- Animate to white with a callback to transition after the flash
             UI.Animation.animateTo(gameState.nextButtonAnimation.color, {
                 [1] = UI.Colors.FONT_WHITE[1],
@@ -530,6 +565,9 @@ function Touch.released(x, y, istouch, touchId)
         -- Handle NEXT> button release
         -- Only advance if we pressed the button AND released over it
         if touchState.nodeConfirmationNextButtonPressed and gameState.nodeConfirmationNextButton and isPointInRect(x, y, gameState.nodeConfirmationNextButton) then
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
             -- Animate to white with a callback to transition after the flash
             UI.Animation.animateTo(gameState.nodeConfirmationNextButtonAnimation.color, {
                 [1] = UI.Colors.FONT_WHITE[1],
