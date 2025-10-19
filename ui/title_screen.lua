@@ -46,6 +46,8 @@ function UI.TitleScreen.initializeTitleTiles()
     local targetY = screenHeight * 0.28  -- Position at 28% from top
 
     gameState.titleTiles = {}
+    gameState.titleTileAnimationTimer = 0
+    gameState.titleTileNextIndex = 1  -- Track which tile animates in next
 
     for i, data in ipairs(tileData) do
         -- Position tiles symmetrically around center
@@ -69,7 +71,8 @@ function UI.TitleScreen.initializeTitleTiles()
             floatPhase = (i - 1) * 0.5,  -- Offset phase for variety
             floatOffset = 0,
             opacity = 1.0,
-            rotation = 0
+            rotation = 0,
+            hasAnimatedIn = false  -- Track if tile has animated in yet
         }
 
         -- Initialize eye blink state for tiles with eyes
@@ -85,9 +88,6 @@ function UI.TitleScreen.initializeTitleTiles()
         end
 
         table.insert(gameState.titleTiles, tile)
-
-        -- Trigger fall-in animation with stagger
-        UI.Animation.animateTo(tile, {currentY = targetY}, 0.8, "easeOutBack", nil)
     end
 
     gameState.titleTilesInitialized = true
@@ -101,10 +101,44 @@ function UI.TitleScreen.updateTitleTileAnimations(dt)
 
     local time = love.timer.getTime()
 
+    -- Handle sequential tile animation
+    if gameState.titleTileNextIndex and gameState.titleTileNextIndex <= #gameState.titleTiles then
+        gameState.titleTileAnimationTimer = (gameState.titleTileAnimationTimer or 0) + dt
+
+        -- Animate in next tile every 0.3 seconds
+        if gameState.titleTileAnimationTimer >= 0.3 then
+            gameState.titleTileAnimationTimer = 0
+
+            local tile = gameState.titleTiles[gameState.titleTileNextIndex]
+            if tile and not tile.hasAnimatedIn then
+                -- Trigger fall-in animation with callback for last tile
+                local isLastTile = (gameState.titleTileNextIndex == #gameState.titleTiles)
+                local callback = nil
+
+                if isLastTile then
+                    callback = function()
+                        gameState.titleAnimationComplete = true
+                    end
+                end
+
+                UI.Animation.animateTo(tile, {currentY = tile.targetY}, 0.8, "easeOutBack", callback)
+                tile.hasAnimatedIn = true
+
+                -- Play random tile placement sound
+                UI.Audio.playTilePlaced()
+
+                gameState.titleTileNextIndex = gameState.titleTileNextIndex + 1
+            end
+        end
+    end
+
     for _, tile in ipairs(gameState.titleTiles) do
-        -- Floating animation - 3px range, 2.5 second cycle (same as hand tiles)
-        local floatPhase = time * 2.5 + tile.floatPhase
-        tile.floatOffset = math.sin(floatPhase) * 3
+        -- Only float tiles that have animated in
+        if tile.hasAnimatedIn then
+            -- Floating animation - 3px range, 2.5 second cycle (same as hand tiles)
+            local floatPhase = time * 2.5 + tile.floatPhase
+            tile.floatOffset = math.sin(floatPhase) * 3
+        end
 
         -- Update eye blink animation for tiles with eyes
         if tile.hasEye and tile.eyeBlinkState then
@@ -226,33 +260,36 @@ function UI.TitleScreen.draw()
         drawTitleTile(tile)
     end
 
-    -- Check if there's a saved game
-    local hasSave = Save.hasSavedGame()
+    -- Only show rest of UI after title animation completes (including the last tile's animation)
+    if gameState.titleAnimationComplete then
+        -- Check if there's a saved game
+        local hasSave = Save.hasSavedGame()
 
-    -- Draw title screen buttons (NEW GAME and optionally CONTINUE, centered as a group)
-    UI.TitleScreen.drawTitleButtons(hasSave)
+        -- Draw title screen buttons (NEW GAME and optionally CONTINUE, centered as a group)
+        UI.TitleScreen.drawTitleButtons(hasSave)
 
-    -- Settings button (bottom-left corner, same as main game)
-    UI.Renderer.drawSettingsButton()
+        -- Settings button (bottom-left corner, same as main game)
+        UI.Renderer.drawSettingsButton()
 
-    -- Best round display (bottom center, aligned with settings button vertically)
-    local stats = Save.loadStats()
-    if stats and stats.bestRound > 1 then
-        -- Get settings button position to align vertically
-        local _, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
-        local bestRoundY = settingsY + settingsSize / 2  -- Center vertically with settings button
-        local bestRoundText = "Best Round: " .. stats.bestRound
+        -- Best round display (bottom center, aligned with settings button vertically)
+        local stats = Save.loadStats()
+        if stats and stats.bestRound > 1 then
+            -- Get settings button position to align vertically
+            local _, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
+            local bestRoundY = settingsY + settingsSize / 2  -- Center vertically with settings button
+            local bestRoundText = "Best Round: " .. stats.bestRound
 
-        -- Draw with shadow centered horizontally
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4)
-        }
+            -- Draw with shadow centered horizontally
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4)
+            }
 
-        UI.Fonts.drawAnimatedText(bestRoundText, screenWidth / 2, bestRoundY, "large", UI.Colors.FONT_PINK, "center", animProps)
+            UI.Fonts.drawAnimatedText(bestRoundText, screenWidth / 2, bestRoundY, "large", UI.Colors.FONT_PINK, "center", animProps)
+        end
     end
 
-    -- Settings menu overlay (if open)
+    -- Settings menu overlay (if open) - always show this
     UI.Renderer.drawSettingsMenu()
 end
 
