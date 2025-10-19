@@ -53,9 +53,14 @@ function UI.TitleScreen.initializeTitleTiles()
         local offsetFromCenter = (i - 2.5) * tileSpacing
         local targetX = centerX + offsetFromCenter
 
+        -- Determine if this tile has an eye (tiles 2 and 4: MO and NO)
+        local hasEye = (i == 2 or i == 4)
+
         -- Create tile object with animation properties
         local tile = {
             letters = data.letters,
+            tileIndex = i,
+            hasEye = hasEye,
             targetX = targetX,
             targetY = targetY,
             currentX = targetX,
@@ -66,6 +71,18 @@ function UI.TitleScreen.initializeTitleTiles()
             opacity = 1.0,
             rotation = 0
         }
+
+        -- Initialize eye blink state for tiles with eyes
+        if hasEye then
+            tile.eyeBlinkState = {
+                currentFrame = 1,  -- 1 = base, 2-4 = blink frames
+                frameTimer = 0,
+                blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
+                blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+                isBlinking = false,
+                blinkPhase = 0  -- 0-3 for animation sequence
+            }
+        end
 
         table.insert(gameState.titleTiles, tile)
 
@@ -88,19 +105,64 @@ function UI.TitleScreen.updateTitleTileAnimations(dt)
         -- Floating animation - 3px range, 2.5 second cycle (same as hand tiles)
         local floatPhase = time * 2.5 + tile.floatPhase
         tile.floatOffset = math.sin(floatPhase) * 3
+
+        -- Update eye blink animation for tiles with eyes
+        if tile.hasEye and tile.eyeBlinkState then
+            local eyeState = tile.eyeBlinkState
+
+            if eyeState.isBlinking then
+                -- Update blink animation
+                eyeState.frameTimer = eyeState.frameTimer + dt
+                local frameTime = 1 / 12  -- 12 FPS
+
+                if eyeState.frameTimer >= frameTime then
+                    eyeState.frameTimer = eyeState.frameTimer - frameTime
+                    eyeState.blinkPhase = eyeState.blinkPhase + 1
+
+                    -- Blink sequence: base -> blink1 -> blink2 -> blink3 -> done (3 frames)
+                    local sequence = {2, 3, 4}
+                    if eyeState.blinkPhase <= #sequence then
+                        eyeState.currentFrame = sequence[eyeState.blinkPhase]
+                    else
+                        -- Blink complete
+                        eyeState.currentFrame = 1
+                        eyeState.isBlinking = false
+                        eyeState.blinkPhase = 0
+                        eyeState.blinkTimer = eyeState.blinkInterval
+                    end
+                end
+            else
+                -- Count down to next blink
+                eyeState.blinkTimer = eyeState.blinkTimer - dt
+
+                if eyeState.blinkTimer <= 0 then
+                    -- Start blink
+                    eyeState.isBlinking = true
+                    eyeState.blinkPhase = 1
+                    eyeState.frameTimer = 0
+                    eyeState.currentFrame = 2  -- First blink frame
+                    eyeState.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                end
+            end
+        end
     end
 end
 
 -- Draw a single title tile with letters (horizontal orientation)
 local function drawTitleTile(tile)
-    -- Get horizontal/tilted domino sprite (using 0-0 as clean base)
-    local spriteData = dominoTiltedSprites and dominoTiltedSprites["00"]
-
-    if not spriteData or not spriteData.sprite then
-        return
+    -- Choose sprite based on tile index
+    -- Tiles 2 and 4 (MO, NO) use title_tile.png, others use regular domino sprite
+    local sprite
+    if tile.hasEye and titleScreenSprites and titleScreenSprites.titleTile then
+        sprite = titleScreenSprites.titleTile
+    else
+        local spriteData = dominoTiltedSprites and dominoTiltedSprites["00"]
+        if not spriteData or not spriteData.sprite then
+            return
+        end
+        sprite = spriteData.sprite
     end
 
-    local sprite = spriteData.sprite
     local spriteScale = tile.scale
 
     -- Apply floating offset
@@ -125,9 +187,24 @@ local function drawTitleTile(tile)
     UI.Fonts.drawAnimatedText(tile.letters[1], leftX, drawY + verticalOffset, "bigScore", blackColor, "center",
         {opacity = tile.opacity, scale = 0.8})
 
-    -- Draw right letter (bigger font, scaled down 20%)
-    UI.Fonts.drawAnimatedText(tile.letters[2], rightX, drawY + verticalOffset, "bigScore", blackColor, "center",
-        {opacity = tile.opacity, scale = 0.8})
+    -- Draw right side: either eye sprite or letter
+    if tile.hasEye and titleScreenSprites and titleScreenSprites.bigEyeFrames and tile.eyeBlinkState then
+        -- Draw animated eye sprite instead of "O" letter
+        local eyeFrame = titleScreenSprites.bigEyeFrames[tile.eyeBlinkState.currentFrame]
+        if eyeFrame then
+            -- Calculate eye scale to match approximate letter size
+            local eyeScale = spriteScale -- Adjust to match visual size
+            local eyeVerticalOffset = UI.Layout.scale(43)  -- Move eye down (adjust this value)
+            love.graphics.setColor(1, 1, 1, tile.opacity)
+            love.graphics.draw(eyeFrame, rightX, drawY + verticalOffset + eyeVerticalOffset, 0,
+                eyeScale, eyeScale,
+                eyeFrame:getWidth()/2, eyeFrame:getHeight()/2)
+        end
+    else
+        -- Draw normal "O" letter for tiles without eyes
+        UI.Fonts.drawAnimatedText(tile.letters[2], rightX, drawY + verticalOffset, "bigScore", blackColor, "center",
+            {opacity = tile.opacity, scale = 0.8})
+    end
 
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
@@ -149,18 +226,6 @@ function UI.TitleScreen.draw()
         drawTitleTile(tile)
     end
 
-    -- Subtitle
-    local subtitleY = screenHeight * 0.3 + UI.Layout.scale(80)
-    UI.Fonts.drawText("Domino Deckbuilder", screenWidth / 2, subtitleY, "medium", UI.Colors.FONT_WHITE, "center")
-
-    -- Best round display
-    local stats = Save.loadStats()
-    if stats and stats.bestRound > 1 then
-        local bestRoundY = subtitleY + UI.Layout.scale(40)
-        local bestRoundText = "Best Round: " .. stats.bestRound
-        UI.Fonts.drawText(bestRoundText, screenWidth / 2, bestRoundY, "small", UI.Colors.FONT_PINK, "center")
-    end
-
     -- Check if there's a saved game
     local hasSave = Save.hasSavedGame()
 
@@ -169,6 +234,23 @@ function UI.TitleScreen.draw()
 
     -- Settings button (bottom-left corner, same as main game)
     UI.Renderer.drawSettingsButton()
+
+    -- Best round display (bottom center, aligned with settings button vertically)
+    local stats = Save.loadStats()
+    if stats and stats.bestRound > 1 then
+        -- Get settings button position to align vertically
+        local _, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
+        local bestRoundY = settingsY + settingsSize / 2  -- Center vertically with settings button
+        local bestRoundText = "Best Round: " .. stats.bestRound
+
+        -- Draw with shadow centered horizontally
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(bestRoundText, screenWidth / 2, bestRoundY, "large", UI.Colors.FONT_PINK, "center", animProps)
+    end
 
     -- Settings menu overlay (if open)
     UI.Renderer.drawSettingsMenu()

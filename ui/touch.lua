@@ -126,7 +126,8 @@ function Touch.pressed(x, y, istouch, touchId)
     -- Check for settings button press in any phase that shows it
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
-        "tiles_menu", "artifacts_menu", "contracts_menu"
+        "tiles_menu", "artifacts_menu", "contracts_menu",
+        "title_screen"
     }
 
     for _, phase in ipairs(phasesWithSettings) do

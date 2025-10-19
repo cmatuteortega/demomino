@@ -37,6 +37,7 @@ function love.load()
     
     loadDominoSprites()
     loadDemonTileSprites()
+    loadTitleScreenSprites()
     loadNodeSprites()
     loadCoinSprite()
     
@@ -146,6 +147,8 @@ function love.load()
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
         sfxEnabled = true,  -- Track sound effects state
+        -- Win sequence tracking
+        winSequenceTriggered = false,  -- Track if win sequence already started
         -- Title screen animation system
         titleTiles = {},  -- Array of 4 animated domino tiles for DEMOMINO
         titleTilesInitialized = false,  -- Track if title tiles have been set up
@@ -262,6 +265,7 @@ function initializeCombatRound()
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
+    gameState.winSequenceTriggered = false  -- Reset win sequence flag
     gameState.buttonAnimations = {
         playButton = {scale = 1.0, pressed = false, yOffset = 0},
         discardButton = {scale = 1.0, pressed = false, yOffset = 0},
@@ -390,6 +394,12 @@ function updateScoreCountdown(dt)
 
             -- Stop score animation sound and play end sound
             UI.Audio.stopScoreAnimating()
+
+            -- If countdown reached 0, check if player won and trigger game end (only once)
+            if actualRemaining == 0 and gameState.score >= gameState.targetScore and not gameState.winSequenceTriggered then
+                gameState.winSequenceTriggered = true
+                Touch.checkGameEnd()
+            end
         end
     else
         gameState.displayedRemainingScore = actualRemaining
@@ -920,10 +930,13 @@ function completeScoringSequence()
         if drawnTiles and #drawnTiles > 0 then
             Hand.animateTilesDraw(gameState.hand, 0, drawnTiles)
         end
+    else
+        -- Game is ending - check if it's a loss (maxed out hands)
+        -- For wins, wait for score countdown to complete (handled in updateScoreCountdown)
+        if gameState.handsPlayed >= gameState.maxHandsPerRound then
+            Touch.checkGameEnd()
+        end
     end
-
-    -- Check game end and trigger animations if needed
-    Touch.checkGameEnd()
 end
 
 function animateButtonPress(buttonName)
@@ -951,13 +964,17 @@ function love.update(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
-    elseif gameState.gamePhase == "playing" then
-        Hand.update(dt)
-        Board.update(dt)
-        updateScoringSequence(dt)
-        updateScoreIdleAnimation(dt)
+    elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
+        -- Keep updating score countdown and idle animation even in "won" phase to let it finish
         updateScoreCountdown(dt)
-        updateFormulaCountAnimation(dt)
+        updateScoreIdleAnimation(dt)
+
+        if gameState.gamePhase == "playing" then
+            Hand.update(dt)
+            Board.update(dt)
+            updateScoringSequence(dt)
+            updateFormulaCountAnimation(dt)
+        end
     elseif gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" then
         -- Update fusion hand using regular Hand.update logic
         if gameState.fusionHand then
@@ -1559,6 +1576,27 @@ function loadDemonTileSprites()
     -- Also keep reference to base eye for backwards compatibility
     if #demonTileSprites.eyeFrames > 0 then
         demonTileSprites.eye = demonTileSprites.eyeFrames[1]
+    end
+end
+
+function loadTitleScreenSprites()
+    titleScreenSprites = {}
+
+    -- Load title tile sprite
+    local titleTileFilename = "sprites/title_tile.png"
+    if love.filesystem.getInfo(titleTileFilename) then
+        titleScreenSprites.titleTile = love.graphics.newImage(titleTileFilename)
+    end
+
+    -- Load big eye animation frames
+    titleScreenSprites.bigEyeFrames = {}
+    local eyeFiles = {"base.png", "blink1.png", "blink2.png", "blink3.png"}
+
+    for i, filename in ipairs(eyeFiles) do
+        local fullPath = "sprites/demon_tiles/big_eye_animation/" .. filename
+        if love.filesystem.getInfo(fullPath) then
+            table.insert(titleScreenSprites.bigEyeFrames, love.graphics.newImage(fullPath))
+        end
     end
 end
 
