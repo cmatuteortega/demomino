@@ -432,11 +432,8 @@ function Touch.released(x, y, istouch, touchId)
             UI.Audio.playButtonDefault()
             gameState.settingsMenuOpen = false
             gameState.settingsFromTitle = false
-            Save.deleteSave()  -- Clear save when restarting
-            gameState.ownedTools = {}  -- Reset tools on restart
-            initializeGame(false)  -- Restart from Round 1
-            -- Generate new map for fresh start
-            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+            -- Reset the entire game to a fresh state
+            resetGameToFresh()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
@@ -512,13 +509,9 @@ function Touch.released(x, y, istouch, touchId)
     if gameState.gamePhase == "lost" then
         -- Check for restart button
         if gameState.lostRestartButton and isPointInRect(x, y, gameState.lostRestartButton) then
-            -- Complete restart - back to round 1 with new map from node 0
-            Save.deleteSave()  -- Clear any save when restarting
-            gameState.ownedTools = {}  -- Reset tools on restart
-            initializeGame(false)  -- false = not a new round, complete restart
-            -- Generate a completely new map for fresh start
-            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
-            gameState.gamePhase = "map"  -- Start at map view, not directly in combat
+            -- Reset the entire game to a fresh state
+            resetGameToFresh()
+            gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
             -- Delete save when returning to title from lost screen (game is over)
