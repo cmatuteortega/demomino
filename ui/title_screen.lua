@@ -428,51 +428,8 @@ end
 
 -- Start a new game
 function UI.TitleScreen.startNewGame()
-    -- Delete any existing save
-    Save.deleteSave()
-
-    -- Reset ALL game state completely
-    gameState.currentRound = 1
-    gameState.targetScore = TARGET_SCORE
-    gameState.coins = 0
-    gameState.startRoundCoins = 0
-    gameState.tileCollection = {}
-    gameState.currentMap = nil
-    gameState.isBossRound = false
-
-    -- Reset shop/menu state
-    gameState.offeredTiles = {}
-    gameState.selectedTileOffer = nil
-    gameState.selectedTilesToBuy = {}
-
-    -- Reset fusion state
-    gameState.tilesMenuMode = "shop"
-    gameState.fusionHand = {}
-    gameState.fusionSlotTiles = {}
-
-    -- Reset challenges
-    gameState.activeChallenges = {}
-    gameState.challengeStates = {}
-
-    -- Reset tools/artifacts
-    gameState.ownedTools = {}
-
-    -- Reset coin animation state
-    gameState.coinsAnimation = {
-        scale = 1.0,
-        shake = 0,
-        color = {1, 0.9, 0.3, 1},
-        coinFlips = {},
-        fallingCoins = {},
-        settledCoins = 0,
-        targetCoins = 0
-    }
-
-    -- Initialize a fresh game
-    initializeGame(false)
-
-    -- Generate new map
-    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+    -- Reset the entire game to a fresh state
+    resetGameToFresh()
 
     -- Go to map phase
     gameState.gamePhase = "map"

@@ -180,21 +180,70 @@ function love.load()
     UI.Audio.playMusic()
 end
 
+-- Reset the entire game to a fresh state (like starting a new run)
+function resetGameToFresh()
+    -- Delete any existing save
+    Save.deleteSave()
+
+    -- Reset ALL game state completely
+    gameState.currentRound = 1
+    gameState.targetScore = TARGET_SCORE
+    gameState.coins = 0
+    gameState.startRoundCoins = 0
+    gameState.tileCollection = Domino.createStarterCollection()
+    gameState.currentMap = nil
+    gameState.isBossRound = false
+
+    -- Reset shop/menu state
+    gameState.offeredTiles = {}
+    gameState.selectedTileOffer = nil
+    gameState.selectedTilesToBuy = {}
+
+    -- Reset fusion state
+    gameState.tilesMenuMode = "shop"
+    gameState.fusionHand = {}
+    gameState.fusionSlotTiles = {}
+
+    -- Reset challenges
+    gameState.activeChallenges = {}
+    gameState.challengeStates = {}
+
+    -- Reset tools/artifacts
+    gameState.ownedTools = {}
+
+    -- Reset coin animation state
+    gameState.coinsAnimation = {
+        scale = 1.0,
+        shake = 0,
+        color = {1, 0.9, 0.3, 1},
+        coinFlips = {},
+        fallingCoins = {},
+        settledCoins = 0,
+        targetCoins = 0
+    }
+
+    -- Initialize a fresh game
+    initializeGame(false)
+
+    -- Generate new map
+    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+end
+
 function initializeGame(isNewRound)
     isNewRound = isNewRound or false
-    
+
     -- Initialize tile collection on first run
     if not gameState.tileCollection or #gameState.tileCollection == 0 then
         gameState.tileCollection = Domino.createStarterCollection()
     end
-    
+
     -- Create deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
-    
+
     -- Initialize empty hand first
     gameState.hand = {}
-    
+
     -- Draw tiles from deck
     for i = 1, 7 do
         local tile = table.remove(gameState.deck, 1)
@@ -252,7 +301,7 @@ function initializeGame(isNewRound)
         floatOffset = 0,
         phase = love.math.random() * 2 * math.pi  -- Random phase for variety
     }
-    
+
     -- Position tiles will be handled in first draw call
 end
 
