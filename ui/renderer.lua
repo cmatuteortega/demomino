@@ -625,6 +625,63 @@ function UI.Renderer.drawHand(hand)
     end
 end
 
+function UI.Renderer.drawToolButtons()
+    -- Only draw in playing phase (not in won state)
+    if gameState.gamePhase ~= "playing" then
+        return
+    end
+
+    -- Get tool definitions
+    local toolDefs = Tools.getDefinitions()
+    local ownedTools = gameState.ownedTools or {}
+
+    -- Reset tool button bounds for click detection
+    gameState.toolButtonBounds = {}
+
+    -- Draw each owned tool as a button
+    for i, toolId in ipairs(ownedTools) do
+        local toolDef = toolDefs[toolId]
+        if toolDef then
+            local x, y, width, height = UI.Layout.getToolButtonPosition(i, #ownedTools)
+
+            -- Check if tool can be used
+            local canUse, reason = Tools.canUse(toolId, gameState)
+
+            -- Determine button color
+            local buttonColor
+            if canUse then
+                -- Use tool's defined color if usable
+                buttonColor = toolDef.color
+            else
+                -- Dimmed if not usable (e.g., no deck tiles, no anchor tile)
+                buttonColor = {toolDef.color[1] * 0.5, toolDef.color[2] * 0.5, toolDef.color[3] * 0.5, 0.7}
+            end
+
+            -- Draw button background
+            love.graphics.setColor(buttonColor)
+            love.graphics.rectangle("fill", x, y, width, height, UI.Layout.scale(4), UI.Layout.scale(4))
+
+            -- Draw button outline
+            love.graphics.setColor(UI.Colors.OUTLINE)
+            love.graphics.setLineWidth(UI.Layout.scale(2))
+            love.graphics.rectangle("line", x, y, width, height, UI.Layout.scale(4), UI.Layout.scale(4))
+
+            -- Draw tool name (abbreviated)
+            local displayName = toolDef.name:match("^%S+") or toolDef.name  -- First word only
+            UI.Fonts.drawText(displayName, x + width / 2, y + height / 2, "small", UI.Colors.FONT_WHITE, "center")
+
+            -- Store button bounds for click detection
+            table.insert(gameState.toolButtonBounds, {
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                toolId = toolId
+            })
+        end
+    end
+end
+
 function UI.Renderer.drawBoard(board)
     for _, domino in ipairs(board) do
         UI.Renderer.drawDomino(domino, nil, nil, nil, "horizontal")
@@ -1246,22 +1303,23 @@ function UI.Renderer.drawUI()
     
     -- Scoring formula is now displayed under main score in drawScore function
     
+    local maxDiscards = gameState.maxDiscardsPerRound or 2
     local discardColor = UI.Colors.BACKGROUND_LIGHT
-    if hasSelectedTiles and gameState.discardsUsed < 2 then
+    if hasSelectedTiles and gameState.discardsUsed < maxDiscards then
         discardColor = UI.Colors.BACKGROUND_LIGHT
-    elseif gameState.discardsUsed >= 2 then
+    elseif gameState.discardsUsed >= maxDiscards then
         discardColor = UI.Colors.BACKGROUND
     end
-    
+
     love.graphics.setColor(discardColor[1], discardColor[2], discardColor[3], discardColor[4])
     love.graphics.rectangle("fill", discardButtonX, discardButtonY, buttonWidth, buttonHeight, 5)
-    
+
     UI.Colors.setOutline()
     love.graphics.rectangle("line", discardButtonX, discardButtonY, buttonWidth, buttonHeight, 5)
-    
-    local discardsLeft = 2 - gameState.discardsUsed
+
+    local discardsLeft = maxDiscards - gameState.discardsUsed
     local discardText = "DISCARD (" .. discardsLeft .. ")"
-    if gameState.discardsUsed >= 2 then
+    if gameState.discardsUsed >= maxDiscards then
         discardText = "NO DISCARD"
     end
     
@@ -1820,12 +1878,120 @@ function UI.Renderer.drawArtifactsMenu()
     local coinsColor = {1, 0.9, 0.3, 1}
     UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
 
-    -- Placeholder content
-    local contentColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText("Coming Soon!\nPowerful artifacts will be available here\nfor purchase with coins", centerX, centerY - UI.Layout.scale(50), "large", contentColor, "center")
+    -- Instructions
+    local instructionColor = UI.Colors.FONT_WHITE
+    local maxToolsText = "Max 3 tools at a time"
+    UI.Fonts.drawText(maxToolsText, centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+
+    -- Draw tool offers
+    UI.Renderer.drawToolOffers()
 
     -- Return to Map button
     UI.Renderer.drawReturnToMapButton()
+end
+
+function UI.Renderer.drawToolOffers()
+    local screenWidth = gameState.screen.width
+    local centerX = screenWidth / 2
+    local startY = UI.Layout.scale(180)
+
+    -- Get tool definitions
+    local toolDefs = Tools.getDefinitions()
+    local ownedTools = gameState.ownedTools or {}
+    local offeredTools = gameState.offeredTools or {}
+
+    -- Reset tool purchase button bounds
+    gameState.toolPurchaseButtons = {}
+
+    -- Display only the offered tools (3 random tools)
+    for i, toolId in ipairs(offeredTools) do
+        local toolDef = toolDefs[toolId]
+
+        if not toolDef then
+            -- Skip if tool definition not found
+            goto continue
+        end
+
+        local y = startY + (i - 1) * UI.Layout.scale(110)
+
+        -- Count how many copies of this tool are owned
+        local ownedCount = 0
+        for _, ownedId in ipairs(ownedTools) do
+            if ownedId == toolId then
+                ownedCount = ownedCount + 1
+            end
+        end
+
+        -- Draw tool card background
+        local cardX = centerX - UI.Layout.scale(200)
+        local cardWidth = UI.Layout.scale(400)
+        local cardHeight = UI.Layout.scale(90)
+
+        love.graphics.setColor(0.2, 0.2, 0.25, 0.9)
+        love.graphics.rectangle("fill", cardX, y, cardWidth, cardHeight, UI.Layout.scale(6), UI.Layout.scale(6))
+
+        love.graphics.setColor(toolDef.color)
+        love.graphics.setLineWidth(UI.Layout.scale(3))
+        love.graphics.rectangle("line", cardX, y, cardWidth, cardHeight, UI.Layout.scale(6), UI.Layout.scale(6))
+
+        -- Draw tool name
+        UI.Fonts.drawText(toolDef.name, cardX + UI.Layout.scale(15), y + UI.Layout.scale(15), "large", toolDef.color, "left")
+
+        -- Draw tool description
+        UI.Fonts.drawText(toolDef.description, cardX + UI.Layout.scale(15), y + UI.Layout.scale(45), "small", UI.Colors.FONT_WHITE, "left")
+
+        -- Draw owned count if any
+        if ownedCount > 0 then
+            local countText = "x" .. ownedCount
+            UI.Fonts.drawText(countText, cardX + UI.Layout.scale(15), y + cardHeight - UI.Layout.scale(20), "medium", {0.3, 0.9, 0.3, 1}, "left")
+        end
+
+        -- Draw purchase button
+        local buttonX = cardX + cardWidth - UI.Layout.scale(110)
+        local buttonY = y + cardHeight / 2 - UI.Layout.scale(15)
+        local buttonWidth = UI.Layout.scale(90)
+        local buttonHeight = UI.Layout.scale(30)
+
+        -- Check if can afford and has space
+        local canAfford = gameState.coins >= toolDef.cost
+        local hasSpace = #ownedTools < 3
+
+        local buttonColor
+        local textColor
+        if canAfford and hasSpace then
+            buttonColor = {0.2, 0.7, 0.3, 1}
+            textColor = UI.Colors.FONT_WHITE
+        else
+            buttonColor = {0.3, 0.3, 0.3, 0.7}
+            textColor = {0.5, 0.5, 0.5, 1}
+        end
+
+        -- Draw buy button
+        love.graphics.setColor(buttonColor)
+        love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(3), UI.Layout.scale(3))
+
+        love.graphics.setColor(UI.Colors.OUTLINE)
+        love.graphics.setLineWidth(UI.Layout.scale(2))
+        love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(3), UI.Layout.scale(3))
+
+        -- Draw button text
+        local buttonText = "BUY " .. toolDef.cost .. "$"
+        UI.Fonts.drawText(buttonText, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2, "small", textColor, "center")
+
+        -- Store button bounds if usable
+        if canAfford and hasSpace then
+            table.insert(gameState.toolPurchaseButtons, {
+                x = buttonX,
+                y = buttonY,
+                width = buttonWidth,
+                height = buttonHeight,
+                toolId = toolId,
+                cost = toolDef.cost
+            })
+        end
+
+        ::continue::
+    end
 end
 
 function UI.Renderer.drawContractsMenu()

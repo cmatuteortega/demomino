@@ -238,4 +238,43 @@ function UI.Layout.getCoinCounterBounds()
     }
 end
 
+function UI.Layout.getToolButtonPosition(index, total)
+    -- Position tool buttons to the right of the hand tiles
+    -- Aligned vertically with the hand tiles
+
+    local screen = gameState.screen
+    local handArea = UI.Layout.getHandArea()
+
+    -- Calculate where the hand tiles end
+    local minScale = math.min(screen.width / 800, screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    -- Get sprite width for calculation
+    local sampleSpriteData = dominoSprites and dominoSprites["00"]
+    local spriteWidth
+    if sampleSpriteData and sampleSpriteData.sprite then
+        spriteWidth = sampleSpriteData.sprite:getWidth() * spriteScale
+    else
+        spriteWidth = UI.Layout.scale(60)
+    end
+
+    -- Get hand size to calculate where it ends
+    local handSize = gameState.hand and #gameState.hand or 7
+    local totalHandWidth = handSize * spriteWidth
+    local handEndX = (screen.width + totalHandWidth) / 2
+
+    -- Button dimensions
+    local buttonWidth = UI.Layout.scale(80)
+    local buttonHeight = UI.Layout.scale(60)
+    local buttonSpacing = UI.Layout.scale(10)
+
+    -- Start position: indented right from hand end
+    local startX = handEndX + UI.Layout.scale(20)
+
+    -- Vertical position: aligned with hand tiles, stacked vertically
+    local y = handArea.y + (index - 1) * (buttonHeight + buttonSpacing)
+
+    return startX, y, buttonWidth, buttonHeight
+end
+
 return UI.Layout
