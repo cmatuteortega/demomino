@@ -43,6 +43,13 @@ local toolDefinitions = {
         description = "Gain +1 discard\nfor this round",
         cost = 2,
         color = {0.7, 0.4, 0.9, 1}  -- Purple
+    },
+    knife = {
+        id = "knife",
+        name = "KNIFE",
+        description = "Cut target score\nin half (rounded up)",
+        cost = 2,
+        color = {0.9, 0.9, 0.9, 1}  -- Silver/White
     }
 }
 
@@ -136,6 +143,9 @@ function Tools.canUse(toolId, gameState)
     elseif toolId == "extraDiscard" then
         -- Can always use extra discard (no special conditions)
         return true, nil
+    elseif toolId == "knife" then
+        -- Can always use knife (no special conditions)
+        return true, nil
     end
 
     return true, nil
@@ -173,6 +183,8 @@ function Tools.use(toolId, gameState)
         Tools.useExtraHand(gameState)
     elseif toolId == "extraDiscard" then
         Tools.useExtraDiscard(gameState)
+    elseif toolId == "knife" then
+        Tools.useKnife(gameState)
     end
 
     return true, nil
@@ -496,6 +508,35 @@ function Tools.useExtraDiscard(gameState)
         color = {0.7, 0.4, 0.9, 1},
         fontSize = "large",
         duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
+-- Knife: Cut target score in half (rounded up)
+function Tools.useKnife(gameState)
+    -- Store old target score
+    local oldTarget = gameState.targetScore
+
+    -- Cut target score in half, rounded up
+    gameState.targetScore = math.ceil(gameState.targetScore / 2)
+
+    -- Play sound
+    if UI.Audio and UI.Audio.playButtonDefault then
+        UI.Audio.playButtonDefault()
+    end
+
+    -- Show floating text with old -> new score
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    UI.Animation.createFloatingText("TARGET CUT!\n" .. oldTarget .. " → " .. gameState.targetScore, centerX, centerY - UI.Layout.scale(50), {
+        color = {0.9, 0.9, 0.9, 1},
+        fontSize = "large",
+        duration = 2.0,
         riseDistance = 60,
         startScale = 0.5,
         endScale = 1.3,
