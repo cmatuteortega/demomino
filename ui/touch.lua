@@ -233,7 +233,6 @@ function Touch.pressed(x, y, istouch, touchId)
 
     local sortButtonBounds = getSortButtonBounds()
     if isPointInRect(x, y, sortButtonBounds) then
-        UI.Audio.playButtonDefault()
         animateButtonPress("sortButton")
         Touch.sortHandTiles()
         return
@@ -1370,6 +1369,9 @@ function Touch.checkGameEnd()
         -- Animate hand tiles discarding before showing loss screen
         Hand.animateAllHandDiscard(gameState.hand, function()
             gameState.gamePhase = "lost"
+
+            -- Stop any score countdown sound that might still be playing
+            UI.Audio.stopScoreAnimating()
         end)
     end
 end

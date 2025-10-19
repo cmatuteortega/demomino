@@ -933,7 +933,8 @@ function completeScoringSequence()
     else
         -- Game is ending - check if it's a loss (maxed out hands)
         -- For wins, wait for score countdown to complete (handled in updateScoreCountdown)
-        if gameState.handsPlayed >= gameState.maxHandsPerRound then
+        if gameState.handsPlayed >= gameState.maxHandsPerRound and not gameState.winSequenceTriggered then
+            gameState.winSequenceTriggered = true
             Touch.checkGameEnd()
         end
     end
