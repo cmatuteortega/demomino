@@ -24,6 +24,9 @@ function Save.saveGame(gameState)
         -- Tile collection (player's deck building progress)
         tileCollection = {},
 
+        -- Tools/Artifacts (player's owned tools)
+        ownedTools = gameState.ownedTools or {},
+
         -- Map state
         mapData = nil,
         isBossRound = gameState.isBossRound or false,

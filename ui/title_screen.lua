@@ -454,6 +454,9 @@ function UI.TitleScreen.startNewGame()
     gameState.activeChallenges = {}
     gameState.challengeStates = {}
 
+    -- Reset tools/artifacts
+    gameState.ownedTools = {}
+
     -- Reset coin animation state
     gameState.coinsAnimation = {
         scale = 1.0,
@@ -493,6 +496,9 @@ function UI.TitleScreen.continueGame()
     gameState.coins = saveData.coins or 0
     gameState.isBossRound = saveData.isBossRound or false
     gameState.currentDay = saveData.currentDay or 1
+
+    -- Restore owned tools
+    gameState.ownedTools = saveData.ownedTools or {}
 
     -- Restore tile collection
     gameState.tileCollection = {}

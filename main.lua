@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -26,6 +26,7 @@ function love.load()
     require("game.challenges")
     require("game.map")
     require("game.save")
+    require("game.tools")
     require("ui.touch")
     require("ui.layout")
     require("ui.fonts")
@@ -55,6 +56,7 @@ function love.load()
         gamePhase = "playing",
         placementOrder = {},
         discardsUsed = 0,
+        maxDiscardsPerRound = 2,  -- Base discards per round
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
@@ -147,6 +149,10 @@ function love.load()
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
         sfxEnabled = true,  -- Track sound effects state
+        -- Tools/Artifacts system
+        ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
+        transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
+        toolButtonBounds = {},  -- Array of clickable bounds for tool buttons
         -- Win sequence tracking
         winSequenceTriggered = false,  -- Track if win sequence already started
         -- Title screen animation system
@@ -262,6 +268,7 @@ function initializeCombatRound()
     gameState.selectedTiles = {}
     gameState.placementOrder = {}
     gameState.discardsUsed = 0
+    gameState.maxDiscardsPerRound = 2  -- Reset to base value
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
@@ -338,7 +345,10 @@ function initializeCombatRound()
         Board.arrangePlacedTiles()
     end
 
-    -- Keep currentRound, targetScore, currentMap, and tileCollection unchanged
+    -- STEP 8: Reset tool usages for new combat round
+    Tools.resetUsages(gameState)
+
+    -- Keep currentRound, targetScore, currentMap, tileCollection, and ownedTools unchanged
     -- These should persist across combat rounds
 end
 
@@ -1006,6 +1016,7 @@ function love.draw()
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Renderer.drawHand(gameState.hand)
+        UI.Renderer.drawToolButtons()  -- Draw tool buttons
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
         UI.Renderer.drawCoinSprites()  -- Draw coin sprites first

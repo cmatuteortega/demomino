@@ -258,6 +258,16 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle tool button clicks
+    if gameState.toolButtonBounds then
+        for _, button in ipairs(gameState.toolButtonBounds) do
+            if isPointInRect(x, y, button) then
+                Touch.handleToolButtonClick(button.toolId)
+                return
+            end
+        end
+    end
+
     -- Handle fusion hand (reuse regular hand logic)
     if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" and gameState.fusionHand then
         local tile, index = Hand.getTileAt(gameState.fusionHand, x, y)
@@ -423,6 +433,7 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsMenuOpen = false
             gameState.settingsFromTitle = false
             Save.deleteSave()  -- Clear save when restarting
+            gameState.ownedTools = {}  -- Reset tools on restart
             initializeGame(false)  -- Restart from Round 1
             -- Generate new map for fresh start
             gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
@@ -503,6 +514,7 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.lostRestartButton and isPointInRect(x, y, gameState.lostRestartButton) then
             -- Complete restart - back to round 1 with new map from node 0
             Save.deleteSave()  -- Clear any save when restarting
+            gameState.ownedTools = {}  -- Reset tools on restart
             initializeGame(false)  -- false = not a new round, complete restart
             -- Generate a completely new map for fresh start
             gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
@@ -720,7 +732,27 @@ function Touch.released(x, y, istouch, touchId)
             gameState.gamePhase = "map"
         end
         -- Don't clear touchState.isPressed yet - need it for drag detection below
-    elseif gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
+    elseif gameState.gamePhase == "artifacts_menu" then
+        -- Handle tool purchase buttons
+        if gameState.toolPurchaseButtons then
+            for _, button in ipairs(gameState.toolPurchaseButtons) do
+                if isPointInRect(x, y, button) then
+                    Touch.purchaseTool(button.toolId, button.cost)
+                    touchState.isPressed = false
+                    touchState.touchId = nil
+                    return
+                end
+            end
+        end
+
+        -- Handle return to map button
+        if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
+            gameState.gamePhase = "map"
+        end
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    elseif gameState.gamePhase == "contracts_menu" then
         -- Handle menu screen interactions - only Return to Map button for now
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
             gameState.gamePhase = "map"
@@ -851,9 +883,17 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.hoverInsertIndex = nil
             end
         else
-            -- Just a tap - select tile
-            Hand.selectTile(gameState.hand, touchState.draggedTile)
-            Touch.resetTileDragState(touchState.draggedTile)
+            -- Just a tap - check for transformer selection mode first
+            if gameState.transformerSelectionMode then
+                -- Transform this tile
+                Tools.transformTile(touchState.draggedTile)
+                gameState.transformerSelectionMode = false
+                Touch.resetTileDragState(touchState.draggedTile)
+            else
+                -- Normal tile selection
+                Hand.selectTile(gameState.hand, touchState.draggedTile)
+                Touch.resetTileDragState(touchState.draggedTile)
+            end
         end
     end
     
@@ -1370,6 +1410,9 @@ function Touch.checkGameEnd()
         Hand.animateAllHandDiscard(gameState.hand, function()
             gameState.gamePhase = "lost"
 
+            -- Reset tools on loss (consumables don't persist through failure)
+            gameState.ownedTools = {}
+
             -- Stop any score countdown sound that might still be playing
             UI.Audio.stopScoreAnimating()
         end)
@@ -1437,7 +1480,8 @@ function Touch.returnTileToHand(tile)
 end
 
 function Touch.discardSelectedTiles()
-    if gameState.discardsUsed >= 2 or not Hand.hasSelectedTiles(gameState.hand) then
+    local maxDiscards = gameState.maxDiscardsPerRound or 2
+    if gameState.discardsUsed >= maxDiscards or not Hand.hasSelectedTiles(gameState.hand) then
         return false
     end
 
@@ -1615,6 +1659,8 @@ function Touch.enterSelectedNode()
         gameState.selectedTilesToBuy = {}  -- Initialize empty selection for multi-purchase
         gameState.gamePhase = "tiles_menu"
     elseif nodeType == "artifacts" then
+        -- Generate 3 random tool offers when entering artifacts menu
+        gameState.offeredTools = Tools.generateRandomToolOffers(3)
         gameState.gamePhase = "artifacts_menu"
     elseif nodeType == "contracts" then
         gameState.gamePhase = "contracts_menu"
@@ -1949,6 +1995,139 @@ function Touch.sortHandTiles()
 
     -- Trigger the animated sort
     Hand.animateSortTiles(gameState.hand)
+end
+
+-- TOOLS/ARTIFACTS FUNCTIONS
+
+-- Handle tool button click during combat
+function Touch.handleToolButtonClick(toolId)
+    -- Check if tool can be used
+    local canUse, reason = Tools.canUse(toolId, gameState)
+
+    if not canUse then
+        -- Show error message
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText(reason:upper(), centerX, centerY - UI.Layout.scale(50), {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "medium",
+            duration = 1.2,
+            riseDistance = 30,
+            startScale = 0.8,
+            endScale = 1.1,
+            shake = 2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Use the tool
+    local success, error = Tools.use(toolId, gameState)
+
+    if success then
+        -- Play sound
+        if UI.Audio and UI.Audio.playButtonDefault then
+            UI.Audio.playButtonDefault()
+        end
+
+        -- Handle transformer special case - need to enter selection mode
+        if toolId == "transformer" then
+            -- Transformer will show its own floating text in Tools.useTransformer
+            -- Player now needs to tap a hand tile to transform it
+        end
+    else
+        -- Show error if use failed
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText((error or "CANNOT USE"):upper(), centerX, centerY - UI.Layout.scale(50), {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "medium",
+            duration = 1.2,
+            riseDistance = 30,
+            startScale = 0.8,
+            endScale = 1.1,
+            shake = 2,
+            easing = "easeOutQuart"
+        })
+    end
+end
+
+-- Purchase a tool from the artifacts shop
+function Touch.purchaseTool(toolId, cost)
+    -- Double-check affordability and space
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    local ownedTools = gameState.ownedTools or {}
+    if #ownedTools >= 3 then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Purchase successful
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+    table.insert(gameState.ownedTools, toolId)
+
+    -- Remove the purchased tool from current shop offers
+    if gameState.offeredTools then
+        for i, offeredToolId in ipairs(gameState.offeredTools) do
+            if offeredToolId == toolId then
+                table.remove(gameState.offeredTools, i)
+                break
+            end
+        end
+    end
+
+    -- Show success animation
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    local toolDef = Tools.getDefinition(toolId)
+    local toolName = toolDef and toolDef.name or "TOOL"
+
+    UI.Animation.createFloatingText(toolName .. " ACQUIRED!", centerX, centerY - UI.Layout.scale(50), {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 2.0,
+        riseDistance = 100,
+        startScale = 0.5,
+        endScale = 1.5,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+
+    -- Play purchase sound
+    if UI.Audio and UI.Audio.playButtonDefault then
+        UI.Audio.playButtonDefault()
+    end
 end
 
 return Touch
