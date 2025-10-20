@@ -151,9 +151,28 @@ function Hand.getTileAt(hand, x, y)
 end
 
 function Hand.selectTile(hand, tile)
+    -- Obsidian tiles cannot be selected/discarded
+    if tile.tileType == "obsidian" then
+        -- Show feedback that obsidian tiles can't be discarded
+        if UI.Animation and UI.Animation.createFloatingText then
+            UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE DISCARDED",
+                gameState.screen.width / 2,
+                gameState.screen.height / 2 - UI.Layout.scale(100), {
+                color = {0.125, 0.145, 0.263, 1},
+                fontSize = "small",
+                duration = 1.0,
+                riseDistance = 20,
+                startScale = 0.8,
+                endScale = 1.0,
+                easing = "easeOutQuart"
+            })
+        end
+        return
+    end
+
     local wasSelected = tile.selected
     tile.selected = not tile.selected
-    
+
     if tile.selected and not wasSelected then
         -- Punch out animation and move up
         tile.selectScale = 1.0

@@ -272,6 +272,22 @@ function Touch.pressed(x, y, istouch, touchId)
     if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" and gameState.fusionHand then
         local tile, index = Hand.getTileAt(gameState.fusionHand, x, y)
         if tile then
+            -- Obsidian tiles cannot be used in fusion
+            if tile.tileType == "obsidian" then
+                UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE FUSED",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = {0.125, 0.145, 0.263, 1},
+                    fontSize = "small",
+                    duration = 1.0,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+                return
+            end
+
             touchState.draggedTile = tile
             touchState.draggedFrom = "fusionHand"
             touchState.draggedIndex = index
@@ -878,9 +894,25 @@ function Touch.released(x, y, istouch, touchId)
         else
             -- Just a tap - check for tool selection modes first
             if gameState.transformerSelectionMode then
-                -- Transform this tile
-                Tools.transformTile(touchState.draggedTile)
-                gameState.transformerSelectionMode = false
+                -- Obsidian tiles cannot be transformed
+                if touchState.draggedTile.tileType == "obsidian" then
+                    UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE ALTERED",
+                        gameState.screen.width / 2,
+                        gameState.screen.height / 2 - UI.Layout.scale(100), {
+                        color = {0.125, 0.145, 0.263, 1},
+                        fontSize = "small",
+                        duration = 1.0,
+                        riseDistance = 20,
+                        startScale = 0.8,
+                        endScale = 1.0,
+                        easing = "easeOutQuart"
+                    })
+                    gameState.transformerSelectionMode = false
+                else
+                    -- Transform this tile
+                    Tools.transformTile(touchState.draggedTile)
+                    gameState.transformerSelectionMode = false
+                end
                 Touch.resetTileDragState(touchState.draggedTile)
             elseif gameState.obsidianTransmuterSelectionMode then
                 -- Transmute this tile to obsidian
@@ -888,9 +920,25 @@ function Touch.released(x, y, istouch, touchId)
                 gameState.obsidianTransmuterSelectionMode = false
                 Touch.resetTileDragState(touchState.draggedTile)
             elseif gameState.tenderTransmuterSelectionMode then
-                -- Transmute this tile to tender
-                Tools.transmuteTileToTender(touchState.draggedTile)
-                gameState.tenderTransmuterSelectionMode = false
+                -- Obsidian tiles cannot be made tender
+                if touchState.draggedTile.tileType == "obsidian" then
+                    UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE ALTERED",
+                        gameState.screen.width / 2,
+                        gameState.screen.height / 2 - UI.Layout.scale(100), {
+                        color = {0.125, 0.145, 0.263, 1},
+                        fontSize = "small",
+                        duration = 1.0,
+                        riseDistance = 20,
+                        startScale = 0.8,
+                        endScale = 1.0,
+                        easing = "easeOutQuart"
+                    })
+                    gameState.tenderTransmuterSelectionMode = false
+                else
+                    -- Transmute this tile to tender
+                    Tools.transmuteTileToTender(touchState.draggedTile)
+                    gameState.tenderTransmuterSelectionMode = false
+                end
                 Touch.resetTileDragState(touchState.draggedTile)
             else
                 -- Normal tile selection

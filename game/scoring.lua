@@ -54,18 +54,23 @@ function Scoring.getScoreBreakdown(tiles)
     -- Calculate base value (sum of all tile values + 10 per double)
     local tileValues = 0
     local doubleCount = 0
-    
+    local obsidianCount = 0
+
     for _, tile in ipairs(tiles) do
         tileValues = tileValues + Domino.getValue(tile)
         if Domino.isDouble(tile) then
             doubleCount = doubleCount + 1
         end
+        -- Count obsidian tiles for multiplier bonus
+        if tile.tileType == "obsidian" then
+            obsidianCount = obsidianCount + 1
+        end
     end
-    
+
     local baseValue = tileValues + (doubleCount * 10)
-    
-    -- Calculate multiplier (number of tiles on board)
-    local multiplier = #tiles
+
+    -- Calculate multiplier (number of tiles on board + 1 per obsidian tile)
+    local multiplier = #tiles + obsidianCount
     local total = baseValue * multiplier
     
     return {
@@ -73,6 +78,7 @@ function Scoring.getScoreBreakdown(tiles)
         tileValues = tileValues,
         doubleBonus = doubleCount * 10,
         multiplier = multiplier,
+        obsidianBonus = obsidianCount,  -- Track obsidian multiplier bonus
         total = total
     }
 end
