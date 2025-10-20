@@ -21,7 +21,11 @@ local touchState = {
     lastTapTime = 0,
     doubleTapWindow = 0.5,  -- 500ms window for double-tap
     -- Hand reordering state
-    hoverInsertIndex = nil
+    hoverInsertIndex = nil,
+    -- Button press tracking (prevents double-tap issues)
+    playButtonPressed = false,
+    discardButtonPressed = false,
+    sortButtonPressed = false
 }
 
 -- Adjust drag threshold based on device type and context
@@ -234,16 +238,15 @@ function Touch.pressed(x, y, istouch, touchId)
     local sortButtonBounds = getSortButtonBounds()
     if isPointInRect(x, y, sortButtonBounds) then
         animateButtonPress("sortButton")
-        Touch.sortHandTiles()
+        touchState.sortButtonPressed = true
         return
     end
 
     local playButtonBounds = getPlayButtonBounds()
     if isPointInRect(x, y, playButtonBounds) then
         if #gameState.placedTiles > 0 then
-            UI.Audio.playPlayButton()
             animateButtonPress("playButton")
-            Touch.playPlacedTiles()
+            touchState.playButtonPressed = true
         end
         return
     end
@@ -251,10 +254,7 @@ function Touch.pressed(x, y, istouch, touchId)
     local discardButtonBounds = getDiscardButtonBounds()
     if isPointInRect(x, y, discardButtonBounds) then
         animateButtonPress("discardButton")
-        local discarded = Touch.discardSelectedTiles()
-        if discarded then
-            UI.Audio.playDiscardButton()
-        end
+        touchState.discardButtonPressed = true
         return
     end
 
@@ -769,6 +769,36 @@ function Touch.released(x, y, istouch, touchId)
         touchState.isPressed = false
         touchState.touchId = nil
         return
+    end
+
+    -- Handle play button release (for playing phase)
+    if touchState.playButtonPressed then
+        if getPlayButtonBounds() and isPointInRect(x, y, getPlayButtonBounds()) then
+            if #gameState.placedTiles > 0 then
+                UI.Audio.playPlayButton()
+                Touch.playPlacedTiles()
+            end
+        end
+        touchState.playButtonPressed = false
+    end
+
+    -- Handle discard button release (for playing phase)
+    if touchState.discardButtonPressed then
+        if getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds()) then
+            local discarded = Touch.discardSelectedTiles()
+            if discarded then
+                UI.Audio.playDiscardButton()
+            end
+        end
+        touchState.discardButtonPressed = false
+    end
+
+    -- Handle sort button release (for playing phase)
+    if touchState.sortButtonPressed then
+        if getSortButtonBounds() and isPointInRect(x, y, getSortButtonBounds()) then
+            Touch.sortHandTiles()
+        end
+        touchState.sortButtonPressed = false
     end
 
     if touchState.draggedTile and touchState.draggedFrom == "fusionHand" then
