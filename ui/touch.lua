@@ -876,11 +876,21 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.hoverInsertIndex = nil
             end
         else
-            -- Just a tap - check for transformer selection mode first
+            -- Just a tap - check for tool selection modes first
             if gameState.transformerSelectionMode then
                 -- Transform this tile
                 Tools.transformTile(touchState.draggedTile)
                 gameState.transformerSelectionMode = false
+                Touch.resetTileDragState(touchState.draggedTile)
+            elseif gameState.obsidianTransmuterSelectionMode then
+                -- Transmute this tile to obsidian
+                Tools.transmuteTileToObsidian(touchState.draggedTile)
+                gameState.obsidianTransmuterSelectionMode = false
+                Touch.resetTileDragState(touchState.draggedTile)
+            elseif gameState.tenderTransmuterSelectionMode then
+                -- Transmute this tile to tender
+                Tools.transmuteTileToTender(touchState.draggedTile)
+                gameState.tenderTransmuterSelectionMode = false
                 Touch.resetTileDragState(touchState.draggedTile)
             else
                 -- Normal tile selection
@@ -1095,6 +1105,30 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
         Hand.updatePositions(gameState.hand, true)  -- Skip auto-sort to preserve hand order
         -- Update hand signature to prevent auto-sorting on next frame
         gameState.hand._lastSignature = Hand.getHandSignature(gameState.hand)
+
+        -- Check if placed tile is tender - if so, remove it from collection permanently
+        if clonedTile.tileType == "tender" then
+            -- Find and remove matching tile from collection
+            for i, collectionTile in ipairs(gameState.tileCollection) do
+                if collectionTile.id == clonedTile.id then
+                    table.remove(gameState.tileCollection, i)
+
+                    -- Show visual feedback
+                    local centerX = gameState.screen.width / 2
+                    local centerY = gameState.screen.height / 2
+                    UI.Animation.createFloatingText("TENDER TILE BROKEN!", centerX, centerY - UI.Layout.scale(50), {
+                        color = {0.941, 0.576, 0.608, 1},
+                        fontSize = "medium",
+                        duration = 1.5,
+                        riseDistance = 40,
+                        startScale = 0.8,
+                        endScale = 1.2,
+                        easing = "easeOutQuart"
+                    })
+                    break
+                end
+            end
+        end
 
         -- Play tile placement sound
         UI.Audio.playTilePlaced()

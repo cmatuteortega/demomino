@@ -1,6 +1,60 @@
 UI = UI or {}
 UI.Renderer = {}
 
+-- Obsidian hard light blend shader
+local obsidianShader = love.graphics.newShader([[
+    // Obsidian blue color (#202543)
+    const vec3 overlayColor = vec3(0.125, 0.145, 0.263);
+
+    // Hard light blend function
+    float hardLightBlend(float base, float overlay) {
+        if (overlay <= 0.5) {
+            return 2.0 * base * overlay;
+        } else {
+            return 1.0 - 2.0 * (1.0 - base) * (1.0 - overlay);
+        }
+    }
+
+    vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+        vec4 pixel = Texel(texture, texture_coords);
+
+        // Apply hard light blend to each channel
+        pixel.r = hardLightBlend(pixel.r, overlayColor.r);
+        pixel.g = hardLightBlend(pixel.g, overlayColor.g);
+        pixel.b = hardLightBlend(pixel.b, overlayColor.b);
+
+        // Preserve alpha and apply vertex color
+        return pixel * color;
+    }
+]])
+
+-- Tender hard light blend shader
+local tenderShader = love.graphics.newShader([[
+    // Tender pink color (#F0939B)
+    const vec3 overlayColor = vec3(0.941, 0.576, 0.608);
+
+    // Hard light blend function
+    float hardLightBlend(float base, float overlay) {
+        if (overlay <= 0.5) {
+            return 2.0 * base * overlay;
+        } else {
+            return 1.0 - 2.0 * (1.0 - base) * (1.0 - overlay);
+        }
+    }
+
+    vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+        vec4 pixel = Texel(texture, texture_coords);
+
+        // Apply hard light blend to each channel
+        pixel.r = hardLightBlend(pixel.r, overlayColor.r);
+        pixel.g = hardLightBlend(pixel.g, overlayColor.g);
+        pixel.b = hardLightBlend(pixel.b, overlayColor.b);
+
+        // Preserve alpha and apply vertex color
+        return pixel * color;
+    }
+]])
+
 -- Eye blink state management
 local eyeBlinkStates = {}
 
@@ -438,18 +492,21 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
 
     -- Choose sprite collection based on orientation
     local spriteData
+    local actualSpriteKey = spriteKey  -- Track the actual key used for file path
     if orientation == "horizontal" then
         -- Use tilted sprites for board tiles
         local tiltedKey = leftSpriteVal .. rightSpriteVal  -- Use sprite values (with "x" replacement) for flipping logic
         spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
+        actualSpriteKey = tiltedKey
     else
         -- Use vertical sprites for hand tiles
         spriteData = dominoSprites and dominoSprites[spriteKey]
+        actualSpriteKey = spriteKey
     end
-    
+
     if spriteData and spriteData.sprite then
         local sprite = spriteData.sprite
-        
+
         -- Additional safety check to ensure sprite is valid
         if sprite and sprite.getWidth and sprite.getHeight then
             -- Calculate sprite scaling based on screen size
@@ -513,13 +570,25 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
                 local shadowOpacity = 0.15
                 local shadowOffset = 2 + domino.idleShadowOffset
                 love.graphics.setColor(0, 0, 0, shadowOpacity)
-                love.graphics.draw(sprite, x + shadowOffset, y + shadowOffset, rotation, scaleX, scaleY, 
+                love.graphics.draw(sprite, x + shadowOffset, y + shadowOffset, rotation, scaleX, scaleY,
                     sprite:getWidth()/2, sprite:getHeight()/2)
                 love.graphics.setColor(r, g, b, a)  -- Reset color for main sprite
             end
-            
+
+            -- Apply shader based on tile type
+            if domino.tileType == "obsidian" then
+                love.graphics.setShader(obsidianShader)
+            elseif domino.tileType == "tender" then
+                love.graphics.setShader(tenderShader)
+            end
+
             love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
+
+            -- Reset shader if any special type
+            if domino.tileType == "obsidian" or domino.tileType == "tender" then
+                love.graphics.setShader()
+            end
 
             -- Draw numbers on X tiles if values >= 10
             local needsNumberOverlay = (type(domino.left) == "number" and domino.left >= 10) or

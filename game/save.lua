@@ -35,12 +35,15 @@ function Save.saveGame(gameState)
         saveTime = os.time()
     }
 
-    -- Deep copy tile collection
+    -- Deep copy tile collection (preserve all important tile properties)
     if gameState.tileCollection then
         for _, tile in ipairs(gameState.tileCollection) do
             table.insert(saveData.tileCollection, {
                 left = tile.left,
-                right = tile.right
+                right = tile.right,
+                leftScore = tile.leftScore,    -- Preserve score overrides (for fused tiles)
+                rightScore = tile.rightScore,  -- Preserve score overrides (for fused tiles)
+                tileType = tile.tileType       -- Preserve tile type (regular/demon/obsidian)
             })
         end
     end

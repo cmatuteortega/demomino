@@ -152,6 +152,8 @@ function love.load()
         -- Tools/Artifacts system
         ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
+        obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
+        tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons
         -- Win sequence tracking
         winSequenceTriggered = false,  -- Track if win sequence already started

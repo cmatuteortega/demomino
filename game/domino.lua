@@ -15,6 +15,7 @@ function Domino.new(left, right, leftScore, rightScore)
         placedOrder = 0,
         flipped = false,
         orientation = "vertical",
+        tileType = "regular",  -- "regular", "demon", "obsidian", "tender"
         -- Drag state properties
         isDragging = false,
         dragX = 0,
@@ -222,6 +223,7 @@ function Domino.clone(domino)
         width = domino.width,
         height = domino.height,
         orientation = domino.orientation,
+        tileType = domino.tileType or "regular",  -- Preserve tile type
         -- Drag state properties
         isDragging = domino.isDragging or false,
         dragX = domino.dragX or 0,
@@ -384,6 +386,15 @@ end
 function Domino.removeFromCollection(collection, index)
     if index > 0 and index <= #collection then
         table.remove(collection, index)
+        return true
+    end
+    return false
+end
+
+-- Set tile type (regular, demon, obsidian, tender)
+function Domino.setTileType(domino, tileType)
+    if tileType == "regular" or tileType == "demon" or tileType == "obsidian" or tileType == "tender" then
+        domino.tileType = tileType
         return true
     end
     return false

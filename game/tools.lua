@@ -50,6 +50,20 @@ local toolDefinitions = {
         description = "Cut target score\nin half (rounded up)",
         cost = 2,
         color = {0.9, 0.9, 0.9, 1}  -- Silver/White
+    },
+    obsidianTransmuter = {
+        id = "obsidianTransmuter",
+        name = "OBSIDIAN TRANSMUTER",
+        description = "Turn a tile into\nObsidian permanently",
+        cost = 2,
+        color = {0.125, 0.145, 0.263, 1}  -- Obsidian Blue
+    },
+    tenderTransmuter = {
+        id = "tenderTransmuter",
+        name = "TENDER TRANSMUTER",
+        description = "Turn a tile into\nTender permanently",
+        cost = 2,
+        color = {0.941, 0.576, 0.608, 1}  -- Tender Pink
     }
 }
 
@@ -146,6 +160,16 @@ function Tools.canUse(toolId, gameState)
     elseif toolId == "knife" then
         -- Can always use knife (no special conditions)
         return true, nil
+    elseif toolId == "obsidianTransmuter" then
+        -- Can only use if hand has tiles
+        if not gameState.hand or #gameState.hand < 1 then
+            return false, "No tiles in hand"
+        end
+    elseif toolId == "tenderTransmuter" then
+        -- Can only use if hand has tiles
+        if not gameState.hand or #gameState.hand < 1 then
+            return false, "No tiles in hand"
+        end
     end
 
     return true, nil
@@ -185,6 +209,10 @@ function Tools.use(toolId, gameState)
         Tools.useExtraDiscard(gameState)
     elseif toolId == "knife" then
         Tools.useKnife(gameState)
+    elseif toolId == "obsidianTransmuter" then
+        Tools.useObsidianTransmuter(gameState)
+    elseif toolId == "tenderTransmuter" then
+        Tools.useTenderTransmuter(gameState)
     end
 
     return true, nil
@@ -545,11 +573,129 @@ function Tools.useKnife(gameState)
     })
 end
 
+-- Obsidian Transmuter: Enter selection mode for turning a tile into obsidian
+function Tools.useObsidianTransmuter(gameState)
+    -- Set obsidian transmuter selection mode
+    gameState.obsidianTransmuterSelectionMode = true
+
+    -- Show floating text
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    UI.Animation.createFloatingText("SELECT A TILE TO TRANSMUTE", centerX, centerY - UI.Layout.scale(100), {
+        color = {0.125, 0.145, 0.263, 1},
+        fontSize = "large",
+        duration = 2.0,
+        riseDistance = 40,
+        startScale = 0.8,
+        endScale = 1.0,
+        easing = "easeOutQuart"
+    })
+end
+
+-- Transmute a specific tile to obsidian (permanent within current run)
+function Tools.transmuteTileToObsidian(tile)
+    -- Set tile type to obsidian on this instance
+    Domino.setTileType(tile, "obsidian")
+
+    -- IMPORTANT: Also mark the matching tile in the collection as obsidian
+    -- This ensures the obsidian type persists when deck is recreated from collection
+    if gameState.tileCollection then
+        for _, collectionTile in ipairs(gameState.tileCollection) do
+            -- Match by ID (which is "left-right")
+            if collectionTile.id == tile.id then
+                Domino.setTileType(collectionTile, "obsidian")
+                break
+            end
+        end
+    end
+
+    -- Play sound
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
+    end
+
+    -- Show floating text
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    UI.Animation.createFloatingText("TILE TRANSMUTED TO OBSIDIAN!", centerX, centerY - UI.Layout.scale(50), {
+        color = {0.125, 0.145, 0.263, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
+-- Tender Transmuter: Enter selection mode for turning a tile into tender
+function Tools.useTenderTransmuter(gameState)
+    -- Set tender transmuter selection mode
+    gameState.tenderTransmuterSelectionMode = true
+
+    -- Show floating text
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    UI.Animation.createFloatingText("SELECT A TILE TO TENDERIZE", centerX, centerY - UI.Layout.scale(100), {
+        color = {0.941, 0.576, 0.608, 1},
+        fontSize = "large",
+        duration = 2.0,
+        riseDistance = 40,
+        startScale = 0.8,
+        endScale = 1.0,
+        easing = "easeOutQuart"
+    })
+end
+
+-- Transmute a specific tile to tender (permanent within current run)
+function Tools.transmuteTileToTender(tile)
+    -- Set tile type to tender on this instance
+    Domino.setTileType(tile, "tender")
+
+    -- IMPORTANT: Also mark the matching tile in the collection as tender
+    -- This ensures the tender type persists when deck is recreated from collection
+    if gameState.tileCollection then
+        for _, collectionTile in ipairs(gameState.tileCollection) do
+            -- Match by ID (which is "left-right")
+            if collectionTile.id == tile.id then
+                Domino.setTileType(collectionTile, "tender")
+                break
+            end
+        end
+    end
+
+    -- Play sound
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
+    end
+
+    -- Show floating text
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+
+    UI.Animation.createFloatingText("TILE TENDERIZED!", centerX, centerY - UI.Layout.scale(50), {
+        color = {0.941, 0.576, 0.608, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
 -- Reset tool state for a new round
 function Tools.resetUsages(gameState)
-    -- Only reset transformer selection mode
+    -- Reset selection modes
     -- Tools are consumable, so no need to reset usage tracking
     gameState.transformerSelectionMode = false
+    gameState.obsidianTransmuterSelectionMode = false
+    gameState.tenderTransmuterSelectionMode = false
 end
 
 return Tools
