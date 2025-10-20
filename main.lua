@@ -453,13 +453,19 @@ function updateScoreCountdown(dt)
             gameState.displayedRemainingScore = actualRemaining
             gameState.scoreCountdownSpeed = 0
 
-            -- Stop score animation sound and play end sound
+            -- Stop score animation sound
             UI.Audio.stopScoreAnimating()
 
             -- If countdown reached 0, check if player won and trigger game end (only once)
             if actualRemaining == 0 and gameState.score >= gameState.targetScore and not gameState.winSequenceTriggered then
                 gameState.winSequenceTriggered = true
-                Touch.checkGameEnd()
+
+                -- Start victory bell sequence (3 play_button sounds with delay)
+                gameState.victoryBellSequence = {
+                    timer = 0,
+                    bellsPlayed = 0,
+                    nextBellAt = 0
+                }
             end
         end
     else
@@ -468,6 +474,26 @@ function updateScoreCountdown(dt)
 
     -- Extra safeguard: never go below 0
     gameState.displayedRemainingScore = math.max(0, gameState.displayedRemainingScore)
+end
+
+function updateVictoryBellSequence(dt)
+    if not gameState.victoryBellSequence then return end
+
+    local seq = gameState.victoryBellSequence
+    seq.timer = seq.timer + dt
+
+    -- Play bells at intervals (0s, 0.2s, 0.4s)
+    if seq.timer >= seq.nextBellAt and seq.bellsPlayed < 3 then
+        UI.Audio.playPlayButton()
+        seq.bellsPlayed = seq.bellsPlayed + 1
+        seq.nextBellAt = seq.nextBellAt + 0.2
+    end
+
+    -- After all 3 bells, wait a bit then trigger game end
+    if seq.bellsPlayed >= 3 and seq.timer >= 0.8 then
+        gameState.victoryBellSequence = nil
+        Touch.checkGameEnd()
+    end
 end
 
 function updateFormulaCountAnimation(dt)
@@ -1030,6 +1056,7 @@ function love.update(dt)
         -- Keep updating score countdown and idle animation even in "won" phase to let it finish
         updateScoreCountdown(dt)
         updateScoreIdleAnimation(dt)
+        updateVictoryBellSequence(dt)
 
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
