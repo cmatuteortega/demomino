@@ -139,6 +139,50 @@ function Domino.generateRandomTileOffers(collection, count)
     return offers
 end
 
+function Domino.generateShopTileOffers(count)
+    count = count or 3
+    local offers = {}
+
+    -- Define possible values for each side (0-6 plus special values)
+    local possibleValues = {0, 1, 2, 3, 4, 5, 6, "odd", "even"}
+
+    for i = 1, count do
+        -- Generate random left and right values
+        local leftIndex = love.math.random(1, #possibleValues)
+        local rightIndex = love.math.random(1, #possibleValues)
+        local left = possibleValues[leftIndex]
+        local right = possibleValues[rightIndex]
+
+        -- Determine tile variant with weighted probabilities
+        local roll = love.math.random()
+        local tileType, basePrice
+
+        if roll <= 0.10 then
+            -- 10% chance: Obsidian (expensive)
+            tileType = "obsidian"
+            basePrice = 3
+        elseif roll <= 0.30 then
+            -- 20% chance: Tender (cheap)
+            tileType = "tender"
+            basePrice = 1
+        else
+            -- 70% chance: Regular
+            tileType = "regular"
+            basePrice = 2
+        end
+
+        -- Create tile with variant and pricing
+        local tile = Domino.new(left, right)
+        tile.tileType = tileType
+        tile.basePrice = basePrice
+        tile.shopPurchased = false  -- Track if this offer was purchased
+
+        table.insert(offers, tile)
+    end
+
+    return offers
+end
+
 function Domino.shuffleDeck(deck)
     for i = #deck, 2, -1 do
         local j = love.math.random(i)

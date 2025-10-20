@@ -1064,11 +1064,21 @@ function love.update(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
-    elseif gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" then
-        -- Update fusion hand using regular Hand.update logic
-        if gameState.fusionHand then
-            Hand.updatePositions(gameState.fusionHand)
-            Hand.updateIdleAnimations(gameState.fusionHand, dt)
+    elseif gameState.gamePhase == "tiles_menu" then
+        if gameState.tilesMenuMode == "fusion" then
+            -- Update fusion hand using regular Hand.update logic
+            if gameState.fusionHand then
+                Hand.updatePositions(gameState.fusionHand)
+                Hand.updateIdleAnimations(gameState.fusionHand, dt)
+            end
+        elseif gameState.tilesMenuMode == "shop" then
+            -- Update shop hand tiles with all animations (like combat hand)
+            if gameState.offeredTiles then
+                Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sorting
+                Hand.updateDrawAnimations(gameState.offeredTiles, dt)  -- Draw animation (tiles sliding in from right)
+                Hand.updateDiscardAnimations(gameState.offeredTiles, dt)  -- Discard animation (tiles falling down)
+                Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
+            end
         end
     elseif gameState.gamePhase == "map" or gameState.gamePhase == "node_confirmation" then
         -- Update map path preview sounds

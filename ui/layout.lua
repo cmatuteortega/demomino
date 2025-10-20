@@ -76,17 +76,21 @@ function UI.Layout.getHandPosition(index, totalTiles)
         spriteWidth = layout.tileSize.width
     end
     
-    -- Calculate total width of all tiles with no gaps
-    local totalHandWidth = totalTiles * spriteWidth
-    
+    -- Calculate spacing between tiles (shop mode has extra spacing)
+    local isShopMode = gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop"
+    local tileSpacing = isShopMode and (spriteWidth * 2) or spriteWidth  -- Shop: 1 tile width gap, Combat: no gap
+
+    -- Calculate total width of all tiles with spacing
+    local totalHandWidth = (totalTiles - 1) * tileSpacing + spriteWidth
+
     -- Center the entire hand block on screen
     local startX = (screen.width - totalHandWidth) / 2
-    
+
     -- Position each tile - sprites are drawn centered, so we need center positions
     -- First tile center is at startX + spriteWidth/2
-    -- Each subsequent tile is spriteWidth apart
-    local x = startX + (spriteWidth / 2) + (index * spriteWidth)
-    
+    -- Each subsequent tile is tileSpacing apart
+    local x = startX + (spriteWidth / 2) + (index * tileSpacing)
+
     return x, layout.handY
 end
 

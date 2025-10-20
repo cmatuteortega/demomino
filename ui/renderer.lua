@@ -542,17 +542,19 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
             if orientation == "vertical" then
                 -- For hand tiles (vertical), use vertical sprites
                 rotation = 0
-                
+
                 -- Apply idle rotation animation for hand tiles
                 if domino.idleRotation then
                     rotation = rotation + domino.idleRotation
                 end
-                
+
                 -- Apply any inversion from sprite loading system
-                if spriteData.inverted then
+                -- BUT: Skip inversion for shop tiles (they should always display upright)
+                local isShopTile = domino.isShopTile or (gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop")
+                if spriteData.inverted and not isShopTile then
                     rotation = rotation + math.pi
                 end
-                
+
             elseif orientation == "horizontal" then
                 -- For tilted sprites, use horizontal flipping when needed
                 if spriteData.flipped then
@@ -1222,7 +1224,9 @@ function UI.Renderer.drawCoinText()
     local coinTextWidth = coinFont:getWidth(text)
 
     -- Draw coin breakdown to the right of money counter (vertical list)
-    if gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
+    -- Skip breakdown in shop menu (only show in combat)
+    local isShopMode = gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop"
+    if not isShopMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
         local lineHeight = font:getHeight() + UI.Layout.scale(5)
         -- Position breakdown to the right of coin counter text, with spacing
@@ -1890,15 +1894,6 @@ function UI.Renderer.drawTilesMenu()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Title
-    local titleColor = UI.Colors.FONT_PINK
-    UI.Fonts.drawText("TILE SHOP", centerX, UI.Layout.scale(30), "title", titleColor, "center")
-
-    -- Show current coins in top right
-    local coinsText = "Coins: " .. gameState.coins .. "$"
-    local coinsColor = {1, 0.9, 0.3, 1}
-    UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
-
     -- Draw mode toggle buttons
     UI.Renderer.drawTilesMenuModeToggle()
 
@@ -1906,12 +1901,53 @@ function UI.Renderer.drawTilesMenu()
     if gameState.tilesMenuMode == "fusion" then
         UI.Renderer.drawFusionMode()
     else
-        -- Shop mode (existing)
-        -- Instructions
-        local instructionColor = UI.Colors.FONT_WHITE
-        UI.Fonts.drawText("Select tiles to purchase (2 $ each)", centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+        -- Shop mode (drag-to-board system like main game)
 
-        -- Draw offered tiles
+        -- ALCHEMY title in top right (same style as map round counter)
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local rightY = UI.Layout.scale(20)
+        local time = love.timer.getTime()
+        local font = UI.Fonts.get("bigScore")
+        local alchemyText = "ALCHEMY"
+        local alchemyColor = UI.Colors.FONT_WHITE
+
+        -- Calculate total width to position from right
+        local totalWidth = 0
+        for i = 1, #alchemyText do
+            local char = alchemyText:sub(i, i)
+            totalWidth = totalWidth + font:getWidth(char)
+        end
+
+        -- Start from right and draw each character with wave animation
+        local currentX = rightX - totalWidth
+        for i = 1, #alchemyText do
+            local char = alchemyText:sub(i, i)
+            local charWidth = font:getWidth(char)
+
+            -- Wave animation
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 3
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4),
+                scale = 1.0,
+                shake = 0
+            }
+
+            UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", alchemyColor, "left", animProps)
+
+            currentX = currentX + charWidth
+        end
+
+        -- Draw coin sprites and text (same as combat)
+        UI.Renderer.drawCoinSprites()
+        UI.Renderer.drawCoinText()
+
+        -- Draw board area (for placing shop tiles)
+        UI.Renderer.drawShopPlacedTiles()
+
+        -- Draw offered tiles (as draggable hand)
         if gameState.offeredTiles and #gameState.offeredTiles > 0 then
             UI.Renderer.drawTileOffers()
         else
@@ -1920,12 +1956,12 @@ function UI.Renderer.drawTilesMenu()
             UI.Fonts.drawText("No tiles available", centerX, screenHeight / 2, "large", errorColor, "center")
         end
 
-        -- Always show buy button and return to map button
-        UI.Renderer.drawConfirmTileButton()
-    end
+        -- Draw play/discard buttons (reused from combat)
+        UI.Renderer.drawShopUI()
 
-    -- Always show return to map button
-    UI.Renderer.drawReturnToMapButton()
+        -- Draw NEXT> button to exit shop
+        UI.Renderer.drawShopNextButton()
+    end
 end
 
 function UI.Renderer.drawArtifactsMenu()
@@ -2093,125 +2129,313 @@ end
 function UI.Renderer.drawTileOffers()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local centerX = screenWidth / 2
-    local centerY = screenHeight / 2
 
-    local tileWidth = UI.Layout.scale(120)
-    local tileHeight = UI.Layout.scale(180)
-    local spacing = UI.Layout.scale(50)
-    local totalWidth = (#gameState.offeredTiles * tileWidth) + ((#gameState.offeredTiles - 1) * spacing)
-    local startX = centerX - totalWidth / 2
-
-    -- Initialize tile offer buttons if not exists
-    if not gameState.tileOfferButtons then
-        gameState.tileOfferButtons = {}
+    -- Initialize shop hand positions if needed (similar to game hand)
+    if not gameState.offeredTiles then
+        return
     end
 
+    -- Update positions for all tiles using hand layout system
     for i, tile in ipairs(gameState.offeredTiles) do
-        local x = startX + (i - 1) * (tileWidth + spacing)
-        local y = centerY - tileHeight / 2
-
-        -- Determine if this tile is selected (multi-select now)
-        local isSelected = false
-        if gameState.selectedTilesToBuy then
-            for _, selectedIndex in ipairs(gameState.selectedTilesToBuy) do
-                if selectedIndex == i then
-                    isSelected = true
-                    break
-                end
-            end
+        -- Initialize animation properties if not set
+        if tile.selectScale == nil then tile.selectScale = 1.0 end
+        if tile.selectOffset == nil then tile.selectOffset = 0 end
+        if tile.idleFloatOffset == nil then tile.idleFloatOffset = 0 end
+        if tile.idleRotation == nil then tile.idleRotation = 0 end
+        if tile.idleShadowOffset == nil then tile.idleShadowOffset = 0 end
+        if tile.idlePhase == nil then
+            tile.idlePhase = (i - 1) * (math.pi / 3)  -- Phase offset for variety
         end
+        if tile.dragScale == nil then tile.dragScale = 1.0 end
+        if tile.dragOpacity == nil then tile.dragOpacity = 1.0 end
 
-        -- Draw tile background
-        if isSelected then
-            UI.Colors.setFontPink()
-        else
-            UI.Colors.setBackgroundLight()
+        -- Calculate hand position for this tile
+        local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTiles)
+
+        -- Set visual position if not dragging/animating
+        if not tile.isDragging and not tile.isAnimating then
+            tile.visualX = x
+            tile.visualY = y
         end
-        love.graphics.rectangle("fill", x, y, tileWidth, tileHeight, UI.Layout.scale(10))
+    end
 
-        -- Draw tile border (thicker if selected)
-        UI.Colors.setOutline()
-        local borderWidth = isSelected and UI.Layout.scale(4) or UI.Layout.scale(2)
-        love.graphics.setLineWidth(borderWidth)
-        love.graphics.rectangle("line", x, y, tileWidth, tileHeight, UI.Layout.scale(10))
-        love.graphics.setLineWidth(1)
+    -- Draw tiles similar to game hand (layered by state)
+    -- Layer 1: Non-dragging, non-purchased tiles
+    for i, tile in ipairs(gameState.offeredTiles) do
+        if not tile.isDragging and not tile.shopPurchased then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
 
-        -- Draw domino sprite if available
-        local spriteKey = tile.left .. tile.right
-        local spriteData = dominoSprites and dominoSprites[spriteKey]
-        if spriteData and spriteData.sprite then
-            local sprite = spriteData.sprite
-            local scale = math.min(tileWidth * 0.8 / sprite:getWidth(), tileHeight * 0.5 / sprite:getHeight())
-            local spriteX = x + tileWidth / 2
-            local spriteY = y + tileHeight * 0.35
-
-            love.graphics.push()
-            love.graphics.translate(spriteX, spriteY)
-            love.graphics.scale(scale, scale)
-            if spriteData.inverted then
-                love.graphics.rotate(math.pi)
-            end
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.draw(sprite, -sprite:getWidth() / 2, -sprite:getHeight() / 2)
-            love.graphics.pop()
+            -- Draw price tag ABOVE tile
+            local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTiles)
+            local priceY = y - UI.Layout.scale(110)  -- Above tile
+            local priceColor = {1, 0.9, 0.3, 1}  -- Gold
+            UI.Fonts.drawText(tile.basePrice .. "$", x, priceY, "large", priceColor, "center")
         end
+    end
 
-        -- Draw tile value text
-        local tileText = tile.left .. "-" .. tile.right
-        local textColor = isSelected and UI.Colors.FONT_RED or UI.Colors.FONT_WHITE
-        UI.Fonts.drawText(tileText, x + tileWidth / 2, y + tileHeight * 0.7, "medium", textColor, "center")
+    -- Layer 2: Purchased tiles (grayed out)
+    for i, tile in ipairs(gameState.offeredTiles) do
+        if not tile.isDragging and tile.shopPurchased then
+            -- Draw with reduced opacity
+            local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTiles)
 
-        -- Draw cost text (2 coins per tile)
-        local costColor = {1, 0.9, 0.3, 1}  -- Gold color
-        UI.Fonts.drawText("2$", x + tileWidth / 2, y + tileHeight * 0.88, "small", costColor, "center")
+            -- Temporarily modify opacity for drawing
+            local originalOpacity = tile.dragOpacity
+            tile.dragOpacity = 0.3
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
+            tile.dragOpacity = originalOpacity
 
-        -- Store button bounds for touch handling
-        gameState.tileOfferButtons[i] = {x = x, y = y, width = tileWidth, height = tileHeight}
+            -- Draw "SOLD" label
+            local soldY = y - UI.Layout.scale(20)
+            UI.Fonts.drawText("SOLD", x, soldY, "small", UI.Colors.FONT_RED, "center")
+        end
+    end
+
+    -- Layer 3: Dragging tiles (on top)
+    for i, tile in ipairs(gameState.offeredTiles) do
+        if tile.isDragging then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
+        end
     end
 end
 
-function UI.Renderer.drawConfirmTileButton()
+function UI.Renderer.drawShopPlacedTiles()
+    -- Draw tiles placed in shop board (max 1 tile)
+    if not gameState.shopPlacedTiles then
+        gameState.shopPlacedTiles = {}
+    end
+
+    -- Draw placed tile in center of screen
+    for _, tile in ipairs(gameState.shopPlacedTiles) do
+        if not tile.isDragging then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
+        end
+    end
+
+    -- Draw dragging tiles on top
+    for _, tile in ipairs(gameState.shopPlacedTiles) do
+        if tile.isDragging then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
+        end
+    end
+end
+
+function UI.Renderer.drawShopUI()
+    -- Reuse the same play/discard button rendering from main game
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Check if tile is placed
+    local hasTilePlaced = gameState.shopPlacedTiles and #gameState.shopPlacedTiles > 0
+
+    -- PLAY button (for purchasing)
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale = buttonAnim and buttonAnim.scale or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    -- Determine button color (enabled if tile placed and can afford)
+    local tile = hasTilePlaced and gameState.shopPlacedTiles[1] or nil
+    local cost = tile and tile.basePrice or 2
+    local canAfford = gameState.coins >= cost
+    local enabled = hasTilePlaced and canAfford
+
+    local buttonColor = enabled and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    local textColor = enabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = hasTilePlaced and ("PURCHASE (" .. cost .. "$)") or "PLACE TILE"
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center")
+
+    -- DISCARD button (for reroll)
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+
+    local discardAnim = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local discardScale = discardAnim and discardAnim.scale or 1.0
+    local discardYOffset = discardAnim and discardAnim.yOffset or 0
+
+    local rerollCost = gameState.shopRerollCost or 1
+    local canAffordReroll = gameState.coins >= rerollCost
+
+    local discardButtonColor = canAffordReroll and UI.Colors.BACKGROUND_LIGHT or {UI.Colors.BACKGROUND_LIGHT[1] * 0.5, UI.Colors.BACKGROUND_LIGHT[2] * 0.5, UI.Colors.BACKGROUND_LIGHT[3] * 0.5, 0.5}
+    love.graphics.setColor(discardButtonColor)
+    love.graphics.rectangle("fill", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    local discardTextColor = canAffordReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("REROLL (" .. rerollCost .. "$)", discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOffset, "button", discardTextColor, "center")
+end
+
+function UI.Renderer.drawShopNextButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Initialize animation state if needed
+    if not gameState.shopNextButtonAnimation then
+        gameState.shopNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    -- Get font for size calculation
+    local font = UI.Fonts.get("bigScore")
+    local time = love.timer.getTime()
+
+    -- NEXT> button in bottom-right
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin = UI.Layout.scale(20)
+
+    local text = "NEXT>"
+    local textColor = gameState.shopNextButtonAnimation.color
+
+    -- Calculate total width of text for positioning
+    local totalWidth = 0
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Position in bottom-right area
+    local textX = screenWidth - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    -- Draw each character with wave animation
+    local currentX = textX
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store button bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(20)
+    gameState.shopNextButton = {
+        x = textX - padding,
+        y = textY - padding,
+        width = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
+    }
+end
+
+-- DEPRECATED FUNCTIONS (from old shop system)
+function UI.Renderer.drawShopPurchaseZone_DEPRECATED()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
 
-    -- Calculate total cost
-    local selectedCount = gameState.selectedTilesToBuy and #gameState.selectedTilesToBuy or 0
-    local totalCost = selectedCount * 2
-    local canAfford = gameState.coins >= totalCost
-    local hasSelection = selectedCount > 0
+    -- Purchase drop zone (center of screen, above hand)
+    local zoneWidth = UI.Layout.scale(250)
+    local zoneHeight = UI.Layout.scale(200)
+    local zoneX = centerX - zoneWidth / 2
+    local zoneY = screenHeight / 2 - zoneHeight / 2 - UI.Layout.scale(50)
 
-    local buttonWidth = UI.Layout.scale(200)
-    local buttonHeight = UI.Layout.scale(60)
-    local buttonX = centerX - buttonWidth/2
-    local buttonY = screenHeight - UI.Layout.scale(80)  -- Lower to match hand position
+    -- Check if a valid tile is being dragged
+    local isDraggingValidTile = false
+    if touchState and touchState.draggedTile and gameState.offeredTiles then
+        -- Check if dragged tile is from shop and not purchased
+        for _, tile in ipairs(gameState.offeredTiles) do
+            if tile == touchState.draggedTile and not tile.shopPurchased then
+                isDraggingValidTile = true
+                break
+            end
+        end
+    end
 
-    -- Button background (disabled if can't afford or no selection)
-    if hasSelection and canAfford then
-        UI.Colors.setFontPink()
+    -- Determine zone appearance based on drag state
+    local borderColor
+    local bgColor
+    local labelText
+    local labelColor
+
+    if isDraggingValidTile then
+        -- Highlight when valid tile is dragged
+        borderColor = UI.Colors.FONT_PINK
+        bgColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.2}
+        labelText = "DROP TO PURCHASE"
+        labelColor = UI.Colors.FONT_PINK
     else
-        UI.Colors.setBackground()
+        -- Default state (dashed outline, subtle)
+        borderColor = UI.Colors.FONT_WHITE
+        bgColor = {UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.3}
+        labelText = "DRAG TILE HERE"
+        labelColor = UI.Colors.FONT_WHITE
+    end
+
+    -- Draw background
+    love.graphics.setColor(bgColor)
+    love.graphics.rectangle("fill", zoneX, zoneY, zoneWidth, zoneHeight, UI.Layout.scale(10))
+
+    -- Draw dashed border
+    love.graphics.setColor(borderColor)
+    love.graphics.setLineWidth(UI.Layout.scale(3))
+    love.graphics.setLineStyle("rough")  -- Dashed effect
+    love.graphics.rectangle("line", zoneX, zoneY, zoneWidth, zoneHeight, UI.Layout.scale(10))
+    love.graphics.setLineStyle("smooth")
+    love.graphics.setLineWidth(1)
+
+    -- Draw label text
+    UI.Fonts.drawText(labelText, centerX, zoneY + zoneHeight / 2, "medium", labelColor, "center")
+
+    -- Store zone bounds for touch handling
+    gameState.shopPurchaseZone = {x = zoneX, y = zoneY, width = zoneWidth, height = zoneHeight}
+end
+
+function UI.Renderer.drawShopRerollButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    local buttonWidth = UI.Layout.scale(160)
+    local buttonHeight = UI.Layout.scale(60)
+
+    -- Position to the right side of purchase zone, mid-height
+    local buttonX = screenWidth - buttonWidth - UI.Layout.scale(30)
+    local buttonY = screenHeight / 2 - buttonHeight / 2 - UI.Layout.scale(50)
+
+    -- Check if player can afford reroll
+    local rerollCost = gameState.shopRerollCost or 1
+    local canAfford = gameState.coins >= rerollCost
+
+    -- Button background (disabled if can't afford)
+    if canAfford then
+        UI.Colors.setBackgroundLight()
+    else
+        love.graphics.setColor(UI.Colors.BACKGROUND[1], UI.Colors.BACKGROUND[2], UI.Colors.BACKGROUND[3], 0.5)
     end
     love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
 
     -- Button border
     UI.Colors.setOutline()
+    love.graphics.setLineWidth(UI.Layout.scale(2))
     love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    love.graphics.setLineWidth(1)
 
     -- Button text
-    local buttonText = "BUY (" .. totalCost .. "$)"
-    if not hasSelection then
-        buttonText = "SELECT TILES"
-    elseif not canAfford then
-        buttonText = "NOT ENOUGH $"
-    end
-
-    local textColor = (hasSelection and canAfford) and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(buttonText, centerX, buttonY + buttonHeight/2, "button", textColor, "center")
+    local buttonText = "REROLL (" .. rerollCost .. "$)"
+    local textColor = canAfford and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText(buttonText, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2, "medium", textColor, "center")
 
     -- Store button bounds for touch handling
-    gameState.confirmTileButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = hasSelection and canAfford}
+    gameState.shopRerollButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = canAfford}
 end
 
 function UI.Renderer.drawReturnToMapButton()

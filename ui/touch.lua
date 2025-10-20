@@ -172,6 +172,27 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle NEXT> button press on shop screen
+    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+        if gameState.shopNextButton and isPointInRect(x, y, gameState.shopNextButton) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.shopNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.shopNextButtonPressed = true
+            return  -- Only return if button was actually pressed
+        end
+        -- Don't return here - allow other shop interactions to continue
+    end
+
     -- Handle NEXT >> button press on victory screen
     if gameState.gamePhase == "won" then
         if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
@@ -244,7 +265,13 @@ function Touch.pressed(x, y, istouch, touchId)
 
     local playButtonBounds = getPlayButtonBounds()
     if isPointInRect(x, y, playButtonBounds) then
-        if #gameState.placedTiles > 0 then
+        -- Check if in shop mode or playing mode
+        if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+            -- Shop mode: Allow button press if tile is placed OR to show feedback
+            animateButtonPress("playButton")
+            touchState.playButtonPressed = true
+        elseif #gameState.placedTiles > 0 then
+            -- Playing mode: Only if tiles placed
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
         end
@@ -253,8 +280,16 @@ function Touch.pressed(x, y, istouch, touchId)
 
     local discardButtonBounds = getDiscardButtonBounds()
     if isPointInRect(x, y, discardButtonBounds) then
-        animateButtonPress("discardButton")
-        touchState.discardButtonPressed = true
+        -- Shop mode or playing mode
+        if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+            -- Shop mode: Always allow (for reroll)
+            animateButtonPress("discardButton")
+            touchState.discardButtonPressed = true
+        else
+            -- Playing mode: Standard discard
+            animateButtonPress("discardButton")
+            touchState.discardButtonPressed = true
+        end
         return
     end
 
@@ -299,6 +334,60 @@ function Touch.pressed(x, y, istouch, touchId)
             tile.visualX = tile.x
             tile.visualY = tile.y
             return
+        end
+    end
+
+    -- Handle shop hand tiles (drag-to-purchase)
+    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" and gameState.offeredTiles then
+        local tile, index = Hand.getTileAt(gameState.offeredTiles, x, y)
+        if tile then
+            -- Check if tile was already purchased
+            if tile.shopPurchased then
+                UI.Animation.createFloatingText("ALREADY PURCHASED",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED,
+                    fontSize = "medium",
+                    duration = 1.0,
+                    riseDistance = 30,
+                    startScale = 0.8,
+                    endScale = 1.2,
+                    easing = "easeOutQuart"
+                })
+                return
+            end
+
+            touchState.draggedTile = tile
+            touchState.draggedFrom = "shopHand"
+            touchState.draggedIndex = index
+
+            -- Initialize drag state (same as regular hand)
+            tile.isDragging = false
+            tile.dragX = x
+            tile.dragY = y
+            tile.visualX = tile.x
+            tile.visualY = tile.y
+            return
+        end
+    end
+
+    -- Handle shop board tiles (in shop mode)
+    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" and gameState.shopPlacedTiles then
+        if isInBoardArea(x, y) then
+            -- Check if clicking on placed shop tile
+            for _, tile in ipairs(gameState.shopPlacedTiles) do
+                local bounds = Domino.getBounds(tile)
+                if isPointInRect(x, y, bounds) then
+                    touchState.draggedTile = tile
+                    touchState.draggedFrom = "shopBoard"
+                    tile.isDragging = false
+                    tile.dragX = x
+                    tile.dragY = y
+                    tile.visualX = tile.x
+                    tile.visualY = tile.y
+                    return
+                end
+            end
         end
     end
 
@@ -693,53 +782,37 @@ function Touch.released(x, y, istouch, touchId)
                 return
             end
         else
-            -- SHOP MODE HANDLING (existing code)
-
-            -- Handle tile selection (multi-select with toggle)
-            if gameState.tileOfferButtons then
-                for i, button in ipairs(gameState.tileOfferButtons) do
-                    if isPointInRect(x, y, button) then
-                        -- Toggle selection
-                        if not gameState.selectedTilesToBuy then
-                            gameState.selectedTilesToBuy = {}
-                        end
-
-                        local alreadySelected = false
-                        local selectedIndex = nil
-                        for idx, selectedI in ipairs(gameState.selectedTilesToBuy) do
-                            if selectedI == i then
-                                alreadySelected = true
-                                selectedIndex = idx
-                                break
-                            end
-                        end
-
-                        if alreadySelected then
-                            -- Deselect
-                            table.remove(gameState.selectedTilesToBuy, selectedIndex)
-                        else
-                            -- Select
-                            table.insert(gameState.selectedTilesToBuy, i)
-                        end
-
-                        touchState.isPressed = false
-                        return
-                    end
-                end
-            end
-
-            -- Handle confirm tile button (now handles multiple tiles)
-            if gameState.confirmTileButton and isPointInRect(x, y, gameState.confirmTileButton) and gameState.confirmTileButton.enabled then
-                Touch.confirmTileSelection()
-                touchState.isPressed = false
-                return
-            end
+            -- SHOP MODE HANDLING (drag-to-board system like main game)
+            -- Note: Tile dragging and board placement is handled the same way as main game
+            -- Play/discard buttons are handled below
         end
 
-        -- Handle return to map button (skip purchasing) - works for both modes
-        if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
-            gameState.gamePhase = "map"
+        -- Handle NEXT> button release for shop mode
+        if touchState.shopNextButtonPressed and gameState.shopNextButton and isPointInRect(x, y, gameState.shopNextButton) then
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
+            -- Animate to white with callback to transition
+            UI.Animation.animateTo(gameState.shopNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- Return to map
+                gameState.gamePhase = "map"
+            end)
+        elseif touchState.shopNextButtonPressed then
+            -- Released outside button - reset color back to pink
+            UI.Animation.animateTo(gameState.shopNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
         end
+        touchState.shopNextButtonPressed = false
+
         -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "artifacts_menu" then
         -- Handle tool purchase buttons
@@ -771,10 +844,14 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
-    -- Handle play button release (for playing phase)
+    -- Handle play button release (for playing phase AND shop mode)
     if touchState.playButtonPressed then
         if getPlayButtonBounds() and isPointInRect(x, y, getPlayButtonBounds()) then
-            if #gameState.placedTiles > 0 then
+            if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+                -- SHOP MODE: Purchase placed tile
+                Touch.purchaseShopPlacedTile()
+            elseif #gameState.placedTiles > 0 then
+                -- PLAYING MODE: Play tiles
                 UI.Audio.playPlayButton()
                 Touch.playPlacedTiles()
             end
@@ -782,12 +859,18 @@ function Touch.released(x, y, istouch, touchId)
         touchState.playButtonPressed = false
     end
 
-    -- Handle discard button release (for playing phase)
+    -- Handle discard button release (for playing phase AND shop mode)
     if touchState.discardButtonPressed then
         if getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds()) then
-            local discarded = Touch.discardSelectedTiles()
-            if discarded then
-                UI.Audio.playDiscardButton()
+            if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+                -- SHOP MODE: Reroll tiles
+                Touch.rerollShopTiles()
+            else
+                -- PLAYING MODE: Discard tiles
+                local discarded = Touch.discardSelectedTiles()
+                if discarded then
+                    UI.Audio.playDiscardButton()
+                end
             end
         end
         touchState.discardButtonPressed = false
@@ -845,6 +928,48 @@ function Touch.released(x, y, istouch, touchId)
                 }, 0.15, "easeOutBack")
             end)
             Touch.resetTileDragState(touchState.draggedTile)
+        end
+    elseif touchState.draggedTile and touchState.draggedFrom == "shopHand" then
+        if Touch.isDragging() then
+            -- Check if dropped in board area (place on shop board, max 1 tile)
+            if isInBoardArea(x, y) then
+                Touch.placeShopTileOnBoard(touchState.draggedTile, touchState.draggedIndex, x, y)
+            else
+                -- Dropped outside board - animate back to hand
+                Touch.animateTileToHand(touchState.draggedTile, touchState.draggedIndex, gameState.offeredTiles)
+            end
+        else
+            -- Just a tap - play punch animation only (like main game)
+            local tile = touchState.draggedTile
+
+            -- Punch out effect
+            UI.Animation.animateTo(tile, {
+                selectScale = 1.15
+            }, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(tile, {
+                    selectScale = 1.0
+                }, 0.15, "easeOutBack")
+            end)
+            Touch.resetTileDragState(touchState.draggedTile)
+        end
+    elseif touchState.draggedTile and touchState.draggedFrom == "shopBoard" then
+        if not Touch.isDragging() then
+            -- Tap on shop board tile - check for double-tap to return to hand
+            local currentTime = love.timer.getTime()
+
+            if touchState.lastTappedShopBoardTile == touchState.draggedTile and
+               currentTime - touchState.lastTapTime < touchState.doubleTapWindow then
+                -- DOUBLE TAP: Return to shop hand
+                Touch.returnShopTileToHand(touchState.draggedTile)
+                touchState.lastTappedShopBoardTile = nil
+            else
+                -- First tap - track for potential double-tap
+                touchState.lastTappedShopBoardTile = touchState.draggedTile
+                touchState.lastTapTime = currentTime
+            end
+        else
+            -- Dragged - animate back to board position
+            Touch.animateTileToPosition(touchState.draggedTile, touchState.draggedTile.x, touchState.draggedTile.y)
         end
     elseif touchState.draggedTile and touchState.draggedFrom == "board" then
         if not Touch.isDragging() then
@@ -1758,10 +1883,25 @@ function Touch.enterSelectedNode()
         -- All combat nodes (including boss) start combat round
         gameState.gamePhase = "playing"
     elseif nodeType == "tiles" then
-        -- Generate tile offers when entering tiles menu
-        gameState.offeredTiles = Domino.generateRandomTileOffers(gameState.tileCollection, 3)
-        gameState.selectedTileOffer = nil
-        gameState.selectedTilesToBuy = {}  -- Initialize empty selection for multi-purchase
+        -- Generate shop tile offers when entering tiles menu (new system with variants)
+        gameState.offeredTiles = Domino.generateShopTileOffers(3)
+        -- Initialize shop state
+        gameState.shopPlacedTiles = {}  -- Board for placing tiles (max 1)
+        gameState.shopRerollCost = 1  -- Reroll always costs 1$
+        gameState.tilesMenuMode = "shop"  -- Default to shop mode
+
+        -- Always reset button animations when entering shop (ensures visibility on every visit)
+        gameState.buttonAnimations = {
+            playButton = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+
+        -- Animate tiles drawing in from right
+        if gameState.offeredTiles then
+            Hand.animateTilesDraw(gameState.offeredTiles, 0)
+        end
+
         gameState.gamePhase = "tiles_menu"
     elseif nodeType == "artifacts" then
         -- Generate 3 random tool offers when entering artifacts menu
@@ -1778,55 +1918,17 @@ function Touch.enterSelectedNode()
     gameState.selectedNode = nil
 end
 
+-- OLD SHOP SYSTEM (deprecated - replaced by drag-to-purchase)
+--[[
 function Touch.confirmTileSelection()
-    if not gameState.selectedTilesToBuy or #gameState.selectedTilesToBuy == 0 then
-        return
-    end
+    -- This function is no longer used
+    -- Shop now uses drag-to-purchase interaction via Touch.purchaseShopTile()
+end
+]]--
 
-    if not gameState.offeredTiles then
-        return
-    end
-
-    -- Calculate total cost
-    local totalCost = #gameState.selectedTilesToBuy * 2
-
-    -- Check if player can afford
-    if gameState.coins < totalCost then
-        -- Show error message
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = {0.9, 0.3, 0.3, 1},
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
-        return
-    end
-
-    -- Deduct coins
-    updateCoins(gameState.coins - totalCost, {hasBonus = false})
-
-    -- Add all selected tiles to the player's collection and deck
-    for _, tileIndex in ipairs(gameState.selectedTilesToBuy) do
-        local selectedTile = gameState.offeredTiles[tileIndex]
-        if selectedTile then
-            -- Add to collection
-            table.insert(gameState.tileCollection, Domino.clone(selectedTile))
-
-            -- Add to current deck (for immediate use)
-            table.insert(gameState.deck, Domino.clone(selectedTile))
-        end
-    end
-
-    Domino.shuffleDeck(gameState.deck)
-
-    -- Create a satisfying pickup animation
+function Touch.confirmTileSelection_DEPRECATED()
+    -- Kept for reference only - no longer called
+    -- Old click-to-select-then-buy system
     local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
 
@@ -2233,6 +2335,301 @@ function Touch.purchaseTool(toolId, cost)
     if UI.Audio and UI.Audio.playButtonDefault then
         UI.Audio.playButtonDefault()
     end
+end
+
+-- NEW SHOP SYSTEM FUNCTIONS (drag-to-board + play button)
+
+function Touch.placeShopTileOnBoard(tile, tileIndex, dragX, dragY)
+    if not tile or tile.shopPurchased then
+        return
+    end
+
+    -- Check if already have a tile placed (max 1)
+    if gameState.shopPlacedTiles and #gameState.shopPlacedTiles >= 1 then
+        -- Return existing tile to hand first
+        local existingTile = gameState.shopPlacedTiles[1]
+        Touch.returnShopTileToHand(existingTile)
+    end
+
+    -- Initialize shop placed tiles array
+    if not gameState.shopPlacedTiles then
+        gameState.shopPlacedTiles = {}
+    end
+
+    -- Remove tile from shop hand
+    table.remove(gameState.offeredTiles, tileIndex)
+    Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sort
+
+    -- Place tile in center of screen
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    tile.x = screenWidth / 2
+    tile.y = screenHeight / 2 - UI.Layout.scale(100)
+    tile.visualX = tile.x
+    tile.visualY = tile.y
+    tile.placed = true
+    tile.orientation = "horizontal"
+    tile.isDragging = false
+
+    table.insert(gameState.shopPlacedTiles, tile)
+
+    -- Play tile placed sound
+    UI.Audio.playTilePlaced()
+
+    -- Reset drag state
+    Touch.resetTileDragState(tile)
+    touchState.draggedTile = nil
+    touchState.draggedFrom = nil
+    touchState.draggedIndex = nil
+end
+
+function Touch.returnShopTileToHand(tile)
+    if not tile or not gameState.shopPlacedTiles then
+        return
+    end
+
+    -- Remove from shop board
+    for i, placedTile in ipairs(gameState.shopPlacedTiles) do
+        if placedTile == tile then
+            table.remove(gameState.shopPlacedTiles, i)
+            break
+        end
+    end
+
+    -- Reset tile state
+    tile.placed = false
+    tile.orientation = "vertical"
+    tile.isDragging = false
+
+    -- Add back to shop hand
+    table.insert(gameState.offeredTiles, tile)
+    Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sort
+
+    -- Animate tile back to hand position
+    local tileIndex = #gameState.offeredTiles
+    local targetX, targetY = UI.Layout.getHandPosition(tileIndex - 1, #gameState.offeredTiles)
+
+    UI.Animation.animateTo(tile, {
+        visualX = targetX,
+        visualY = targetY
+    }, 0.3, "easeOutQuart")
+
+    -- Play tile return sound
+    UI.Audio.playTileReturned()
+
+    -- Clear drag state
+    touchState.draggedTile = nil
+    touchState.draggedFrom = nil
+end
+
+function Touch.purchaseShopPlacedTile()
+    -- Check if tile is placed
+    if not gameState.shopPlacedTiles or #gameState.shopPlacedTiles == 0 then
+        return
+    end
+
+    local tile = gameState.shopPlacedTiles[1]
+    local cost = tile.basePrice or 2
+
+    -- Check if player can afford
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+
+    -- Play purchase sound (same as play button)
+    UI.Audio.playPlayButton()
+
+    -- Add tile to player's collection and deck
+    table.insert(gameState.tileCollection, Domino.clone(tile))
+    table.insert(gameState.deck, Domino.clone(tile))
+    Domino.shuffleDeck(gameState.deck)
+
+    -- Animate tile zoom out and fade
+    UI.Animation.animateTo(tile, {
+        dragScale = 1.5,
+        dragOpacity = 0
+    }, 0.4, "easeOutQuart", function()
+        -- Remove tile from shop board
+        gameState.shopPlacedTiles = {}
+    end)
+
+    -- Show success message
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+    UI.Animation.createFloatingText("TILE PURCHASED!", centerX, centerY, {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
+-- DEPRECATED: Old drag-to-zone purchase system
+function Touch.purchaseShopTile_DEPRECATED(tile, tileIndex)
+    if not tile or tile.shopPurchased then
+        return
+    end
+
+    local cost = tile.basePrice or 2
+
+    -- Check if player can afford
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+
+        -- Animate tile back to hand
+        Touch.animateTileToHand(tile, tileIndex, gameState.offeredTiles)
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+
+    -- Play purchase sound (same as play hand)
+    UI.Audio.playPlayButton()
+
+    -- Mark tile as purchased
+    tile.shopPurchased = true
+
+    -- Add tile to player's collection and deck
+    table.insert(gameState.tileCollection, Domino.clone(tile))
+    table.insert(gameState.deck, Domino.clone(tile))
+    Domino.shuffleDeck(gameState.deck)
+
+    -- Animate tile zoom in and fade out
+    UI.Animation.animateTo(tile, {
+        dragScale = 1.5,
+        dragOpacity = 0
+    }, 0.4, "easeOutQuart", function()
+        -- Reset tile state and return to hand position
+        tile.dragScale = 1.0
+        tile.dragOpacity = 1.0
+        tile.isDragging = false
+        Touch.resetTileDragState(tile)
+
+        -- Update hand positions
+        if gameState.offeredTiles then
+            Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sort
+        end
+    end)
+
+    -- Show success message
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+    UI.Animation.createFloatingText("TILE PURCHASED!", centerX, centerY, {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+
+    -- Clear drag state
+    touchState.draggedTile = nil
+    touchState.draggedFrom = nil
+    touchState.draggedIndex = nil
+end
+
+function Touch.rerollShopTiles()
+    local rerollCost = gameState.shopRerollCost or 1
+
+    -- Check if player can afford
+    if gameState.coins < rerollCost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - rerollCost, {hasBonus = false})
+
+    -- Play discard sound
+    UI.Audio.playDiscardButton()
+
+    -- Return placed tile to hand first (if any)
+    if gameState.shopPlacedTiles and #gameState.shopPlacedTiles > 0 then
+        local placedTile = gameState.shopPlacedTiles[1]
+        placedTile.placed = false
+        placedTile.orientation = "vertical"
+        table.insert(gameState.offeredTiles, placedTile)
+        gameState.shopPlacedTiles = {}
+        Hand.updatePositions(gameState.offeredTiles, true)  -- Recalculate positions
+    end
+
+    -- Animate all shop tiles discarding (same as combat discard)
+    Hand.animateDiscard(gameState.offeredTiles, function()
+        -- After discard animation completes, generate new tiles
+        gameState.offeredTiles = Domino.generateShopTileOffers(3)
+        gameState.shopPlacedTiles = {}  -- Clear board
+
+        -- Animate new tiles drawing in from right (same as combat draw)
+        if gameState.offeredTiles then
+            Hand.animateTilesDraw(gameState.offeredTiles, 0)
+        end
+    end)
+end
+
+function Touch.animateTileToHand(tile, tileIndex, hand)
+    -- Animate tile back to its hand position
+    if not tile or not hand then
+        return
+    end
+
+    local targetX, targetY = UI.Layout.getHandPosition(tileIndex - 1, #hand)
+
+    UI.Animation.animateTo(tile, {
+        visualX = targetX,
+        visualY = targetY,
+        dragScale = 1.0,
+        dragOpacity = 1.0
+    }, 0.3, "easeOutQuart", function()
+        tile.isDragging = false
+        Touch.resetTileDragState(tile)
+    end)
 end
 
 return Touch
