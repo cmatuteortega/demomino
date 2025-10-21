@@ -790,152 +790,9 @@ function UI.Renderer.drawPlacedTiles()
 end
 
 function UI.Renderer.drawScore(score)
-    -- Left side: Score display only
+    -- Left side: Round counter and challenges
     local leftX = UI.Layout.scale(40)  -- Margin for mobile devices
     local leftY = UI.Layout.scale(20)
-
-    -- Draw countdown score (666 - current score) with wave animation per digit
-    local scoreY = leftY
-
-    -- Use animated countdown value instead of instant calculation
-    local displayScore = gameState.displayedRemainingScore or math.max(0, gameState.targetScore - score)
-    -- Clamp to 0 and always display 3 digits with leading zeros
-    displayScore = math.max(0, displayScore)
-    local scoreText = string.format("%03d", math.floor(displayScore))
-
-    local scoreColor = UI.Colors.FONT_RED
-    if gameState.scoreAnimation and gameState.scoreAnimation.color then
-        scoreColor = gameState.scoreAnimation.color
-    end
-
-    -- Get base animation properties
-    local baseScale = 1.0
-    local baseShake = 0
-    if gameState.scoreAnimation then
-        baseScale = gameState.scoreAnimation.scale or 1
-        baseShake = gameState.scoreAnimation.shake or 0
-    end
-
-    -- Draw score digits with wave offset
-    local time = love.timer.getTime()
-    local font = UI.Fonts.get("bigScore")
-    local currentX = leftX
-
-    for i = 1, #scoreText do
-        local digit = scoreText:sub(i, i)
-        local digitWidth = font:getWidth(digit)
-
-        -- Wave animation: 3px range, 2.5 second cycle, phase offset per digit
-        local phase = time * 2.5 + (i - 1) * 0.4  -- 0.4 radian offset per digit
-        local waveOffset = math.sin(phase) * 3
-
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4),
-            scale = baseScale,
-            shake = baseShake
-        }
-
-        UI.Fonts.drawAnimatedText(digit, currentX, scoreY + waveOffset, "bigScore", scoreColor, "left", animProps)
-
-        -- Move X position for next digit (accounting for scale)
-        currentX = currentX + digitWidth * baseScale
-    end
-
-    -- 3. Draw scoring formula below score (only during scoring sequence)
-    local formulaY = scoreY + UI.Layout.scale(80) + (gameState.formulaAnimation.yOffset or 0)
-
-    -- Only show formula during active scoring sequence
-    if gameState.scoringSequence then
-        local time = love.timer.getTime()
-        local formulaColor = gameState.formulaAnimation.color or {1, 0.8, 0.2, 1}
-        local formulaOpacity = gameState.formulaAnimation.opacity or 1.0
-        local formulaScale = gameState.formulaAnimation.scale or 1.0
-
-        -- Apply color with opacity
-        local displayColor = {formulaColor[1], formulaColor[2], formulaColor[3], formulaOpacity}
-
-        if gameState.scoringSequence then
-            local seq = gameState.scoringSequence
-            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-            local displayValue = math.floor(gameState.formulaDisplayValue)
-
-            if seq.phase == "scoring_tiles" then
-                -- Show counting value with wave animation per digit (like main score)
-                local valueText = tostring(displayValue)
-                local font = UI.Fonts.get("formulaScore")
-                local currentX = leftX
-
-                for i = 1, #valueText do
-                    local digit = valueText:sub(i, i)
-                    local digitWidth = font:getWidth(digit)
-                    local phase = time * 2.5 + (i - 1) * 0.4
-                    local waveOffset = math.sin(phase) * 2
-
-                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
-                        scale = formulaScale,
-                        shadow = true,
-                        shadowOffset = UI.Layout.scale(3)
-                    })
-
-                    currentX = currentX + digitWidth * formulaScale
-                end
-
-            elseif seq.phase == "multiplying" or seq.phase == "final" then
-                -- Show value with multiplier
-                local valueText = tostring(displayValue)
-                local multiplierText = " × " .. breakdown.multiplier
-                local font = UI.Fonts.get("formulaScore")
-
-                -- Draw value with wave animation
-                local currentX = leftX
-                for i = 1, #valueText do
-                    local digit = valueText:sub(i, i)
-                    local digitWidth = font:getWidth(digit)
-                    local phase = time * 2.5 + (i - 1) * 0.4
-                    local waveOffset = math.sin(phase) * 2
-
-                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
-                        scale = formulaScale,
-                        shadow = true,
-                        shadowOffset = UI.Layout.scale(3)
-                    })
-
-                    currentX = currentX + digitWidth * formulaScale
-                end
-
-                -- Draw multiplier
-                UI.Fonts.drawAnimatedText(multiplierText, currentX + UI.Layout.scale(5), formulaY, "formulaScore", displayColor, "left", {
-                    scale = formulaScale,
-                    shadow = true,
-                    shadowOffset = UI.Layout.scale(3)
-                })
-
-            elseif seq.phase == "transferring" then
-                -- Show final value moving up and fading
-                local valueText = tostring(displayValue)
-                local font = UI.Fonts.get("formulaScore")
-                local currentX = leftX
-
-                for i = 1, #valueText do
-                    local digit = valueText:sub(i, i)
-                    local digitWidth = font:getWidth(digit)
-
-                    UI.Fonts.drawAnimatedText(digit, currentX, formulaY, "formulaScore", displayColor, "left", {
-                        scale = formulaScale,
-                        shadow = true,
-                        shadowOffset = UI.Layout.scale(3)
-                    })
-
-                    currentX = currentX + digitWidth * formulaScale
-                end
-            end
-        end
-    end
-
-    -- Right side: Round counter and challenges
-    local rightX = gameState.screen.width - UI.Layout.scale(40)
-    local rightY = UI.Layout.scale(20)
 
     -- Convert round number to Roman numerals
     local function toRoman(num)
@@ -963,17 +820,9 @@ function UI.Renderer.drawScore(score)
     local roundColor = UI.Colors.FONT_WHITE
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
-    local currentX = rightX
+    local currentX = leftX
 
-    -- Calculate total width to position from right
-    local totalWidth = 0
-    for i = 1, #fullText do
-        local char = fullText:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
-    end
-
-    -- Start from right and draw each character with wave animation
-    currentX = rightX - totalWidth
+    -- Draw each character with wave animation (left-aligned)
     for i = 1, #fullText do
         local char = fullText:sub(i, i)
         local charWidth = font:getWidth(char)
@@ -989,7 +838,7 @@ function UI.Renderer.drawScore(score)
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "formulaScore", roundColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "formulaScore", roundColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
@@ -999,7 +848,7 @@ function UI.Renderer.drawScore(score)
     local formulaScoreFont = UI.Fonts.get("formulaScore")
     local roundHeight = formulaScoreFont:getHeight()
     local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
-    local currentCounterY = rightY + roundHeight - 20  -- Start position below round
+    local currentCounterY = leftY + roundHeight - 20  -- Start position below round
 
     -- Floating animation: same wave effect as score digits
     local floatPhase = time * 2.5
@@ -1021,7 +870,7 @@ function UI.Renderer.drawScore(score)
         local counterScale = gameState.maxTilesCounterAnimation.scale or 1.0
         local actualScale = counterScale * 0.5
 
-        UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
+        UI.Fonts.drawAnimatedText(counterText, leftX, currentCounterY + floatOffset, "formulaScore", counterColor, "left", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
             scale = actualScale
@@ -1038,11 +887,178 @@ function UI.Renderer.drawScore(score)
         local counterScale = gameState.bannedNumberCounterAnimation.scale or 1.0
         local actualScale = counterScale * 0.5
 
-        UI.Fonts.drawAnimatedText(counterText, rightX, currentCounterY + floatOffset, "formulaScore", counterColor, "right", {
+        UI.Fonts.drawAnimatedText(counterText, leftX, currentCounterY + floatOffset, "formulaScore", counterColor, "left", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
             scale = actualScale
         })
+    end
+
+    -- Right side: Score display and formula
+    local rightX = gameState.screen.width - UI.Layout.scale(40)
+    local rightY = UI.Layout.scale(20)
+
+    -- Draw countdown score (666 - current score) with wave animation per digit
+    local scoreY = rightY
+
+    -- Use animated countdown value instead of instant calculation
+    local displayScore = gameState.displayedRemainingScore or math.max(0, gameState.targetScore - score)
+    -- Clamp to 0 and always display 3 digits with leading zeros
+    displayScore = math.max(0, displayScore)
+    local scoreText = string.format("%03d", math.floor(displayScore))
+
+    local scoreColor = UI.Colors.FONT_RED
+    if gameState.scoreAnimation and gameState.scoreAnimation.color then
+        scoreColor = gameState.scoreAnimation.color
+    end
+
+    -- Get base animation properties
+    local baseScale = 1.0
+    local baseShake = 0
+    if gameState.scoreAnimation then
+        baseScale = gameState.scoreAnimation.scale or 1
+        baseShake = gameState.scoreAnimation.shake or 0
+    end
+
+    -- Calculate total width of score to position from right
+    local bigScoreFont = UI.Fonts.get("bigScore")
+    local scoreTotalWidth = 0
+    for i = 1, #scoreText do
+        local digit = scoreText:sub(i, i)
+        scoreTotalWidth = scoreTotalWidth + bigScoreFont:getWidth(digit) * baseScale
+    end
+
+    -- Draw score digits with wave offset (right-aligned)
+    currentX = rightX - scoreTotalWidth
+    for i = 1, #scoreText do
+        local digit = scoreText:sub(i, i)
+        local digitWidth = bigScoreFont:getWidth(digit)
+
+        -- Wave animation: 3px range, 2.5 second cycle, phase offset per digit
+        local phase = time * 2.5 + (i - 1) * 0.4  -- 0.4 radian offset per digit
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = baseScale,
+            shake = baseShake
+        }
+
+        UI.Fonts.drawAnimatedText(digit, currentX, scoreY + waveOffset, "bigScore", scoreColor, "left", animProps)
+
+        -- Move X position for next digit (accounting for scale)
+        currentX = currentX + digitWidth * baseScale
+    end
+
+    -- Draw scoring formula below score (only during scoring sequence)
+    local formulaY = scoreY + UI.Layout.scale(80) + (gameState.formulaAnimation.yOffset or 0)
+
+    -- Only show formula during active scoring sequence
+    if gameState.scoringSequence then
+        local formulaColor = gameState.formulaAnimation.color or {1, 0.8, 0.2, 1}
+        local formulaOpacity = gameState.formulaAnimation.opacity or 1.0
+        local formulaScale = gameState.formulaAnimation.scale or 1.0
+
+        -- Apply color with opacity
+        local displayColor = {formulaColor[1], formulaColor[2], formulaColor[3], formulaOpacity}
+
+        local seq = gameState.scoringSequence
+        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+        local displayValue = math.floor(gameState.formulaDisplayValue)
+
+        if seq.phase == "scoring_tiles" then
+            -- Show counting value with wave animation per digit
+            local valueText = tostring(displayValue)
+            local formulaFont = UI.Fonts.get("formulaScore")
+
+            -- Calculate total width for right alignment
+            local formulaTotalWidth = 0
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(digit) * formulaScale
+            end
+
+            currentX = rightX - formulaTotalWidth
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                local digitWidth = formulaFont:getWidth(digit)
+                local phase = time * 2.5 + (i - 1) * 0.4
+                local waveOffset = math.sin(phase) * 2
+
+                UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
+                    scale = formulaScale,
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(3)
+                })
+
+                currentX = currentX + digitWidth * formulaScale
+            end
+
+        elseif seq.phase == "multiplying" or seq.phase == "final" then
+            -- Show value with multiplier
+            local valueText = tostring(displayValue)
+            local multiplierText = " × " .. breakdown.multiplier
+            local formulaFont = UI.Fonts.get("formulaScore")
+
+            -- Calculate total width for right alignment
+            local formulaTotalWidth = 0
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(digit) * formulaScale
+            end
+            formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(multiplierText) * formulaScale + UI.Layout.scale(5)
+
+            -- Draw value with wave animation
+            currentX = rightX - formulaTotalWidth
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                local digitWidth = formulaFont:getWidth(digit)
+                local phase = time * 2.5 + (i - 1) * 0.4
+                local waveOffset = math.sin(phase) * 2
+
+                UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
+                    scale = formulaScale,
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(3)
+                })
+
+                currentX = currentX + digitWidth * formulaScale
+            end
+
+            -- Draw multiplier
+            UI.Fonts.drawAnimatedText(multiplierText, currentX + UI.Layout.scale(5), formulaY, "formulaScore", displayColor, "left", {
+                scale = formulaScale,
+                shadow = true,
+                shadowOffset = UI.Layout.scale(3)
+            })
+
+        elseif seq.phase == "transferring" then
+            -- Show final value moving up and fading
+            local valueText = tostring(displayValue)
+            local formulaFont = UI.Fonts.get("formulaScore")
+
+            -- Calculate total width for right alignment
+            local formulaTotalWidth = 0
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(digit) * formulaScale
+            end
+
+            currentX = rightX - formulaTotalWidth
+            for i = 1, #valueText do
+                local digit = valueText:sub(i, i)
+                local digitWidth = formulaFont:getWidth(digit)
+
+                UI.Fonts.drawAnimatedText(digit, currentX, formulaY, "formulaScore", displayColor, "left", {
+                    scale = formulaScale,
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(3)
+                })
+
+                currentX = currentX + digitWidth * formulaScale
+            end
+        end
     end
 
     -- Draw tiles left counter in bottom right corner with same offset as other corner UI elements
