@@ -1903,6 +1903,11 @@ function UI.Renderer.drawTilesMenu()
     else
         -- Shop mode (drag-to-board system like main game)
 
+        -- Draw lighter background strip at hand level (like combat)
+        local handArea = UI.Layout.getHandArea()
+        UI.Colors.setBackgroundLight()
+        love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
         -- ALCHEMY title in top right (same style as map round counter)
         local rightX = screenWidth - UI.Layout.scale(40)
         local rightY = UI.Layout.scale(20)
