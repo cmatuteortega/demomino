@@ -77,7 +77,7 @@ function UI.Layout.getHandPosition(index, totalTiles)
     end
     
     -- Calculate spacing between tiles (shop mode has extra spacing)
-    local isShopMode = gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop"
+    local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
     local tileSpacing = isShopMode and (spriteWidth * 2) or spriteWidth  -- Shop: 1 tile width gap, Combat: no gap
 
     -- Calculate total width of all tiles with spacing

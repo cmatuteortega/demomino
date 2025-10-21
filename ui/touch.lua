@@ -173,7 +173,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Handle NEXT> button press on shop screen
-    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+    if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
         if gameState.shopNextButton and isPointInRect(x, y, gameState.shopNextButton) then
             -- Play tap sound
             UI.Audio.playButtonTap()
@@ -191,6 +191,26 @@ function Touch.pressed(x, y, istouch, touchId)
             return  -- Only return if button was actually pressed
         end
         -- Don't return here - allow other shop interactions to continue
+    end
+
+    -- Handle NEXT> button press on artifacts screen
+    if gameState.gamePhase == "artifacts_menu" then
+        if gameState.artifactsNextButton and isPointInRect(x, y, gameState.artifactsNextButton) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.artifactsNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.artifactsNextButtonPressed = true
+            return
+        end
     end
 
     -- Handle NEXT >> button press on victory screen
@@ -266,7 +286,7 @@ function Touch.pressed(x, y, istouch, touchId)
     local playButtonBounds = getPlayButtonBounds()
     if isPointInRect(x, y, playButtonBounds) then
         -- Check if in shop mode or playing mode
-        if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
             -- Shop mode: Allow button press if tile is placed OR to show feedback
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
@@ -281,7 +301,7 @@ function Touch.pressed(x, y, istouch, touchId)
     local discardButtonBounds = getDiscardButtonBounds()
     if isPointInRect(x, y, discardButtonBounds) then
         -- Shop mode or playing mode
-        if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
             -- Shop mode: Always allow (for reroll)
             animateButtonPress("discardButton")
             touchState.discardButtonPressed = true
@@ -304,7 +324,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Handle fusion hand (reuse regular hand logic)
-    if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "fusion" and gameState.fusionHand then
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" and gameState.fusionHand then
         local tile, index = Hand.getTileAt(gameState.fusionHand, x, y)
         if tile then
             -- Obsidian tiles cannot be used in fusion
@@ -743,23 +763,15 @@ function Touch.released(x, y, istouch, touchId)
         touchState.nodeConfirmationNextButtonPressed = false
         return
     elseif gameState.gamePhase == "tiles_menu" then
-        -- Handle mode toggle buttons
-        if gameState.modeToggleButtons then
-            if isPointInRect(x, y, gameState.modeToggleButtons.shop) then
-                gameState.tilesMenuMode = "shop"
-                touchState.isPressed = false
-                return
-            elseif isPointInRect(x, y, gameState.modeToggleButtons.fusion) then
-                gameState.tilesMenuMode = "fusion"
-                -- Initialize fusion hand if not already done
-                Touch.initializeFusionHand()
-                touchState.isPressed = false
-                return
-            end
-        end
+        -- Mode toggle buttons removed - node type determines shop vs fusion mode
+        -- (Kept for backward compatibility with old saves that may have tilesMenuMode)
+
+        -- Determine mode based on node type
+        local nodeType = gameState.currentTilesNodeType or "trade"
+        local isFusionMode = (nodeType == "alchemy")
 
         -- Handle based on current mode
-        if gameState.tilesMenuMode == "fusion" then
+        if isFusionMode then
             -- FUSION MODE HANDLING
             -- Note: Hand tile selection is done via DRAG only, not click
             -- Clicking hand tiles has no effect (like main game)
@@ -815,6 +827,32 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "artifacts_menu" then
+        -- Handle NEXT> button release for artifacts menu
+        if touchState.artifactsNextButtonPressed and gameState.artifactsNextButton and isPointInRect(x, y, gameState.artifactsNextButton) then
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
+            -- Animate to white with callback to transition
+            UI.Animation.animateTo(gameState.artifactsNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                -- Return to map
+                gameState.gamePhase = "map"
+            end)
+        elseif touchState.artifactsNextButtonPressed then
+            -- Released outside button - reset color back to pink
+            UI.Animation.animateTo(gameState.artifactsNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
+        end
+        touchState.artifactsNextButtonPressed = false
+
         -- Handle tool purchase buttons
         if gameState.toolPurchaseButtons then
             for _, button in ipairs(gameState.toolPurchaseButtons) do
@@ -827,10 +865,6 @@ function Touch.released(x, y, istouch, touchId)
             end
         end
 
-        -- Handle return to map button
-        if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
-            gameState.gamePhase = "map"
-        end
         touchState.isPressed = false
         touchState.touchId = nil
         return
@@ -847,7 +881,7 @@ function Touch.released(x, y, istouch, touchId)
     -- Handle play button release (for playing phase AND shop mode)
     if touchState.playButtonPressed then
         if getPlayButtonBounds() and isPointInRect(x, y, getPlayButtonBounds()) then
-            if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+            if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
                 -- SHOP MODE: Purchase placed tile
                 Touch.purchaseShopPlacedTile()
             elseif #gameState.placedTiles > 0 then
@@ -862,7 +896,7 @@ function Touch.released(x, y, istouch, touchId)
     -- Handle discard button release (for playing phase AND shop mode)
     if touchState.discardButtonPressed then
         if getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds()) then
-            if gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop" then
+            if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
                 -- SHOP MODE: Reroll tiles
                 Touch.rerollShopTiles()
             else
@@ -1885,13 +1919,15 @@ function Touch.enterSelectedNode()
 
         -- All combat nodes (including boss) start combat round
         gameState.gamePhase = "playing"
-    elseif nodeType == "tiles" then
+    elseif nodeType == "trade" then
+        -- TRADE node - shop interface
+        gameState.currentTilesNodeType = "trade"
+
         -- Generate shop tile offers when entering tiles menu (new system with variants)
         gameState.offeredTiles = Domino.generateShopTileOffers(3)
         -- Initialize shop state
         gameState.shopPlacedTiles = {}  -- Board for placing tiles (max 1)
         gameState.shopRerollCost = 1  -- Reroll always costs 1$
-        gameState.tilesMenuMode = "shop"  -- Default to shop mode
 
         -- Always reset button animations when entering shop (ensures visibility on every visit)
         gameState.buttonAnimations = {
@@ -1901,6 +1937,33 @@ function Touch.enterSelectedNode()
         }
 
         -- Animate tiles drawing in from right
+        if gameState.offeredTiles then
+            Hand.animateTilesDraw(gameState.offeredTiles, 0)
+        end
+
+        gameState.gamePhase = "tiles_menu"
+    elseif nodeType == "alchemy" then
+        -- ALCHEMY node - fusion interface
+        gameState.currentTilesNodeType = "alchemy"
+
+        -- Initialize fusion hand using the existing function
+        Touch.initializeFusionHand()
+
+        gameState.gamePhase = "tiles_menu"
+    elseif nodeType == "tiles" then
+        -- Legacy "tiles" node type - default to trade for backward compatibility
+        gameState.currentTilesNodeType = "trade"
+
+        gameState.offeredTiles = Domino.generateShopTileOffers(3)
+        gameState.shopPlacedTiles = {}
+        gameState.shopRerollCost = 1
+
+        gameState.buttonAnimations = {
+            playButton = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+
         if gameState.offeredTiles then
             Hand.animateTilesDraw(gameState.offeredTiles, 0)
         end

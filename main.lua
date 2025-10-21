@@ -1065,13 +1065,14 @@ function love.update(dt)
             updateFormulaCountAnimation(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" then
-        if gameState.tilesMenuMode == "fusion" then
+        local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
+        if isFusionMode then
             -- Update fusion hand using regular Hand.update logic
             if gameState.fusionHand then
                 Hand.updatePositions(gameState.fusionHand)
                 Hand.updateIdleAnimations(gameState.fusionHand, dt)
             end
-        elseif gameState.tilesMenuMode == "shop" then
+        else
             -- Update shop hand tiles with all animations (like combat hand)
             if gameState.offeredTiles then
                 Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sorting
@@ -1706,11 +1707,13 @@ function loadNodeSprites()
     -- Define node type to sprite mapping
     local nodeTypeMapping = {
         combat = "combat",
-        tiles = "tile",
-        artifacts = "artifact", 
+        tiles = "tile",      -- Legacy node type (backward compatibility)
+        trade = "tile",      -- TRADE nodes use tile sprite
+        alchemy = "tile",    -- ALCHEMY nodes use tile sprite
+        artifacts = "artifact",
         contracts = "contract",
-        start = "tile",  -- Fallback to tile sprite
-        boss = "combat"  -- Fallback to combat sprite
+        start = "tile",      -- Fallback to tile sprite
+        boss = "combat"      -- Fallback to combat sprite
     }
     
     -- Load base sprites and selected sprites for each node type

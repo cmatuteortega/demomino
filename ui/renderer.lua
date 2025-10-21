@@ -550,7 +550,7 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
 
                 -- Apply any inversion from sprite loading system
                 -- BUT: Skip inversion for shop tiles (they should always display upright)
-                local isShopTile = domino.isShopTile or (gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop")
+                local isShopTile = domino.isShopTile or (gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType))
                 if spriteData.inverted and not isShopTile then
                     rotation = rotation + math.pi
                 end
@@ -1228,7 +1228,7 @@ function UI.Renderer.drawCoinText()
 
     -- Draw coin breakdown to the right of money counter (vertical list)
     -- Skip breakdown in shop menu (only show in combat)
-    local isShopMode = gameState.gamePhase == "tiles_menu" and gameState.tilesMenuMode == "shop"
+    local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
     if not isShopMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
         local lineHeight = font:getHeight() + UI.Layout.scale(5)
@@ -1752,8 +1752,9 @@ function UI.Renderer.drawNodeConfirmation()
     -- Node name mapping
     local nodeTypeTexts = {
         combat = "DISPUTE",
-        tiles = "ALCHEMY",
-        artifacts = "TOOLS",
+        trade = "TRADE",
+        alchemy = "ALCHEMY",
+        artifacts = "ARTIFACTS",
         contracts = "MAGIK"
     }
 
@@ -1800,7 +1801,8 @@ function UI.Renderer.drawNodeConfirmation()
     -- Draw subtitle below node name
     local nodeSubtitles = {
         combat = "CHALLENGE FOR PROFIT",
-        tiles = "TAILOR YOUR TILES",
+        trade = "GET NEW BONES",
+        alchemy = "FUSE YOUR BONES",
         artifacts = "USEFUL ARTIFACTS",
         contracts = "DEAL WITH THE DEVIL"
     }
@@ -1898,53 +1900,73 @@ function UI.Renderer.drawTilesMenu()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Draw mode toggle buttons
-    UI.Renderer.drawTilesMenuModeToggle()
+    -- Determine which mode to display based on current node type
+    local nodeType = gameState.currentTilesNodeType or "trade"  -- Default to trade for backward compatibility
+    local isFusionMode = (nodeType == "alchemy")
 
-    -- Draw content based on mode
-    if gameState.tilesMenuMode == "fusion" then
+    -- Draw content based on node type
+    if isFusionMode then
+        -- ALCHEMY node - Fusion mode
         UI.Renderer.drawFusionMode()
     else
-        -- Shop mode (drag-to-board system like main game)
+        -- TRADE node - Shop mode (drag-to-board system like main game)
 
         -- Draw lighter background strip at hand level (like combat)
         local handArea = UI.Layout.getHandArea()
         UI.Colors.setBackgroundLight()
         love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
-        -- ALCHEMY title in top right (same style as map round counter)
+        -- Draw node title and demon name in top corners
         local rightX = screenWidth - UI.Layout.scale(40)
-        local rightY = UI.Layout.scale(20)
+        local leftX = UI.Layout.scale(40)
+        local topY = UI.Layout.scale(20)
         local time = love.timer.getTime()
         local font = UI.Fonts.get("formulaScore")
-        local alchemyText = "ALCHEMY"
-        local alchemyColor = UI.Colors.FONT_WHITE
 
-        -- Calculate total width to position from right
+        -- Right side: TRADE title
+        local nodeTitle = "TRADE"
+        local titleColor = UI.Colors.FONT_WHITE
+
         local totalWidth = 0
-        for i = 1, #alchemyText do
-            local char = alchemyText:sub(i, i)
+        for i = 1, #nodeTitle do
+            local char = nodeTitle:sub(i, i)
             totalWidth = totalWidth + font:getWidth(char)
         end
 
-        -- Start from right and draw each character with wave animation
         local currentX = rightX - totalWidth
-        for i = 1, #alchemyText do
-            local char = alchemyText:sub(i, i)
+        for i = 1, #nodeTitle do
+            local char = nodeTitle:sub(i, i)
             local charWidth = font:getWidth(char)
-
-            -- Wave animation
             local phase = time * 2.5 + (i - 1) * 0.4
             local waveOffset = math.sin(phase) * 3
 
-            local animProps = {
+            UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
                 shadow = true,
                 shadowOffset = UI.Layout.scale(4),
                 scale = 1.0,
                 shake = 0
-            }
+            })
 
-            UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "formulaScore", alchemyColor, "left", animProps)
+            currentX = currentX + charWidth
+        end
+
+        -- Left side: MAMMON demon name
+        local demonName = "MAMMON"
+        local demonColor = UI.Colors.FONT_RED
+
+        currentX = leftX
+        for i = 1, #demonName do
+            local char = demonName:sub(i, i)
+            local charWidth = font:getWidth(char)
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 3
+
+            UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4),
+                scale = 1.0,
+                shake = 0
+            })
 
             currentX = currentX + charWidth
         end
@@ -1983,14 +2005,64 @@ function UI.Renderer.drawArtifactsMenu()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Title
-    local titleColor = UI.Colors.FONT_PINK
-    UI.Fonts.drawText("ARTIFACTS VAULT", centerX, UI.Layout.scale(60), "title", titleColor, "center")
+    -- Draw node title and demon name in top corners (same style as trade/alchemy)
+    local rightX = screenWidth - UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(40)
+    local topY = UI.Layout.scale(20)
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("formulaScore")
 
-    -- Show current coins in top right
-    local coinsText = "Coins: " .. gameState.coins .. "$"
-    local coinsColor = {1, 0.9, 0.3, 1}
-    UI.Fonts.drawText(coinsText, screenWidth - UI.Layout.scale(20), UI.Layout.scale(30), "large", coinsColor, "right")
+    -- Right side: ARTIFACTS title
+    local nodeTitle = "ARTIFACTS"
+    local titleColor = UI.Colors.FONT_WHITE
+
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        local char = nodeTitle:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char = nodeTitle:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        })
+
+        currentX = currentX + charWidth
+    end
+
+    -- Left side: ABRAXAS demon name
+    local demonName = "ABRAXAS"
+    local demonColor = UI.Colors.FONT_RED
+
+    currentX = leftX
+    for i = 1, #demonName do
+        local char = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        })
+
+        currentX = currentX + charWidth
+    end
+
+    -- Draw coin sprites and text (same as combat/trade)
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
 
     -- Instructions
     local instructionColor = UI.Colors.FONT_WHITE
@@ -2000,8 +2072,8 @@ function UI.Renderer.drawArtifactsMenu()
     -- Draw tool offers
     UI.Renderer.drawToolOffers()
 
-    -- Return to Map button
-    UI.Renderer.drawReturnToMapButton()
+    -- Draw NEXT> button to exit artifacts menu
+    UI.Renderer.drawArtifactsNextButton()
 end
 
 function UI.Renderer.drawToolOffers()
@@ -2339,6 +2411,69 @@ function UI.Renderer.drawShopNextButton()
     -- Store button bounds for touch handling (add padding for easier clicking)
     local padding = UI.Layout.scale(20)
     gameState.shopNextButton = {
+        x = textX - padding,
+        y = textY - padding,
+        width = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
+    }
+end
+
+function UI.Renderer.drawArtifactsNextButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Initialize animation state if needed
+    if not gameState.artifactsNextButtonAnimation then
+        gameState.artifactsNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    -- Get font for size calculation
+    local font = UI.Fonts.get("formulaScore")
+    local time = love.timer.getTime()
+
+    -- NEXT> button in bottom-right
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin = UI.Layout.scale(20)
+
+    local text = "NEXT>"
+    local textColor = gameState.artifactsNextButtonAnimation.color
+
+    -- Calculate total width of text for positioning
+    local totalWidth = 0
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Position in bottom-right area
+    local textX = screenWidth - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    -- Draw each character with wave animation
+    local currentX = textX
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store button bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(20)
+    gameState.artifactsNextButton = {
         x = textX - padding,
         y = textY - padding,
         width = totalWidth + padding * 2,
@@ -2938,6 +3073,61 @@ function UI.Renderer.drawFusionMode()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
+
+    -- Draw node title and demon name in top corners
+    local rightX = screenWidth - UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(40)
+    local topY = UI.Layout.scale(20)
+    local time = love.timer.getTime()
+    local font = UI.Fonts.get("formulaScore")
+
+    -- Right side: ALCHEMY title
+    local nodeTitle = "ALCHEMY"
+    local titleColor = UI.Colors.FONT_WHITE
+
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        local char = nodeTitle:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char = nodeTitle:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        })
+
+        currentX = currentX + charWidth
+    end
+
+    -- Left side: LILITH demon name
+    local demonName = "LILITH"
+    local demonColor = UI.Colors.FONT_RED
+
+    currentX = leftX
+    for i = 1, #demonName do
+        local char = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        })
+
+        currentX = currentX + charWidth
+    end
 
     -- Draw instructions
     local instructionColor = UI.Colors.FONT_WHITE

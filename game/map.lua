@@ -161,11 +161,11 @@ function Map.createNode(depth, path, nodeType)
         id = nodeId,           -- Unique identifier for DAG
         depth = depth,         -- Level in the DAG (1-12)
         path = path,           -- Path index (1-6)
-        nodeType = nodeType,   -- "start", "combat", "tiles", "artifacts", "contracts", "boss"
+        nodeType = nodeType,   -- "start", "combat", "trade", "alchemy", "artifacts", "contracts", "boss"
         completed = false,
         connections = {},      -- Array of connected node IDs (directed edges)
         position = {x = 0, y = 0}, -- Position coordinates
-        
+
         -- Legacy fields for compatibility with existing renderer
         column = depth,
         lane = path,
@@ -197,12 +197,12 @@ end
 -- Select a random node type for regular nodes with balanced distribution
 -- Now more combat-aware to reduce post-generation corrections
 function Map.selectRandomNodeType(depth, numLevels)
-    local nodeTypes = {"combat", "tiles", "artifacts", "contracts"}
-    
+    local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
+
     -- Increase combat probability to ensure adequate coverage
     -- We need at least 3 combat nodes per path, so be more aggressive
     local combatChance
-    
+
     if depth <= 3 then
         -- Early levels: high combat chance to establish baseline
         combatChance = 0.6
@@ -213,12 +213,12 @@ function Map.selectRandomNodeType(depth, numLevels)
         -- Later levels: still reasonable combat chance
         combatChance = 0.4
     end
-    
+
     if love.math.random() < combatChance then
         return "combat"
     else
-        -- Randomly select from the other 3 types
-        local otherTypes = {"tiles", "artifacts", "contracts"}
+        -- Randomly select from the other types (trade, alchemy, artifacts, contracts)
+        local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
         return otherTypes[love.math.random(1, #otherTypes)]
     end
 end
