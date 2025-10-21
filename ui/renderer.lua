@@ -955,8 +955,11 @@ function UI.Renderer.drawScore(score)
         return result
     end
 
-    -- Draw round counter with wave animation per character (like score)
+    -- Draw round counter with demon name and wave animation per character
     local roundText = toRoman(gameState.currentRound) .. "."
+    local demonName = gameState.currentDemonName or ""
+    local fullText = demonName ~= "" and (roundText .. " " .. demonName) or roundText
+
     local roundColor = UI.Colors.FONT_WHITE
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
@@ -964,15 +967,15 @@ function UI.Renderer.drawScore(score)
 
     -- Calculate total width to position from right
     local totalWidth = 0
-    for i = 1, #roundText do
-        local char = roundText:sub(i, i)
+    for i = 1, #fullText do
+        local char = fullText:sub(i, i)
         totalWidth = totalWidth + font:getWidth(char)
     end
 
     -- Start from right and draw each character with wave animation
     currentX = rightX - totalWidth
-    for i = 1, #roundText do
-        local char = roundText:sub(i, i)
+    for i = 1, #fullText do
+        local char = fullText:sub(i, i)
         local charWidth = font:getWidth(char)
 
         -- Wave animation: same as score digits

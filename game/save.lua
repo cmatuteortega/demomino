@@ -128,6 +128,7 @@ function Save.serializeMap(map)
         cameraX = map.cameraX or 0,
         completedNodes = {},
         currentNodeId = map.currentNode and map.currentNode.id or nil,
+        usedDemonNames = map.usedDemonNames or {},  -- Save demon name tracking
         levels = {}
     }
 
@@ -150,7 +151,8 @@ function Save.serializeMap(map)
                 path = node.path,    -- Save path/row property
                 column = node.column,
                 lane = node.lane,
-                connections = node.connections or {}
+                connections = node.connections or {},
+                demonName = node.demonName  -- Save demon name for combat/boss nodes
             }
             table.insert(mapData.levels[levelIndex], nodeData)
         end
@@ -183,6 +185,7 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         cameraAnimation = nil,
         userDragging = false,
         manualCameraMode = false,
+        usedDemonNames = mapData.usedDemonNames or {},  -- Restore demon name tracking
         columns = {}  -- Legacy compatibility
     }
 
@@ -208,7 +211,8 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
                 lane = nodeData.lane or nodeData.path or 1,
                 completed = false,
                 connections = nodeData.connections or {},
-                position = {x = nodeData.x or 0, y = nodeData.y or 0}  -- Initialize position table
+                position = {x = nodeData.x or 0, y = nodeData.y or 0},  -- Initialize position table
+                demonName = nodeData.demonName  -- Restore demon name for combat/boss nodes
             }
             table.insert(map.levels[levelIndex], node)
             table.insert(map.columns[levelIndex], node)  -- Legacy

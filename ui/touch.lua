@@ -1873,7 +1873,10 @@ function Touch.enterSelectedNode()
         else
             gameState.isBossRound = false
         end
-        
+
+        -- Store the demon name for this combat encounter
+        gameState.currentDemonName = node.demonName
+
         -- Reset combat state for fresh round (score=0, new deck/hand, reset counters)
         initializeCombatRound()
 

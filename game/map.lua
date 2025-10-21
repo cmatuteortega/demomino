@@ -1,5 +1,58 @@
 Map = {}
 
+-- Demon name lists for combat encounters
+Map.REGULAR_DEMON_NAMES = {
+    "PAZUZU", "ASTAROTH", "MALPHAS", "AAMON", "BAEL", "SAMAEL",
+    "MOLOCH", "ABIGOR", "ASTARTE", "GAAP", "ANDRAS", "BARBATOS", "STOLAS"
+}
+
+Map.BOSS_DEMON_NAMES = {
+    "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN"
+}
+
+-- Select a random demon name from the pool, avoiding recent duplicates
+function Map.selectDemonName(usedNames, isBoss)
+    local namePool = isBoss and Map.BOSS_DEMON_NAMES or Map.REGULAR_DEMON_NAMES
+
+    -- If we've used all names, reset the pool
+    if #usedNames >= #namePool then
+        usedNames = {}
+    end
+
+    -- Create available names (not recently used)
+    local availableNames = {}
+    for _, name in ipairs(namePool) do
+        local isUsed = false
+        for _, usedName in ipairs(usedNames) do
+            if usedName == name then
+                isUsed = true
+                break
+            end
+        end
+        if not isUsed then
+            table.insert(availableNames, name)
+        end
+    end
+
+    -- If no available names (shouldn't happen), use full pool
+    if #availableNames == 0 then
+        availableNames = {table.unpack(namePool)}
+    end
+
+    -- Select random name from available pool
+    local selectedName = availableNames[love.math.random(1, #availableNames)]
+
+    -- Add to used names
+    table.insert(usedNames, selectedName)
+
+    -- Keep only last 5 used names to avoid repeats in short term
+    while #usedNames > 5 do
+        table.remove(usedNames, 1)
+    end
+
+    return selectedName
+end
+
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
 function Map.generateMap(screenWidth, screenHeight)
     -- Use default dimensions if not provided for backward compatibility
@@ -7,24 +60,27 @@ function Map.generateMap(screenWidth, screenHeight)
     screenHeight = screenHeight or 600
     local map = {
         nodes = {},        -- All nodes in the DAG
-        levels = {},       -- Nodes organized by depth level  
+        levels = {},       -- Nodes organized by depth level
         currentNode = nil,
         completedNodes = {},
         availableNodes = {},
         traversedConnections = {}, -- Track specific from→to connections actually taken
         cameraX = 0,       -- Camera offset for scrolling
         totalWidth = 0,    -- Total map width
-        
+
         -- Camera animation system
         cameraTargetX = 0, -- Target camera position for animation
         cameraAnimating = false, -- Flag to track if camera is animating
         cameraAnimation = nil, -- Reference to active camera animation
         userDragging = false, -- Flag to prevent auto camera updates during manual dragging
         manualCameraMode = false, -- Flag to keep manual camera position after dragging ends
-        
+
         -- Path preview animation system
         previewTiles = {}, -- Preview tiles for node selection animation
-        
+
+        -- Demon name tracking
+        usedDemonNames = {}, -- Track recently used demon names to avoid repetition
+
         -- Legacy compatibility for renderer
         columns = {}
     }
@@ -81,15 +137,18 @@ function Map.generateMap(screenWidth, screenHeight)
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
     
+    -- Assign demon names to combat and boss nodes
+    Map.assignDemonNames(map)
+
     -- Position nodes first before creating tiles
     Map.calculateNodePositions(map, screenWidth, screenHeight)
-    
+
     -- Generate domino tiles for visualization
     Map.generateMapTiles(map)
-    
+
     -- Do NOT reveal initial paths - paths are only revealed after first node selection
     -- Map.updatePathVisibility(map) -- Removed: no initial path visibility
-    
+
     return map
 end
 
@@ -113,6 +172,26 @@ function Map.createNode(depth, path, nodeType)
         x = 0,
         y = 0
     }
+end
+
+-- Assign demon names to all combat and boss nodes in the map
+function Map.assignDemonNames(map)
+    if not map or not map.levels then
+        return
+    end
+
+    -- Iterate through all levels and assign demon names to combat/boss nodes
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            if node.nodeType == "combat" then
+                -- Assign regular demon name
+                node.demonName = Map.selectDemonName(map.usedDemonNames, false)
+            elseif node.nodeType == "boss" then
+                -- Assign boss demon name
+                node.demonName = Map.selectDemonName(map.usedDemonNames, true)
+            end
+        end
+    end
 end
 
 -- Select a random node type for regular nodes with balanced distribution
