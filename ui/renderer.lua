@@ -959,7 +959,7 @@ function UI.Renderer.drawScore(score)
     local roundText = toRoman(gameState.currentRound) .. "."
     local roundColor = UI.Colors.FONT_WHITE
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("bigScore")
+    local font = UI.Fonts.get("formulaScore")
     local currentX = rightX
 
     -- Calculate total width to position from right
@@ -986,7 +986,7 @@ function UI.Renderer.drawScore(score)
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", roundColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "formulaScore", roundColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
@@ -994,7 +994,7 @@ function UI.Renderer.drawScore(score)
     -- Draw challenge counters below round counter
     local bigScoreFont = UI.Fonts.get("bigScore")
     local formulaScoreFont = UI.Fonts.get("formulaScore")
-    local roundHeight = bigScoreFont:getHeight()
+    local roundHeight = formulaScoreFont:getHeight()
     local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
     local currentCounterY = rightY + roundHeight - 20  -- Start position below round
 
@@ -1708,7 +1708,7 @@ function UI.Renderer.drawMap()
     local dayText = "Night " .. tostring(gameState.currentDay)
     local dayColor = UI.Colors.FONT_RED
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("bigScore")
+    local font = UI.Fonts.get("formulaScore")
     local currentX = leftX
 
     for i = 1, #dayText do
@@ -1726,7 +1726,7 @@ function UI.Renderer.drawMap()
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "bigScore", dayColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "formulaScore", dayColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
@@ -1762,7 +1762,7 @@ function UI.Renderer.drawNodeConfirmation()
     local rightY = UI.Layout.scale(20)
 
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("bigScore")
+    local font = UI.Fonts.get("formulaScore")
     local nameColor = UI.Colors.FONT_WHITE
 
     -- Calculate total width to position from right
@@ -1789,7 +1789,7 @@ function UI.Renderer.drawNodeConfirmation()
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", nameColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "formulaScore", nameColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
@@ -1840,6 +1840,7 @@ function UI.Renderer.drawNodeConfirmation()
     -- NEXT> button in bottom-right (on map screen)
     local horizontalMargin = UI.Layout.scale(40)
     local verticalMargin = UI.Layout.scale(20)
+    local nextFont = UI.Fonts.get("formulaScore")
 
     local text = "NEXT>"
     local textColor = gameState.nodeConfirmationNextButtonAnimation.color or UI.Colors.FONT_PINK
@@ -1848,18 +1849,18 @@ function UI.Renderer.drawNodeConfirmation()
     totalWidth = 0
     for i = 1, #text do
         local char = text:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + nextFont:getWidth(char)
     end
 
     -- Position in bottom-right area
     local textX = screenWidth - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
+    local textY = screenHeight - nextFont:getHeight() - verticalMargin
 
     -- Draw each character with wave animation
     currentX = textX
     for i = 1, #text do
         local char = text:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = nextFont:getWidth(char)
 
         -- Wave animation
         local phase = time * 2.5 + (i - 1) * 0.2
@@ -1870,7 +1871,7 @@ function UI.Renderer.drawNodeConfirmation()
             shadowOffset = UI.Layout.scale(4)
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
@@ -1881,7 +1882,7 @@ function UI.Renderer.drawNodeConfirmation()
         x = textX - padding,
         y = textY - padding,
         width = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        height = nextFont:getHeight() + padding * 2
     }
 end
 
@@ -1912,7 +1913,7 @@ function UI.Renderer.drawTilesMenu()
         local rightX = screenWidth - UI.Layout.scale(40)
         local rightY = UI.Layout.scale(20)
         local time = love.timer.getTime()
-        local font = UI.Fonts.get("bigScore")
+        local font = UI.Fonts.get("formulaScore")
         local alchemyText = "ALCHEMY"
         local alchemyColor = UI.Colors.FONT_WHITE
 
@@ -1940,7 +1941,7 @@ function UI.Renderer.drawTilesMenu()
                 shake = 0
             }
 
-            UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "bigScore", alchemyColor, "left", animProps)
+            UI.Fonts.drawAnimatedText(char, currentX, rightY + waveOffset, "formulaScore", alchemyColor, "left", animProps)
 
             currentX = currentX + charWidth
         end
@@ -2291,7 +2292,7 @@ function UI.Renderer.drawShopNextButton()
     end
 
     -- Get font for size calculation
-    local font = UI.Fonts.get("bigScore")
+    local font = UI.Fonts.get("formulaScore")
     local time = love.timer.getTime()
 
     -- NEXT> button in bottom-right
@@ -2327,7 +2328,7 @@ function UI.Renderer.drawShopNextButton()
             shadowOffset = UI.Layout.scale(4)
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
