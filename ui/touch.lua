@@ -327,6 +327,13 @@ function Touch.pressed(x, y, istouch, touchId)
                 touchState.pressedToolIndex = spriteBound.toolIndex
                 touchState.pressedToolId = spriteBound.toolId
                 clickedOnToolSprite = true
+
+                -- Trigger explosion animation when any tool is touched
+                if not gameState.toolStackExplosion.isExploded and not gameState.toolStackExplosion.isCollapsing then
+                    gameState.toolStackExplosion.isExploded = true
+                    gameState.toolStackExplosion.explosionProgress = 0
+                end
+
                 return
             end
         end
@@ -975,28 +982,35 @@ function Touch.released(x, y, istouch, touchId)
             gameState.toolStackAnimation.scale = 1.0
             gameState.toolStackAnimation.tiltAngle = 0
         end
+
+        -- Collapse tower when releasing outside tools
+        Touch.collapseToolTower()
     end
 
-    -- Handle tool sprite dragging
+    -- Handle tool sprite release after dragging
     if gameState.draggedTool then
         if Touch.isDragging() then
             -- Check if dropped over board area
             if isInBoardArea(x, y) then
-                -- Use the tool
+                -- Use the tool when dropped on board
                 Touch.useToolDirectly(gameState.draggedTool.toolId, gameState.draggedTool.toolIndex)
             else
-                -- Dropped outside board - cancel with bounce-back animation
-                -- Just reset state (sprite will return to stack position automatically)
+                -- Dropped outside board - animate back to stack position
+                Touch.animateToolBackToStack(gameState.draggedTool.toolIndex)
+
+                -- Play cancel sound
                 if UI.Audio and UI.Audio.playButtonDefault then
                     UI.Audio.playButtonDefault()
                 end
             end
+        else
+            -- Was a tap (no drag) - just deselect
+            gameState.toolStackAnimation.selectedToolIndex = nil
         end
 
         -- Clean up drag state
         gameState.draggedTool = nil
         gameState.toolStackAnimation.isActivated = false
-        gameState.toolStackAnimation.selectedToolIndex = nil
     end
 
     if touchState.draggedTile and touchState.draggedFrom == "fusionHand" then
@@ -1273,12 +1287,12 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
         end
 
         -- Handle tool sprite dragging
-        if gameState.toolStackAnimation.isActivated and Touch.isDragging() and not gameState.draggedTool then
-            -- Start dragging the selected tool
-            local toolIndex = gameState.toolStackAnimation.selectedToolIndex
-            if toolIndex then
-                local ownedTools = gameState.ownedTools or {}
-                local toolId = ownedTools[toolIndex]
+        -- Drag the tool that was pressed (not the selected one)
+        if touchState.pressedToolIndex and Touch.isDragging() and not gameState.draggedTool then
+            -- Start dragging the pressed tool
+            local toolIndex = touchState.pressedToolIndex
+            local toolId = touchState.pressedToolId
+            if toolIndex and toolId then
                 local spriteType = getToolSpriteType(toolId)
 
                 gameState.draggedTool = {
@@ -1288,6 +1302,11 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                     visualX = x,
                     visualY = y
                 }
+
+                -- Activate wobble animation when drag starts
+                gameState.toolStackAnimation.isActivated = true
+                gameState.toolStackAnimation.selectedToolIndex = toolIndex
+                gameState.toolStackAnimation.animationProgress = 0
 
                 -- Clear pressed state since we're now dragging
                 touchState.pressedToolIndex = nil
@@ -2387,18 +2406,12 @@ end
 
 -- TOOLS/ARTIFACTS FUNCTIONS
 
--- Select a specific tool sprite (click to activate, second click to use)
+-- Select a specific tool sprite (on tap - keeps idle animation, no wobble yet)
 function Touch.selectToolSprite(toolIndex, toolId)
-    -- If already activated and same tool, this is a second click - proceed to use tool
-    if gameState.toolStackAnimation.isActivated and gameState.toolStackAnimation.selectedToolIndex == toolIndex then
-        -- Directly use the tool (no drag required for instant-use tools)
-        Touch.useToolDirectly(toolId, toolIndex)
-        return
-    end
-
-    -- Activate this specific tool and start animation
-    gameState.toolStackAnimation.isActivated = true
+    -- Just track which tool is selected, no wobble animation yet
+    -- Wobble only starts when dragging
     gameState.toolStackAnimation.selectedToolIndex = toolIndex
+    gameState.toolStackAnimation.isActivated = false  -- No wobble until drag starts
     gameState.toolStackAnimation.animationProgress = 0
     gameState.toolStackAnimation.scale = 1.0
     gameState.toolStackAnimation.tiltAngle = 0
@@ -2479,6 +2492,9 @@ function Touch.useToolDirectly(toolId, toolIndex)
     -- Reset animation state
     gameState.toolStackAnimation.isActivated = false
     gameState.toolStackAnimation.selectedToolIndex = nil
+
+    -- Collapse the tower after tool use
+    Touch.collapseToolTower()
 end
 
 -- Animate remaining tools falling down with gravity after a tool is used
@@ -2526,6 +2542,67 @@ function Touch.animateToolGravity(removedToolIndex)
     -- Play sound effect
     if UI.Audio and UI.Audio.playTilePlaced then
         UI.Audio.playTilePlaced()
+    end
+end
+
+-- Animate tool sprite back to its stack position (when drag cancelled)
+function Touch.animateToolBackToStack(toolIndex)
+    local ownedTools = gameState.ownedTools or {}
+    local toolId = ownedTools[toolIndex]
+    if not toolId then return end
+
+    local spriteType = getToolSpriteType(toolId)
+    if not spriteType then return end
+
+    -- Get target position in exploded state
+    local totalTools = #ownedTools
+    local targetX, targetY, spriteScale = UI.Layout.getToolExplodedPosition(toolIndex, totalTools, spriteType)
+
+    -- Initialize animated position if needed
+    if not gameState.toolSpritePositions then
+        gameState.toolSpritePositions = {}
+    end
+
+    -- Set current dragged position
+    if gameState.draggedTool then
+        gameState.toolSpritePositions[toolIndex] = {
+            visualX = gameState.draggedTool.visualX,
+            visualY = gameState.draggedTool.visualY,
+            scale = spriteScale
+        }
+
+        -- Animate back to stack position with bounce
+        UI.Animation.animateTo(gameState.toolSpritePositions[toolIndex], {
+            visualX = targetX,
+            visualY = targetY
+        }, 0.3, "easeOutBack", function()
+            -- Clear animated position when done
+            if gameState.toolSpritePositions then
+                gameState.toolSpritePositions[toolIndex] = nil
+                -- Clear entire table if empty
+                local isEmpty = true
+                for _ in pairs(gameState.toolSpritePositions) do
+                    isEmpty = false
+                    break
+                end
+                if isEmpty then
+                    gameState.toolSpritePositions = nil
+                end
+            end
+        end)
+    end
+
+    -- Deselect the tool
+    gameState.toolStackAnimation.selectedToolIndex = nil
+end
+
+-- Collapse the tool tower (animate back to stacked state)
+function Touch.collapseToolTower()
+    local explosion = gameState.toolStackExplosion
+
+    if explosion.isExploded and not explosion.isCollapsing then
+        explosion.isCollapsing = true
+        -- explosionProgress will count down in updateToolExplosionAnimation
     end
 end
 

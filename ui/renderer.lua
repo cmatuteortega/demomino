@@ -721,6 +721,9 @@ function UI.Renderer.drawToolSprites()
 
     -- Draw each tool individually (not grouped by sprite type)
     -- Stack from bottom to top
+    local explosion = gameState.toolStackExplosion
+    local totalTools = #ownedTools
+
     for i, toolId in ipairs(ownedTools) do
         local spriteType = getToolSpriteType(toolId)
         local sprite = toolSprites[spriteType]
@@ -728,16 +731,34 @@ function UI.Renderer.drawToolSprites()
         if sprite and spriteType then
             local stackIndex = i - 1  -- 0-based for positioning (0 = bottom)
 
-            -- Get position (may be animated if gravity is active)
-            local x, y, spriteScale
+            -- Get base position based on explosion state
+            local stackedX, stackedY, spriteScale
+            local explodedX, explodedY
+            local x, y
+
+            -- Calculate both stacked and exploded positions
             if gameState.toolSpritePositions and gameState.toolSpritePositions[i] then
                 -- Use animated position during gravity animation
                 x = gameState.toolSpritePositions[i].visualX
                 y = gameState.toolSpritePositions[i].visualY
                 spriteScale = gameState.toolSpritePositions[i].scale
             else
-                -- Normal stacked position
-                x, y, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+                -- Get stacked position
+                stackedX, stackedY, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+
+                -- Get exploded position
+                explodedX, explodedY = UI.Layout.getToolExplodedPosition(i, totalTools, spriteType)
+
+                -- Lerp between stacked and exploded based on explosion progress
+                local progress = explosion.explosionProgress or 0
+                -- Use easeOutBack for explosion feel
+                local easedProgress = 1 - math.pow(1 - progress, 3) -- easeOutCubic
+                if progress > 0.5 then
+                    easedProgress = easedProgress + (progress - 0.5) * 0.2 -- slight overshoot
+                end
+
+                x = stackedX + (explodedX - stackedX) * easedProgress
+                y = stackedY + (explodedY - stackedY) * easedProgress
             end
 
             -- Check if this specific tool can be used
@@ -752,11 +773,20 @@ function UI.Renderer.drawToolSprites()
                 tint = {0.6, 0.6, 0.6, 0.5}
             end
 
-            -- Apply animation if this tool is selected
+            -- Apply animation
             local scale = spriteScale
             local rotation = 0
+
+            -- Apply idle animations when exploded (subtle float and tilt)
+            if explosion.isExploded and explosion.idleAnimations[i] then
+                local anim = explosion.idleAnimations[i]
+                y = y + anim.floatOffset
+                rotation = anim.tiltAngle
+            end
+
+            -- Override with stronger animation if this tool is selected/dragging
             if gameState.toolStackAnimation.isActivated and gameState.toolStackAnimation.selectedToolIndex == i then
-                -- Apply bounce/tilt animation to selected tool
+                -- Apply bounce/tilt animation to selected tool (stronger wobble)
                 scale = scale * (gameState.toolStackAnimation.scale or 1.0)
                 rotation = gameState.toolStackAnimation.tiltAngle or 0
             end

@@ -291,7 +291,8 @@ function UI.Layout.getToolStackPosition()
 
     -- Calculate where the hand tiles end
     local minScale = math.min(screen.width / 800, screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    -- Tool sprites use smaller scale than domino tiles (1.5x)
+    local spriteScale = minScale * 1.75
 
     -- Get sprite width for calculation
     local sampleSpriteData = dominoSprites and dominoSprites["00"]
@@ -335,6 +336,29 @@ function UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
 
     -- Stack sprites with reduced spacing (0.75 = 25% overlap)
     local stackOffsetY = -stackIndex * spriteHeight * 0.85  -- Negative to stack upward
+
+    return baseX, baseY + stackOffsetY, spriteScale
+end
+
+-- Get position for a tool sprite in "exploded" state (separated tower)
+-- toolIndex: 1-based index in ownedTools array
+-- totalTools: total number of tools in the stack
+-- spriteType: the type of sprite for height calculation
+function UI.Layout.getToolExplodedPosition(toolIndex, totalTools, spriteType)
+    local baseX, baseY, spriteScale = UI.Layout.getToolStackPosition()
+
+    -- Get sprite height for spacing calculation
+    local spriteHeight = 0
+    if toolSprites and toolSprites[spriteType] then
+        spriteHeight = toolSprites[spriteType]:getHeight() * spriteScale
+    else
+        spriteHeight = UI.Layout.scale(32)
+    end
+
+    -- In exploded state, use more spacing (1.2x sprite height instead of 0.75x)
+    local stackIndex = toolIndex - 1  -- 0-based
+    local explodedSpacing = spriteHeight * 1.2
+    local stackOffsetY = -stackIndex * explodedSpacing  -- Negative to stack upward
 
     return baseX, baseY + stackOffsetY, spriteScale
 end

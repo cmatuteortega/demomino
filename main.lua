@@ -164,6 +164,12 @@ function love.load()
             scale = 1.0,  -- Current scale multiplier
             tiltAngle = 0  -- Current rotation in radians
         },
+        toolStackExplosion = {  -- Tower explosion/separation state
+            isExploded = false,
+            explosionProgress = 0,  -- 0-1 animation progress (0=stacked, 1=exploded)
+            isCollapsing = false,  -- Animating back to stacked
+            idleAnimations = {}  -- Per-tool idle animation state {[index] = {floatOffset, tiltAngle, phase}}
+        },
         draggedTool = nil,  -- Currently dragged tool data {toolId, toolIndex, spriteType, visualX, visualY}
         toolSpritePositions = nil,  -- Animated positions during gravity {[index] = {visualX, visualY, scale}}
         -- Win sequence tracking
@@ -799,6 +805,7 @@ function updateToolStackAnimation(dt)
 
     local progress = math.min(gameState.toolStackAnimation.animationProgress, 1.0)
 
+    -- Stronger wobble animation for selected/dragging tool
     -- Bounce animation: scale from 1.0 -> 1.15 -> 1.0
     local bounceProgress = progress * 2  -- 0-2 range
     if bounceProgress <= 1.0 then
@@ -809,8 +816,8 @@ function updateToolStackAnimation(dt)
         gameState.toolStackAnimation.scale = 1.15 - (0.15 * (bounceProgress - 1.0))
     end
 
-    -- Tilt animation: rotate back and forth
-    local tiltMax = math.rad(10)  -- 10 degrees max tilt
+    -- Tilt animation: rotate back and forth (±10 degrees)
+    local tiltMax = math.rad(10)
     gameState.toolStackAnimation.tiltAngle = math.sin(progress * math.pi * 2) * tiltMax
 
     -- Animation complete - reset state but keep activated until drag starts
@@ -819,6 +826,61 @@ function updateToolStackAnimation(dt)
         gameState.toolStackAnimation.scale = 1.0
         gameState.toolStackAnimation.tiltAngle = 0
         gameState.toolStackAnimation.animationProgress = 0
+    end
+end
+
+function updateToolExplosionAnimation(dt)
+    local explosion = gameState.toolStackExplosion
+
+    if explosion.isCollapsing then
+        -- Collapse animation (back to stacked)
+        explosion.explosionProgress = explosion.explosionProgress - dt * 4  -- 0.25s collapse
+
+        if explosion.explosionProgress <= 0 then
+            explosion.explosionProgress = 0
+            explosion.isExploded = false
+            explosion.isCollapsing = false
+            explosion.idleAnimations = {}
+        end
+    elseif explosion.isExploded and explosion.explosionProgress < 1.0 then
+        -- Explosion animation (spreading out)
+        explosion.explosionProgress = explosion.explosionProgress + dt * 3.33  -- 0.3s explosion
+        explosion.explosionProgress = math.min(explosion.explosionProgress, 1.0)
+    end
+end
+
+function updateToolIdleAnimations(dt)
+    local explosion = gameState.toolStackExplosion
+
+    -- Only animate idle when exploded
+    if not explosion.isExploded or explosion.explosionProgress < 1.0 then
+        return
+    end
+
+    local ownedTools = gameState.ownedTools or {}
+    local time = love.timer.getTime()
+
+    for i, toolId in ipairs(ownedTools) do
+        -- Initialize idle animation state for this tool if needed
+        if not explosion.idleAnimations[i] then
+            explosion.idleAnimations[i] = {
+                phase = math.random() * math.pi * 2,  -- Random start phase for variety
+                floatOffset = 0,
+                tiltAngle = 0
+            }
+        end
+
+        local anim = explosion.idleAnimations[i]
+
+        -- Subtle float animation (2-3px amplitude, 2-3s period)
+        local floatPeriod = 2.5 + (i * 0.3)  -- Stagger periods slightly
+        local floatPhase = (time / floatPeriod) + anim.phase
+        anim.floatOffset = math.sin(floatPhase * math.pi * 2) * 2.5
+
+        -- Subtle tilt animation (±3 degrees, slower rotation)
+        local tiltPeriod = 3.0 + (i * 0.2)
+        local tiltPhase = (time / tiltPeriod) + anim.phase
+        anim.tiltAngle = math.sin(tiltPhase * math.pi * 2) * math.rad(3)
     end
 end
 
@@ -1094,6 +1156,8 @@ function love.update(dt)
     updateCoinBreakdownAnimation(dt)
     updateChipLoopSound()
     updateToolStackAnimation(dt)
+    updateToolExplosionAnimation(dt)
+    updateToolIdleAnimations(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
