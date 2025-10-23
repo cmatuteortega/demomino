@@ -216,6 +216,26 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
 
+    -- Handle NEXT> button press on fusion screen
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+        if gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.fusionNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the button
+            touchState.fusionNextButtonPressed = true
+            return
+        end
+    end
+
     -- Handle NEXT >> button press on victory screen
     if gameState.gamePhase == "won" then
         if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
@@ -826,6 +846,32 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.isPressed = false
                 return
             end
+
+            -- Handle NEXT> button release for fusion mode
+            if touchState.fusionNextButtonPressed and gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
+                -- Play release sound
+                UI.Audio.playButtonRelease()
+
+                -- Animate to white with callback to transition
+                UI.Animation.animateTo(gameState.fusionNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_WHITE[1],
+                    [2] = UI.Colors.FONT_WHITE[2],
+                    [3] = UI.Colors.FONT_WHITE[3],
+                    [4] = UI.Colors.FONT_WHITE[4]
+                }, 0.1, "easeOutQuart", function()
+                    -- Return to map
+                    gameState.gamePhase = "map"
+                end)
+            elseif touchState.fusionNextButtonPressed then
+                -- Released outside button - reset color back to pink
+                UI.Animation.animateTo(gameState.fusionNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_PINK[1],
+                    [2] = UI.Colors.FONT_PINK[2],
+                    [3] = UI.Colors.FONT_PINK[3],
+                    [4] = UI.Colors.FONT_PINK[4]
+                }, 0.3, "easeOutQuart")
+            end
+            touchState.fusionNextButtonPressed = false
         else
             -- SHOP MODE HANDLING (drag-to-board system like main game)
             -- Note: Tile dragging and board placement is handled the same way as main game

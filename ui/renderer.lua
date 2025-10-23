@@ -2574,6 +2574,69 @@ function UI.Renderer.drawArtifactsNextButton()
     }
 end
 
+function UI.Renderer.drawFusionNextButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Initialize animation state if needed
+    if not gameState.fusionNextButtonAnimation then
+        gameState.fusionNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    -- Get font for size calculation
+    local font = UI.Fonts.get("formulaScore")
+    local time = love.timer.getTime()
+
+    -- NEXT> button in bottom-right
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin = UI.Layout.scale(20)
+
+    local text = "NEXT>"
+    local textColor = gameState.fusionNextButtonAnimation.color
+
+    -- Calculate total width of text for positioning
+    local totalWidth = 0
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Position in bottom-right area
+    local textX = screenWidth - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    -- Draw each character with wave animation
+    local currentX = textX
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store button bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(20)
+    gameState.fusionNextButton = {
+        x = textX - padding,
+        y = textY - padding,
+        width = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
+    }
+end
+
 -- DEPRECATED FUNCTIONS (from old shop system)
 function UI.Renderer.drawShopPurchaseZone_DEPRECATED()
     local screenWidth = gameState.screen.width
@@ -3236,6 +3299,9 @@ function UI.Renderer.drawFusionMode()
 
     -- Draw FUSE button
     UI.Renderer.drawFuseButton()
+
+    -- Draw NEXT> button
+    UI.Renderer.drawFusionNextButton()
 end
 
 -- Draw fusion area showing selected tiles and preview
