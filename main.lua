@@ -41,6 +41,7 @@ function love.load()
     loadTitleScreenSprites()
     loadNodeSprites()
     loadCoinSprite()
+    loadToolSprites()
     
     gameState = {
         screen = {
@@ -154,7 +155,17 @@ function love.load()
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
         obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
-        toolButtonBounds = {},  -- Array of clickable bounds for tool buttons
+        toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
+        toolSpriteBounds = {},  -- Array of clickable bounds for tool sprites
+        toolStackAnimation = {  -- Animation state for selected tool
+            isActivated = false,
+            selectedToolIndex = nil,  -- Index in ownedTools array of selected tool
+            animationProgress = 0,  -- 0-1 progress of bounce/tilt animation
+            scale = 1.0,  -- Current scale multiplier
+            tiltAngle = 0  -- Current rotation in radians
+        },
+        draggedTool = nil,  -- Currently dragged tool data {toolId, toolIndex, spriteType, visualX, visualY}
+        toolSpritePositions = nil,  -- Animated positions during gravity {[index] = {visualX, visualY, scale}}
         -- Win sequence tracking
         winSequenceTriggered = false,  -- Track if win sequence already started
         -- Title screen animation system
@@ -778,6 +789,39 @@ function updateCoinBreakdownAnimation(dt)
     end
 end
 
+function updateToolStackAnimation(dt)
+    if not gameState.toolStackAnimation.isActivated then
+        return
+    end
+
+    -- Update animation progress
+    gameState.toolStackAnimation.animationProgress = gameState.toolStackAnimation.animationProgress + dt * 4  -- 0.25s animation
+
+    local progress = math.min(gameState.toolStackAnimation.animationProgress, 1.0)
+
+    -- Bounce animation: scale from 1.0 -> 1.15 -> 1.0
+    local bounceProgress = progress * 2  -- 0-2 range
+    if bounceProgress <= 1.0 then
+        -- Growing phase
+        gameState.toolStackAnimation.scale = 1.0 + (0.15 * bounceProgress)
+    else
+        -- Shrinking phase
+        gameState.toolStackAnimation.scale = 1.15 - (0.15 * (bounceProgress - 1.0))
+    end
+
+    -- Tilt animation: rotate back and forth
+    local tiltMax = math.rad(10)  -- 10 degrees max tilt
+    gameState.toolStackAnimation.tiltAngle = math.sin(progress * math.pi * 2) * tiltMax
+
+    -- Animation complete - reset state but keep activated until drag starts
+    if progress >= 1.0 then
+        -- Reset to neutral state but keep activated flag
+        gameState.toolStackAnimation.scale = 1.0
+        gameState.toolStackAnimation.tiltAngle = 0
+        gameState.toolStackAnimation.animationProgress = 0
+    end
+end
+
 function startScoringSequence(tiles)
     gameState.scoringSequence = {
         tiles = tiles,
@@ -1049,6 +1093,7 @@ function love.update(dt)
     updateFallingCoins(dt)
     updateCoinBreakdownAnimation(dt)
     updateChipLoopSound()
+    updateToolStackAnimation(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
@@ -1743,4 +1788,41 @@ function loadCoinSprite()
     if love.filesystem.getInfo(coinFilename) then
         coinSprite = love.graphics.newImage(coinFilename)
     end
+end
+
+function loadToolSprites()
+    -- Global table to store tool sprites
+    toolSprites = {}
+
+    -- Map tool IDs to sprite filenames
+    local toolSpriteMap = {
+        bone = "sprites/dice/bone.png",      -- transformer
+        brain = "sprites/dice/brain.png",    -- tileLoader, tileInjector
+        guts = "sprites/dice/guts.png",      -- extraHand, extraDiscard, knife
+        void = "sprites/dice/void.png",      -- obsidianTransmuter, tenderTransmuter
+        blood = "sprites/dice/blood.png"     -- demonReloader
+    }
+
+    -- Load each sprite
+    for spriteType, filename in pairs(toolSpriteMap) do
+        if love.filesystem.getInfo(filename) then
+            toolSprites[spriteType] = love.graphics.newImage(filename)
+        end
+    end
+end
+
+-- Map tool IDs to their sprite types
+function getToolSpriteType(toolId)
+    local spriteMap = {
+        transformer = "bone",
+        tileLoader = "brain",
+        tileInjector = "brain",
+        extraHand = "guts",
+        extraDiscard = "guts",
+        knife = "guts",
+        obsidianTransmuter = "void",
+        tenderTransmuter = "void",
+        demonReloader = "blood"
+    }
+    return spriteMap[toolId]
 end

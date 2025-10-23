@@ -25,7 +25,10 @@ local touchState = {
     -- Button press tracking (prevents double-tap issues)
     playButtonPressed = false,
     discardButtonPressed = false,
-    sortButtonPressed = false
+    sortButtonPressed = false,
+    -- Tool sprite press tracking (for touch release selection)
+    pressedToolIndex = nil,
+    pressedToolId = nil
 }
 
 -- Adjust drag threshold based on device type and context
@@ -313,7 +316,30 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
-    -- Handle tool button clicks
+    -- Handle tool sprite press (track for release, don't select yet)
+    -- Check from top to bottom (reverse order) for proper z-order clicking
+    local clickedOnToolSprite = false
+    if gameState.toolSpriteBounds then
+        for i = #gameState.toolSpriteBounds, 1, -1 do
+            local spriteBound = gameState.toolSpriteBounds[i]
+            if isPointInRect(x, y, spriteBound) then
+                -- Track which tool was pressed (selection happens on release)
+                touchState.pressedToolIndex = spriteBound.toolIndex
+                touchState.pressedToolId = spriteBound.toolId
+                clickedOnToolSprite = true
+                return
+            end
+        end
+    end
+
+    -- If a tool is selected but player pressed elsewhere, mark for deselection on release
+    if gameState.toolStackAnimation.isActivated and not clickedOnToolSprite then
+        -- Don't deselect immediately - wait for release to avoid drag interference
+        touchState.pressedToolIndex = nil
+        touchState.pressedToolId = nil
+    end
+
+    -- Handle tool button clicks (legacy support)
     if gameState.toolButtonBounds then
         for _, button in ipairs(gameState.toolButtonBounds) do
             if isPointInRect(x, y, button) then
@@ -918,6 +944,61 @@ function Touch.released(x, y, istouch, touchId)
         touchState.sortButtonPressed = false
     end
 
+    -- Handle tool sprite tap/selection (on release, not press - better for mobile)
+    if touchState.pressedToolIndex and not Touch.isDragging() then
+        -- Check if released over the same tool sprite
+        local releasedOnSameTool = false
+        if gameState.toolSpriteBounds then
+            for i = #gameState.toolSpriteBounds, 1, -1 do
+                local spriteBound = gameState.toolSpriteBounds[i]
+                if spriteBound.toolIndex == touchState.pressedToolIndex and isPointInRect(x, y, spriteBound) then
+                    releasedOnSameTool = true
+                    break
+                end
+            end
+        end
+
+        if releasedOnSameTool then
+            -- Select the tool (on release, not press)
+            Touch.selectToolSprite(touchState.pressedToolIndex, touchState.pressedToolId)
+        end
+
+        -- Clear pressed state
+        touchState.pressedToolIndex = nil
+        touchState.pressedToolId = nil
+    elseif touchState.pressedToolIndex == nil and not Touch.isDragging() then
+        -- Released elsewhere (not on a tool) - deselect any active tool
+        if gameState.toolStackAnimation.isActivated then
+            gameState.toolStackAnimation.isActivated = false
+            gameState.toolStackAnimation.selectedToolIndex = nil
+            gameState.toolStackAnimation.animationProgress = 0
+            gameState.toolStackAnimation.scale = 1.0
+            gameState.toolStackAnimation.tiltAngle = 0
+        end
+    end
+
+    -- Handle tool sprite dragging
+    if gameState.draggedTool then
+        if Touch.isDragging() then
+            -- Check if dropped over board area
+            if isInBoardArea(x, y) then
+                -- Use the tool
+                Touch.useToolDirectly(gameState.draggedTool.toolId, gameState.draggedTool.toolIndex)
+            else
+                -- Dropped outside board - cancel with bounce-back animation
+                -- Just reset state (sprite will return to stack position automatically)
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+            end
+        end
+
+        -- Clean up drag state
+        gameState.draggedTool = nil
+        gameState.toolStackAnimation.isActivated = false
+        gameState.toolStackAnimation.selectedToolIndex = nil
+    end
+
     if touchState.draggedTile and touchState.draggedFrom == "fusionHand" then
         if Touch.isDragging() then
             -- Dragged - add to fusion selection and remove from hand
@@ -1189,6 +1270,40 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                 gameState.currentMap.cameraTargetX = gameState.currentMap.cameraX
             end
             return
+        end
+
+        -- Handle tool sprite dragging
+        if gameState.toolStackAnimation.isActivated and Touch.isDragging() and not gameState.draggedTool then
+            -- Start dragging the selected tool
+            local toolIndex = gameState.toolStackAnimation.selectedToolIndex
+            if toolIndex then
+                local ownedTools = gameState.ownedTools or {}
+                local toolId = ownedTools[toolIndex]
+                local spriteType = getToolSpriteType(toolId)
+
+                gameState.draggedTool = {
+                    toolId = toolId,
+                    toolIndex = toolIndex,
+                    spriteType = spriteType,
+                    visualX = x,
+                    visualY = y
+                }
+
+                -- Clear pressed state since we're now dragging
+                touchState.pressedToolIndex = nil
+                touchState.pressedToolId = nil
+
+                -- Play drag sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+            end
+        end
+
+        -- Update dragged tool position
+        if gameState.draggedTool then
+            gameState.draggedTool.visualX = x
+            gameState.draggedTool.visualY = y
         end
 
         -- Update drag position for dragged tile
@@ -2272,7 +2387,149 @@ end
 
 -- TOOLS/ARTIFACTS FUNCTIONS
 
--- Handle tool button click during combat
+-- Select a specific tool sprite (click to activate, second click to use)
+function Touch.selectToolSprite(toolIndex, toolId)
+    -- If already activated and same tool, this is a second click - proceed to use tool
+    if gameState.toolStackAnimation.isActivated and gameState.toolStackAnimation.selectedToolIndex == toolIndex then
+        -- Directly use the tool (no drag required for instant-use tools)
+        Touch.useToolDirectly(toolId, toolIndex)
+        return
+    end
+
+    -- Activate this specific tool and start animation
+    gameState.toolStackAnimation.isActivated = true
+    gameState.toolStackAnimation.selectedToolIndex = toolIndex
+    gameState.toolStackAnimation.animationProgress = 0
+    gameState.toolStackAnimation.scale = 1.0
+    gameState.toolStackAnimation.tiltAngle = 0
+
+    -- Play sound
+    if UI.Audio and UI.Audio.playButtonDefault then
+        UI.Audio.playButtonDefault()
+    end
+end
+
+-- Legacy function for backwards compatibility
+function Touch.activateToolStack(spriteType, topToolId)
+    -- Find the tool index
+    local ownedTools = gameState.ownedTools or {}
+    for i, toolId in ipairs(ownedTools) do
+        if toolId == topToolId then
+            Touch.selectToolSprite(i, toolId)
+            return
+        end
+    end
+end
+
+-- Use a tool directly (for instant-use tools or second click)
+function Touch.useToolDirectly(toolId, toolIndex)
+    -- Check if tool can be used
+    local canUse, reason = Tools.canUse(toolId, gameState)
+
+    if not canUse then
+        -- Show error message
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText(reason:upper(), centerX, centerY - UI.Layout.scale(50), {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "medium",
+            duration = 1.2,
+            riseDistance = 30,
+            startScale = 0.8,
+            endScale = 1.1,
+            shake = 2,
+            easing = "easeOutQuart"
+        })
+
+        -- Reset animation state
+        gameState.toolStackAnimation.isActivated = false
+        gameState.toolStackAnimation.selectedToolIndex = nil
+        return
+    end
+
+    -- Use the tool
+    local success, error = Tools.use(toolId, gameState)
+
+    if success then
+        -- Play sound
+        if UI.Audio and UI.Audio.playTilePlaced then
+            UI.Audio.playTilePlaced()
+        end
+
+        -- Trigger gravity animation for remaining tools
+        Touch.animateToolGravity(toolIndex)
+    else
+        -- Show error if use failed
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText((error or "CANNOT USE"):upper(), centerX, centerY - UI.Layout.scale(50), {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "medium",
+            duration = 1.2,
+            riseDistance = 30,
+            startScale = 0.8,
+            endScale = 1.1,
+            shake = 2,
+            easing = "easeOutQuart"
+        })
+    end
+
+    -- Reset animation state
+    gameState.toolStackAnimation.isActivated = false
+    gameState.toolStackAnimation.selectedToolIndex = nil
+end
+
+-- Animate remaining tools falling down with gravity after a tool is used
+function Touch.animateToolGravity(removedToolIndex)
+    -- Tool was already removed from ownedTools array by Tools.use()
+    local ownedTools = gameState.ownedTools or {}
+
+    -- Initialize animated positions for all remaining tools
+    gameState.toolSpritePositions = {}
+
+    -- Animate tools that were above the removed one
+    for i = removedToolIndex, #ownedTools do
+        local toolId = ownedTools[i]
+        local spriteType = getToolSpriteType(toolId)
+
+        if spriteType then
+            -- Get current position (before removal)
+            local oldStackIndex = i  -- This was the index before removal (1-based, but we use i-1 for 0-based)
+            local oldX, oldY, spriteScale = UI.Layout.getToolSpriteInStackPosition(oldStackIndex, spriteType)
+
+            -- Get new position (after removal) - everything shifts down by 1
+            local newStackIndex = i - 1  -- 0-based
+            local newX, newY = UI.Layout.getToolSpriteInStackPosition(newStackIndex, spriteType)
+
+            -- Initialize with old position
+            gameState.toolSpritePositions[i] = {
+                visualX = oldX,
+                visualY = oldY,
+                scale = spriteScale
+            }
+
+            -- Animate to new position
+            UI.Animation.animateTo(gameState.toolSpritePositions[i], {
+                visualX = newX,
+                visualY = newY
+            }, 0.3, "easeOutBounce", function()
+                -- Clear animated positions when done
+                if i == #ownedTools then
+                    gameState.toolSpritePositions = nil
+                end
+            end)
+        end
+    end
+
+    -- Play sound effect
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
+    end
+end
+
+-- Handle tool button click during combat (LEGACY - for old button system)
 function Touch.handleToolButtonClick(toolId)
     -- Check if tool can be used
     local canUse, reason = Tools.canUse(toolId, gameState)
