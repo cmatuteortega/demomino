@@ -41,6 +41,7 @@ function love.load()
     loadTitleScreenSprites()
     loadNodeSprites()
     loadCoinSprite()
+    loadToolSprites()
     
     gameState = {
         screen = {
@@ -154,7 +155,23 @@ function love.load()
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
         obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
-        toolButtonBounds = {},  -- Array of clickable bounds for tool buttons
+        toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
+        toolSpriteBounds = {},  -- Array of clickable bounds for tool sprites
+        toolStackAnimation = {  -- Animation state for selected tool
+            isActivated = false,
+            selectedToolIndex = nil,  -- Index in ownedTools array of selected tool
+            animationProgress = 0,  -- 0-1 progress of bounce/tilt animation
+            scale = 1.0,  -- Current scale multiplier
+            tiltAngle = 0  -- Current rotation in radians
+        },
+        toolStackExplosion = {  -- Tower explosion/separation state
+            isExploded = false,
+            explosionProgress = 0,  -- 0-1 animation progress (0=stacked, 1=exploded)
+            isCollapsing = false,  -- Animating back to stacked
+            idleAnimations = {}  -- Per-tool idle animation state {[index] = {floatOffset, tiltAngle, phase}}
+        },
+        draggedTool = nil,  -- Currently dragged tool data {toolId, toolIndex, spriteType, visualX, visualY}
+        toolSpritePositions = nil,  -- Animated positions during gravity {[index] = {visualX, visualY, scale}}
         -- Win sequence tracking
         winSequenceTriggered = false,  -- Track if win sequence already started
         -- Title screen animation system
@@ -778,6 +795,95 @@ function updateCoinBreakdownAnimation(dt)
     end
 end
 
+function updateToolStackAnimation(dt)
+    if not gameState.toolStackAnimation.isActivated then
+        return
+    end
+
+    -- Update animation progress
+    gameState.toolStackAnimation.animationProgress = gameState.toolStackAnimation.animationProgress + dt * 4  -- 0.25s animation
+
+    local progress = math.min(gameState.toolStackAnimation.animationProgress, 1.0)
+
+    -- Stronger wobble animation for selected/dragging tool
+    -- Bounce animation: scale from 1.0 -> 1.15 -> 1.0
+    local bounceProgress = progress * 2  -- 0-2 range
+    if bounceProgress <= 1.0 then
+        -- Growing phase
+        gameState.toolStackAnimation.scale = 1.0 + (0.15 * bounceProgress)
+    else
+        -- Shrinking phase
+        gameState.toolStackAnimation.scale = 1.15 - (0.15 * (bounceProgress - 1.0))
+    end
+
+    -- Tilt animation: rotate back and forth (±10 degrees)
+    local tiltMax = math.rad(10)
+    gameState.toolStackAnimation.tiltAngle = math.sin(progress * math.pi * 2) * tiltMax
+
+    -- Animation complete - reset state but keep activated until drag starts
+    if progress >= 1.0 then
+        -- Reset to neutral state but keep activated flag
+        gameState.toolStackAnimation.scale = 1.0
+        gameState.toolStackAnimation.tiltAngle = 0
+        gameState.toolStackAnimation.animationProgress = 0
+    end
+end
+
+function updateToolExplosionAnimation(dt)
+    local explosion = gameState.toolStackExplosion
+
+    if explosion.isCollapsing then
+        -- Collapse animation (back to stacked)
+        explosion.explosionProgress = explosion.explosionProgress - dt * 4  -- 0.25s collapse
+
+        if explosion.explosionProgress <= 0 then
+            explosion.explosionProgress = 0
+            explosion.isExploded = false
+            explosion.isCollapsing = false
+            explosion.idleAnimations = {}
+        end
+    elseif explosion.isExploded and explosion.explosionProgress < 1.0 then
+        -- Explosion animation (spreading out)
+        explosion.explosionProgress = explosion.explosionProgress + dt * 3.33  -- 0.3s explosion
+        explosion.explosionProgress = math.min(explosion.explosionProgress, 1.0)
+    end
+end
+
+function updateToolIdleAnimations(dt)
+    local explosion = gameState.toolStackExplosion
+
+    -- Only animate idle when exploded
+    if not explosion.isExploded or explosion.explosionProgress < 1.0 then
+        return
+    end
+
+    local ownedTools = gameState.ownedTools or {}
+    local time = love.timer.getTime()
+
+    for i, toolId in ipairs(ownedTools) do
+        -- Initialize idle animation state for this tool if needed
+        if not explosion.idleAnimations[i] then
+            explosion.idleAnimations[i] = {
+                phase = math.random() * math.pi * 2,  -- Random start phase for variety
+                floatOffset = 0,
+                tiltAngle = 0
+            }
+        end
+
+        local anim = explosion.idleAnimations[i]
+
+        -- Subtle float animation (2-3px amplitude, 2-3s period)
+        local floatPeriod = 2.5 + (i * 0.3)  -- Stagger periods slightly
+        local floatPhase = (time / floatPeriod) + anim.phase
+        anim.floatOffset = math.sin(floatPhase * math.pi * 2) * 2.5
+
+        -- Subtle tilt animation (±3 degrees, slower rotation)
+        local tiltPeriod = 3.0 + (i * 0.2)
+        local tiltPhase = (time / tiltPeriod) + anim.phase
+        anim.tiltAngle = math.sin(tiltPhase * math.pi * 2) * math.rad(3)
+    end
+end
+
 function startScoringSequence(tiles)
     gameState.scoringSequence = {
         tiles = tiles,
@@ -1049,6 +1155,9 @@ function love.update(dt)
     updateFallingCoins(dt)
     updateCoinBreakdownAnimation(dt)
     updateChipLoopSound()
+    updateToolStackAnimation(dt)
+    updateToolExplosionAnimation(dt)
+    updateToolIdleAnimations(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
@@ -1743,4 +1852,41 @@ function loadCoinSprite()
     if love.filesystem.getInfo(coinFilename) then
         coinSprite = love.graphics.newImage(coinFilename)
     end
+end
+
+function loadToolSprites()
+    -- Global table to store tool sprites
+    toolSprites = {}
+
+    -- Map tool IDs to sprite filenames
+    local toolSpriteMap = {
+        bone = "sprites/dice/bone.png",      -- transformer
+        brain = "sprites/dice/brain.png",    -- tileLoader, tileInjector
+        guts = "sprites/dice/guts.png",      -- extraHand, extraDiscard, knife
+        void = "sprites/dice/void.png",      -- obsidianTransmuter, tenderTransmuter
+        blood = "sprites/dice/blood.png"     -- demonReloader
+    }
+
+    -- Load each sprite
+    for spriteType, filename in pairs(toolSpriteMap) do
+        if love.filesystem.getInfo(filename) then
+            toolSprites[spriteType] = love.graphics.newImage(filename)
+        end
+    end
+end
+
+-- Map tool IDs to their sprite types
+function getToolSpriteType(toolId)
+    local spriteMap = {
+        transformer = "bone",
+        tileLoader = "brain",
+        tileInjector = "brain",
+        extraHand = "guts",
+        extraDiscard = "guts",
+        knife = "guts",
+        obsidianTransmuter = "void",
+        tenderTransmuter = "void",
+        demonReloader = "blood"
+    }
+    return spriteMap[toolId]
 end

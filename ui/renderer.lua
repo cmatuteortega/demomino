@@ -697,60 +697,137 @@ function UI.Renderer.drawHand(hand)
 end
 
 function UI.Renderer.drawToolButtons()
+    -- DEPRECATED - kept for backwards compatibility, now calls drawToolSprites
+    UI.Renderer.drawToolSprites()
+end
+
+function UI.Renderer.drawToolSprites()
     -- Only draw in playing phase (not in won state)
     if gameState.gamePhase ~= "playing" then
         return
     end
 
-    -- Get tool definitions
-    local toolDefs = Tools.getDefinitions()
+    if not toolSprites then
+        return
+    end
+
     local ownedTools = gameState.ownedTools or {}
+    if #ownedTools == 0 then
+        return
+    end
 
-    -- Reset tool button bounds for click detection
-    gameState.toolButtonBounds = {}
+    -- Reset tool sprite bounds for click detection
+    gameState.toolSpriteBounds = {}
 
-    -- Draw each owned tool as a button
+    -- Draw each tool individually (not grouped by sprite type)
+    -- Stack from bottom to top
+    local explosion = gameState.toolStackExplosion
+    local totalTools = #ownedTools
+
     for i, toolId in ipairs(ownedTools) do
-        local toolDef = toolDefs[toolId]
-        if toolDef then
-            local x, y, width, height = UI.Layout.getToolButtonPosition(i, #ownedTools)
+        local spriteType = getToolSpriteType(toolId)
+        local sprite = toolSprites[spriteType]
 
-            -- Check if tool can be used
-            local canUse, reason = Tools.canUse(toolId, gameState)
+        if sprite and spriteType then
+            local stackIndex = i - 1  -- 0-based for positioning (0 = bottom)
 
-            -- Determine button color
-            local buttonColor
-            if canUse then
-                -- Use tool's defined color if usable
-                buttonColor = toolDef.color
+            -- Get base position based on explosion state
+            local stackedX, stackedY, spriteScale
+            local explodedX, explodedY
+            local x, y
+
+            -- Calculate both stacked and exploded positions
+            if gameState.toolSpritePositions and gameState.toolSpritePositions[i] then
+                -- Use animated position during gravity animation
+                x = gameState.toolSpritePositions[i].visualX
+                y = gameState.toolSpritePositions[i].visualY
+                spriteScale = gameState.toolSpritePositions[i].scale
             else
-                -- Dimmed if not usable (e.g., no deck tiles, no anchor tile)
-                buttonColor = {toolDef.color[1] * 0.5, toolDef.color[2] * 0.5, toolDef.color[3] * 0.5, 0.7}
+                -- Get stacked position
+                stackedX, stackedY, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+
+                -- Get exploded position
+                explodedX, explodedY = UI.Layout.getToolExplodedPosition(i, totalTools, spriteType)
+
+                -- Lerp between stacked and exploded based on explosion progress
+                local progress = explosion.explosionProgress or 0
+                -- Use easeOutBack for explosion feel
+                local easedProgress = 1 - math.pow(1 - progress, 3) -- easeOutCubic
+                if progress > 0.5 then
+                    easedProgress = easedProgress + (progress - 0.5) * 0.2 -- slight overshoot
+                end
+
+                x = stackedX + (explodedX - stackedX) * easedProgress
+                y = stackedY + (explodedY - stackedY) * easedProgress
             end
 
-            -- Draw button background
-            love.graphics.setColor(buttonColor)
-            love.graphics.rectangle("fill", x, y, width, height, UI.Layout.scale(4), UI.Layout.scale(4))
+            -- Check if this specific tool can be used
+            local canUse, reason = Tools.canUse(toolId, gameState)
 
-            -- Draw button outline
-            love.graphics.setColor(UI.Colors.OUTLINE)
-            love.graphics.setLineWidth(UI.Layout.scale(2))
-            love.graphics.rectangle("line", x, y, width, height, UI.Layout.scale(4), UI.Layout.scale(4))
+            -- Determine sprite color/alpha
+            local alpha = 1.0
+            local tint = {1, 1, 1, 1}
+            if not canUse then
+                -- Dim unusable tools
+                alpha = 0.5
+                tint = {0.6, 0.6, 0.6, 0.5}
+            end
 
-            -- Draw tool name (abbreviated)
-            local displayName = toolDef.name:match("^%S+") or toolDef.name  -- First word only
-            UI.Fonts.drawText(displayName, x + width / 2, y + height / 2, "small", UI.Colors.FONT_WHITE, "center")
+            -- Apply animation
+            local scale = spriteScale
+            local rotation = 0
 
-            -- Store button bounds for click detection
-            table.insert(gameState.toolButtonBounds, {
-                x = x,
-                y = y,
-                width = width,
-                height = height,
-                toolId = toolId
-            })
+            -- Apply idle animations when exploded (subtle float and tilt)
+            if explosion.isExploded and explosion.idleAnimations[i] then
+                local anim = explosion.idleAnimations[i]
+                y = y + anim.floatOffset
+                rotation = anim.tiltAngle
+            end
+
+            -- Override with stronger animation if this tool is selected/dragging
+            if gameState.toolStackAnimation.isActivated and gameState.toolStackAnimation.selectedToolIndex == i then
+                -- Apply bounce/tilt animation to selected tool (stronger wobble)
+                scale = scale * (gameState.toolStackAnimation.scale or 1.0)
+                rotation = gameState.toolStackAnimation.tiltAngle or 0
+            end
+
+            -- Check if this tool is being dragged
+            local isDragging = false
+            if gameState.draggedTool and gameState.draggedTool.toolIndex == i then
+                -- Use dragged position
+                x = gameState.draggedTool.visualX
+                y = gameState.draggedTool.visualY
+                isDragging = true
+            end
+
+            -- Draw the sprite
+            love.graphics.setColor(tint[1], tint[2], tint[3], tint[4] * alpha)
+            love.graphics.draw(
+                sprite,
+                x, y,
+                rotation,
+                scale, scale,
+                sprite:getWidth() / 2,
+                sprite:getHeight() / 2
+            )
+
+            -- Store bounds for click detection (for all sprites, not just top)
+            if not isDragging then
+                local hitboxSize = sprite:getWidth() * spriteScale
+                table.insert(gameState.toolSpriteBounds, {
+                    x = x - hitboxSize / 2,
+                    y = y - hitboxSize / 2,
+                    width = hitboxSize,
+                    height = hitboxSize,
+                    toolId = toolId,
+                    toolIndex = i,  -- Index in ownedTools array
+                    spriteType = spriteType
+                })
+            end
         end
     end
+
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 function UI.Renderer.drawBoard(board)
@@ -2497,6 +2574,69 @@ function UI.Renderer.drawArtifactsNextButton()
     }
 end
 
+function UI.Renderer.drawFusionNextButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Initialize animation state if needed
+    if not gameState.fusionNextButtonAnimation then
+        gameState.fusionNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    -- Get font for size calculation
+    local font = UI.Fonts.get("formulaScore")
+    local time = love.timer.getTime()
+
+    -- NEXT> button in bottom-right
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin = UI.Layout.scale(20)
+
+    local text = "NEXT>"
+    local textColor = gameState.fusionNextButtonAnimation.color
+
+    -- Calculate total width of text for positioning
+    local totalWidth = 0
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        totalWidth = totalWidth + font:getWidth(char)
+    end
+
+    -- Position in bottom-right area
+    local textX = screenWidth - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    -- Draw each character with wave animation
+    local currentX = textX
+    for i = 1, #text do
+        local char = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4)
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Store button bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(20)
+    gameState.fusionNextButton = {
+        x = textX - padding,
+        y = textY - padding,
+        width = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
+    }
+end
+
 -- DEPRECATED FUNCTIONS (from old shop system)
 function UI.Renderer.drawShopPurchaseZone_DEPRECATED()
     local screenWidth = gameState.screen.width
@@ -3159,6 +3299,9 @@ function UI.Renderer.drawFusionMode()
 
     -- Draw FUSE button
     UI.Renderer.drawFuseButton()
+
+    -- Draw NEXT> button
+    UI.Renderer.drawFusionNextButton()
 end
 
 -- Draw fusion area showing selected tiles and preview
