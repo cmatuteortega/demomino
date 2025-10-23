@@ -1839,13 +1839,13 @@ function Touch.checkGameEnd()
             -- If this was a boss round, generate a completely new map
             if gameState.isBossRound then
                 gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
-                gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+                gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
                 gameState.isBossRound = false
             else
                 -- Regular combat node completion - return to existing map
                 -- Generate a new map if one doesn't exist (shouldn't happen)
                 if not gameState.currentMap then
-                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
                 end
             end
         end)

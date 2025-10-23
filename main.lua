@@ -245,7 +245,7 @@ function resetGameToFresh()
     initializeGame(false)
 
     -- Generate new map
-    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
 end
 
 function initializeGame(isNewRound)

@@ -54,10 +54,11 @@ function Map.selectDemonName(usedNames, isBoss)
 end
 
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
-function Map.generateMap(screenWidth, screenHeight)
+function Map.generateMap(screenWidth, screenHeight, currentRound)
     -- Use default dimensions if not provided for backward compatibility
     screenWidth = screenWidth or 800
     screenHeight = screenHeight or 600
+    currentRound = currentRound or 1
     local map = {
         nodes = {},        -- All nodes in the DAG
         levels = {},       -- Nodes organized by depth level
@@ -80,6 +81,11 @@ function Map.generateMap(screenWidth, screenHeight)
 
         -- Demon name tracking
         usedDemonNames = {}, -- Track recently used demon names to avoid repetition
+
+        -- Store generation parameters for potential regeneration
+        screenWidth = screenWidth,
+        screenHeight = screenHeight,
+        currentRound = currentRound,
 
         -- Legacy compatibility for renderer
         columns = {}
@@ -117,10 +123,10 @@ function Map.generateMap(screenWidth, screenHeight)
     for depth = 2, numLevels - 1 do
         -- Select which rows to populate at this level (sparse placement)
         local selectedRows = Map.selectSparseRows(depth, numLevels, maxPaths)
-        
+
         -- Generate nodes for selected rows only
         for _, rowNumber in ipairs(selectedRows) do
-            local nodeType = Map.selectRandomNodeType(depth, numLevels)
+            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentRound)
             local node = Map.createNode(depth, rowNumber, nodeType)
             map.nodes[node.id] = node
             table.insert(map.levels[depth], node)
@@ -130,9 +136,9 @@ function Map.generateMap(screenWidth, screenHeight)
     
     -- Generate DAG connections
     Map.generateDAGConnections(map, minConnections, maxConnections)
-    
+
     -- Validate DAG structure and ensure all paths lead to boss
-    Map.validateAndFixDAG(map)
+    Map.validateAndFixDAG(map, currentRound)
     
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
@@ -195,31 +201,35 @@ function Map.assignDemonNames(map)
 end
 
 -- Select a random node type for regular nodes with balanced distribution
--- Now more combat-aware to reduce post-generation corrections
-function Map.selectRandomNodeType(depth, numLevels)
-    local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
+-- For Round 1 (Night 1): Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels starting from 2)
+-- For Round 2+: Combat nodes must be separated by at least 1 non-combat level
+function Map.selectRandomNodeType(depth, numLevels, currentRound)
+    currentRound = currentRound or 1
 
-    -- Increase combat probability to ensure adequate coverage
-    -- We need at least 3 combat nodes per path, so be more aggressive
-    local combatChance
+    if currentRound == 1 then
+        -- Round 1: Deterministic combat at levels 2, 5, 8, 11, etc.
+        -- Level 2 is the first playable node since level 1 is the start node
+        local isCombatLevel = (depth % 3 == 2)
 
-    if depth <= 3 then
-        -- Early levels: high combat chance to establish baseline
-        combatChance = 0.6
-    elseif depth <= numLevels * 0.6 then
-        -- Middle levels: moderate combat chance
-        combatChance = 0.5
+        if isCombatLevel then
+            return "combat"
+        else
+            -- Non-combat levels: randomly select from other node types
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            return otherTypes[love.math.random(1, #otherTypes)]
+        end
     else
-        -- Later levels: still reasonable combat chance
-        combatChance = 0.4
-    end
+        -- Round 2+: Random placement with at least 1 level separation
+        -- This will be validated/corrected by ensuring no two consecutive combat levels
+        local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
+        local combatChance = 0.4  -- Base 40% chance for combat
 
-    if love.math.random() < combatChance then
-        return "combat"
-    else
-        -- Randomly select from the other types (trade, alchemy, artifacts, contracts)
-        local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
-        return otherTypes[love.math.random(1, #otherTypes)]
+        if love.math.random() < combatChance then
+            return "combat"
+        else
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            return otherTypes[love.math.random(1, #otherTypes)]
+        end
     end
 end
 
@@ -590,8 +600,9 @@ function Map.removeUnreachableNodes(map)
 end
 
 -- Validate and fix DAG structure to ensure proper connectivity
-function Map.validateAndFixDAG(map)
+function Map.validateAndFixDAG(map, currentRound)
     local numLevels = #map.levels
+    currentRound = currentRound or 1
     
     -- Remove unreachable nodes first (forward reachability from start)
     Map.removeUnreachableNodes(map)
@@ -600,7 +611,7 @@ function Map.validateAndFixDAG(map)
     if #map.levels[numLevels] == 0 then
         -- Boss was removed, regenerate map (this should be rare)
         print("Warning: Boss node was unreachable, regenerating map...")
-        return Map.generateMap() -- Recursive regeneration
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration
     end
     
     local bossNode = map.levels[numLevels][1] -- Boss is always the single node at final level
@@ -616,23 +627,17 @@ function Map.validateAndFixDAG(map)
     
     -- NEW: Validate and improve path balance
     Map.validatePathBalance(map)
-    
-    -- NEW: Validate combat node requirements (minimum 3 combat nodes per path)
-    local combatValid = Map.validateCombatRequirements(map)
-    if not combatValid then
-        print("Combat requirements not met, attempting correction...")
-        local combatCorrected = Map.correctCombatDeficiency(map)
-        if not combatCorrected then
-            print("Critical: Could not satisfy combat requirements, regenerating map...")
-            return Map.generateMap() -- Recursive regeneration as fallback
-        end
+
+    -- For Round 2+, validate that no two combat levels are consecutive
+    if map.currentRound > 1 then
+        Map.validateConsecutiveCombatLevels(map)
     end
-    
+
     -- FINAL: Comprehensive connectivity validation with regeneration fallback
     local connectivityValid = Map.performFinalConnectivityCheck(map)
     if not connectivityValid then
         print("Critical: Final connectivity check failed, regenerating map...")
-        return Map.generateMap() -- Recursive regeneration as last resort
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration as last resort
     end
 end
 
@@ -2347,6 +2352,51 @@ function Map.analyzePathCombatCounts(map)
         deficientPaths = deficientPaths,
         minCombatRequired = minCombatRequired
     }
+end
+
+-- Validate that no two consecutive levels are both combat (for Round 2+)
+-- If found, convert some combat nodes to non-combat nodes
+function Map.validateConsecutiveCombatLevels(map)
+    local numLevels = #map.levels
+    local fixed = false
+
+    for depth = 2, numLevels - 1 do
+        local currentLevelHasCombat = false
+        local nextLevelHasCombat = false
+
+        -- Check if current level has any combat nodes
+        for _, node in ipairs(map.levels[depth]) do
+            if node.nodeType == "combat" then
+                currentLevelHasCombat = true
+                break
+            end
+        end
+
+        -- Check if next level has any combat nodes
+        if depth < numLevels then
+            for _, node in ipairs(map.levels[depth + 1]) do
+                if node.nodeType == "combat" then
+                    nextLevelHasCombat = true
+                    break
+                end
+            end
+        end
+
+        -- If both levels have combat, convert the next level's combat nodes to non-combat
+        if currentLevelHasCombat and nextLevelHasCombat then
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            for _, node in ipairs(map.levels[depth + 1]) do
+                if node.nodeType == "combat" then
+                    node.nodeType = otherTypes[love.math.random(1, #otherTypes)]
+                    fixed = true
+                end
+            end
+        end
+    end
+
+    if fixed then
+        print("Fixed consecutive combat levels by converting some to non-combat")
+    end
 end
 
 -- Validate that all paths have at least 3 combat nodes

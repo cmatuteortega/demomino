@@ -477,7 +477,7 @@ function UI.TitleScreen.continueGame()
         gameState.currentMap = Save.deserializeMap(saveData.mapData, gameState.screen.width, gameState.screen.height)
     else
         -- Generate new map if none saved
-        gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+        gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
     end
 
     -- Initialize combat-specific state (in case player was mid-combat)
