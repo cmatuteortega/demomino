@@ -1796,7 +1796,13 @@ function UI.Renderer.drawMap()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- DAY counter in top-left (same style as round counter in game)
+    -- Draw the map if it exists
+    if gameState.currentMap then
+        UI.Renderer.drawMapNodes(gameState.currentMap)
+        -- Scroll indicators removed - using drag-to-scroll instead
+    end
+
+    -- DAY counter in top-left (drawn AFTER fog overlay so it's on top)
     local leftX = UI.Layout.scale(40)
     local leftY = UI.Layout.scale(20)
 
@@ -1825,12 +1831,6 @@ function UI.Renderer.drawMap()
         UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "formulaScore", dayColor, "left", animProps)
 
         currentX = currentX + charWidth
-    end
-
-    -- Draw the map if it exists
-    if gameState.currentMap then
-        UI.Renderer.drawMapNodes(gameState.currentMap)
-        -- Scroll indicators removed - using drag-to-scroll instead
     end
 end
 
@@ -3152,9 +3152,9 @@ function UI.Renderer.getMapTileHighlight(map, tile)
                     color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}
                 }
             elseif isPathCompleted then
-                -- Completed path - soft blue
+                -- Completed path - soft blue (static, no animation)
                 return {
-                    glow = 0.05,
+                    glow = 0,
                     color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
                 }
             else
@@ -3217,7 +3217,7 @@ function UI.Renderer.drawMapFogOverlay(map)
     local screenHeight = gameState.screen.height
 
     -- TWEAK THIS: Light radius around each lit candle
-    local lightRadius = UI.Layout.scale(400)
+    local lightRadius = UI.Layout.scale(450)
 
     -- Add realistic candle flicker using layered sine waves (Perlin-like noise)
     local time = love.timer.getTime()
@@ -3265,7 +3265,7 @@ function UI.Renderer.drawMapFogOverlay(map)
             local flickeringRadius = lightRadius + totalFlicker
 
             -- Calculate fog opacity based on distance to nearest lit candle
-            local fogAlpha = 1.0
+            local fogAlpha = 1.0  -- Full opacity by default (completely black)
             if minDistance < flickeringRadius then
                 -- Inside light radius: fade from transparent (center) to opaque (edge)
                 local normalizedDistance = minDistance / flickeringRadius
@@ -3279,7 +3279,7 @@ function UI.Renderer.drawMapFogOverlay(map)
                     UI.Colors.OUTLINE[1],
                     UI.Colors.OUTLINE[2],
                     UI.Colors.OUTLINE[3],
-                    fogAlpha * 0.95
+                    fogAlpha  -- Full opacity (1.0) outside light radius
                 )
                 love.graphics.rectangle("fill", x, y, pixelSize, pixelSize)
             end
