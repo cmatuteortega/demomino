@@ -1185,14 +1185,24 @@ function love.update(dt)
     updateToolExplosionAnimation(dt)
     updateToolIdleAnimations(dt)
     updateCandleLightAnimation(dt)
+    UI.Audio.updateMapTextures(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
+        -- Stop map ambiance on title screen
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.stopMapAmbiance()
+        end
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         -- Keep updating score countdown and idle animation even in "won" phase to let it finish
         updateScoreCountdown(dt)
         updateScoreIdleAnimation(dt)
         updateVictoryBellSequence(dt)
+
+        -- Stop map ambiance during combat
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.stopMapAmbiance()
+        end
 
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
@@ -1200,27 +1210,57 @@ function love.update(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
-    elseif gameState.gamePhase == "tiles_menu" then
-        local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
-        if isFusionMode then
-            -- Update fusion hand using regular Hand.update logic
-            if gameState.fusionHand then
-                Hand.updatePositions(gameState.fusionHand)
-                Hand.updateIdleAnimations(gameState.fusionHand, dt)
-            end
-        else
-            -- Update shop hand tiles with all animations (like combat hand)
-            if gameState.offeredTiles then
-                Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sorting
-                Hand.updateDrawAnimations(gameState.offeredTiles, dt)  -- Draw animation (tiles sliding in from right)
-                Hand.updateDiscardAnimations(gameState.offeredTiles, dt)  -- Discard animation (tiles falling down)
-                Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
+    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
+        -- Dampen map ambiance when inside node menus
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.dampenMapAmbiance()
+        end
+
+        if gameState.gamePhase == "tiles_menu" then
+            local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
+            if isFusionMode then
+                -- Update fusion hand using regular Hand.update logic
+                if gameState.fusionHand then
+                    Hand.updatePositions(gameState.fusionHand)
+                    Hand.updateIdleAnimations(gameState.fusionHand, dt)
+                end
+            else
+                -- Update shop hand tiles with all animations (like combat hand)
+                if gameState.offeredTiles then
+                    Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sorting
+                    Hand.updateDrawAnimations(gameState.offeredTiles, dt)  -- Draw animation (tiles sliding in from right)
+                    Hand.updateDiscardAnimations(gameState.offeredTiles, dt)  -- Discard animation (tiles falling down)
+                    Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
+                end
             end
         end
-    elseif gameState.gamePhase == "map" or gameState.gamePhase == "node_confirmation" then
+    elseif gameState.gamePhase == "map" then
+        -- Start map ambiance when entering map phase
+        if not UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.startMapAmbiance()
+        else
+            -- Restore ambiance if it was dampened
+            UI.Audio.restoreMapAmbiance()
+        end
+
         -- Update map path preview sounds
         if gameState.currentMap then
             Map.updatePathSounds(gameState.currentMap)
+        end
+    elseif gameState.gamePhase == "node_confirmation" then
+        -- Dampen map ambiance when in node confirmation dialog
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.dampenMapAmbiance()
+        end
+
+        -- Update map path preview sounds
+        if gameState.currentMap then
+            Map.updatePathSounds(gameState.currentMap)
+        end
+    elseif gameState.gamePhase == "lost" then
+        -- Stop map ambiance on lost screen
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.stopMapAmbiance()
         end
     end
 end

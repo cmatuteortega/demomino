@@ -15,10 +15,24 @@ local buttonDefaultSound = nil
 local playButtonSound = nil
 local discardButtonSound = nil
 
+-- Map ambiance system
+local mapDinnerAmbiance = nil
+local mapTextureSounds = {}  -- {cracker, crunch, crunch_2, growl, laugh}
+local mapAmbianceState = {
+    isPlaying = false,
+    isDampened = false,
+    nextTextureTime = 0,
+    textureMinDelay = 1.5,  -- Min seconds between textures
+    textureMaxDelay = 4.0   -- Max seconds between textures
+}
+
 local musicVolume = 0.15  -- Background music at 15%
 local sfxVolume = 1     -- Sound effects at 50%
 local sfxVolumeBoost = 1.3     -- Sound effects at 50%
 local chipLoopVolumeMultiplier = 0.25  -- Chip loops at 70% of sfxVolume (30% quieter)
+local mapAmbianceVolume = 0.12  -- Map ambiance base volume (quiet like music)
+local mapAmbianceDampenedVolume = 0.04  -- Dampened volume for node screens
+local mapTextureVolume = 0.25  -- Volume for texture sounds (cracker, crunch, growl, laugh)
 
 function UI.Audio.load()
     -- Load background music
@@ -107,6 +121,31 @@ function UI.Audio.load()
     if love.filesystem.getInfo(discardButtonPath) then
         discardButtonSound = love.audio.newSource(discardButtonPath, "static")
         discardButtonSound:setVolume(sfxVolume*0.2)
+    end
+
+    -- Load map ambiance sounds
+    local dinnerPath = "sounds/map/dinner.mp3"
+    if love.filesystem.getInfo(dinnerPath) then
+        mapDinnerAmbiance = love.audio.newSource(dinnerPath, "stream")
+        mapDinnerAmbiance:setLooping(true)
+        mapDinnerAmbiance:setVolume(mapAmbianceVolume)
+    end
+
+    -- Load map texture sounds
+    local texturePaths = {
+        cracker = "sounds/map/cracker.mp3",
+        crunch = "sounds/map/crunch.mp3",
+        crunch_2 = "sounds/map/crunch_2.mp3",
+        growl = "sounds/map/growl.mp3",
+        laugh = "sounds/map/laugh.mp3"
+    }
+
+    for name, path in pairs(texturePaths) do
+        if love.filesystem.getInfo(path) then
+            local sound = love.audio.newSource(path, "static")
+            sound:setVolume(mapTextureVolume)
+            mapTextureSounds[name] = sound
+        end
     end
 end
 
@@ -337,6 +376,110 @@ function UI.Audio.playDiscardButton()
     if discardButtonSound then
         discardButtonSound:clone():play()
     end
+end
+
+-- Map ambiance control functions
+
+function UI.Audio.startMapAmbiance()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    -- Start dinner loop
+    if mapDinnerAmbiance and not mapDinnerAmbiance:isPlaying() then
+        mapDinnerAmbiance:play()
+    end
+
+    -- Initialize texture playback timing
+    mapAmbianceState.isPlaying = true
+    mapAmbianceState.nextTextureTime = love.timer.getTime() +
+        love.math.random() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
+        mapAmbianceState.textureMinDelay
+end
+
+function UI.Audio.stopMapAmbiance()
+    -- Stop dinner loop
+    if mapDinnerAmbiance and mapDinnerAmbiance:isPlaying() then
+        mapDinnerAmbiance:stop()
+    end
+
+    mapAmbianceState.isPlaying = false
+    mapAmbianceState.isDampened = false
+end
+
+function UI.Audio.dampenMapAmbiance()
+    if not mapAmbianceState.isPlaying then
+        return
+    end
+
+    mapAmbianceState.isDampened = true
+
+    -- Lower volume on dinner loop
+    if mapDinnerAmbiance then
+        mapDinnerAmbiance:setVolume(mapAmbianceDampenedVolume)
+
+        -- Apply low-pass filter effect using pitch (Love2D doesn't have built-in filters)
+        -- Slightly lower pitch creates a muffled effect
+        mapDinnerAmbiance:setPitch(0.92)
+    end
+
+    -- Lower volume on texture sounds
+    for _, sound in pairs(mapTextureSounds) do
+        sound:setVolume(mapTextureVolume * 0.3)  -- 30% of normal texture volume
+    end
+end
+
+function UI.Audio.restoreMapAmbiance()
+    if not mapAmbianceState.isPlaying then
+        return
+    end
+
+    mapAmbianceState.isDampened = false
+
+    -- Restore volume on dinner loop
+    if mapDinnerAmbiance then
+        mapDinnerAmbiance:setVolume(mapAmbianceVolume)
+        mapDinnerAmbiance:setPitch(1.0)  -- Restore normal pitch
+    end
+
+    -- Restore volume on texture sounds
+    for _, sound in pairs(mapTextureSounds) do
+        sound:setVolume(mapTextureVolume)
+    end
+end
+
+function UI.Audio.updateMapTextures(dt)
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if not mapAmbianceState.isPlaying then
+        return
+    end
+
+    local currentTime = love.timer.getTime()
+
+    -- Check if it's time to play a texture sound
+    if currentTime >= mapAmbianceState.nextTextureTime then
+        -- Pick a random texture sound
+        local textureNames = {"cracker", "crunch", "crunch_2", "growl", "laugh"}
+        local randomTexture = textureNames[love.math.random(1, #textureNames)]
+        local textureSound = mapTextureSounds[randomTexture]
+
+        if textureSound then
+            -- Clone and play to allow overlap
+            textureSound:clone():play()
+        end
+
+        -- Schedule next texture
+        local delay = love.math.random() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
+                      mapAmbianceState.textureMinDelay
+        mapAmbianceState.nextTextureTime = currentTime + delay
+    end
+end
+
+function UI.Audio.isMapAmbiancePlaying()
+    return mapAmbianceState.isPlaying
 end
 
 return UI.Audio
