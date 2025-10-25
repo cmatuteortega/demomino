@@ -2790,7 +2790,10 @@ function UI.Renderer.drawMapNodes(map)
     
     -- First, draw all path connections (behind nodes)
     UI.Renderer.drawMapPaths(map)
-    
+
+    -- Draw candles (behind nodes, after paths)
+    UI.Renderer.drawMapCandles(map)
+
     -- Then draw node backgrounds and indicators
     UI.Renderer.drawMapNodeBackgrounds(map)
     
@@ -2828,6 +2831,9 @@ function UI.Renderer.drawMapNodes(map)
             end
         end
     end
+
+    -- Draw fog of war darkness overlay on top of everything
+    UI.Renderer.drawMapFogOverlay(map)
 end
 
 -- Draw visual path connections between nodes
@@ -2879,17 +2885,81 @@ function UI.Renderer.drawPathConnection(map, fromNode, toNode)
         isPathCompleted = map.completedNodes[toNode.id]
     end
 
-    -- Set path color
+    -- Set path color based on state (no fog tinting - overlay handles that)
     if isPathCompleted then
-        love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.8) -- Pink for completed paths
+        love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.8)
     elseif isPathAvailable then
-        love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 0.9) -- White for available paths
+        love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 0.9)
     else
-        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.6) -- Dark for unavailable paths
+        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.6)
     end
 
     -- Draw line between nodes
     love.graphics.line(fromNode.x, fromNode.y, toNode.x, toNode.y)
+end
+
+-- Draw candles at each level with animated flames for lit candles
+function UI.Renderer.drawMapCandles(map)
+    if not map or not map.candles or #map.candles == 0 then
+        return
+    end
+
+    -- Check if candle sprites are loaded
+    if not candleSprites or #candleSprites == 0 then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+
+    -- Calculate sprite scales
+    local candleScale = UI.Layout.scale(2.0)  -- Base candle size
+    local lightScale = UI.Layout.scale(2.5)   -- Larger light/flame size
+
+    for _, candle in ipairs(map.candles) do
+        -- Update screen position with camera offset
+        candle.screenX = candle.x - map.cameraX
+        candle.screenY = candle.y
+
+        -- Only draw if candle is visible on screen
+        if candle.screenX > -100 and candle.screenX < screenWidth + 100 then
+            -- Get the candle sprite variant for this candle
+            local candleSprite = candleSprites[candle.spriteVariant] or candleSprites[1]
+
+            -- Always draw the base candle sprite (unlit candle)
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(
+                candleSprite,
+                candle.screenX,
+                candle.screenY,
+                0,  -- rotation
+                candleScale,
+                candleScale,
+                candleSprite:getWidth() / 2,  -- origin X (center)
+                candleSprite:getHeight() / 2   -- origin Y (center)
+            )
+
+            -- If candle is lit, draw the animated flame on top (larger scale)
+            if candle.lit and candleLightFrames and #candleLightFrames > 0 then
+                local currentFrame = candleLightFrames[candleLightFrameIndex] or candleLightFrames[1]
+                local lightYOffset = UI.Layout.scale(-25)  -- Offset light upward (adjust this value manually if needed)
+
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(
+                    currentFrame,
+                    candle.screenX,
+                    candle.screenY + lightYOffset,  -- Apply upward offset
+                    0,  -- rotation
+                    lightScale,  -- Larger scale for light
+                    lightScale,
+                    currentFrame:getWidth() / 2,  -- origin X (center)
+                    currentFrame:getHeight() / 2   -- origin Y (center)
+                )
+            end
+        end
+    end
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 -- Draw visual backgrounds and indicators for nodes
@@ -2929,7 +2999,7 @@ function UI.Renderer.drawNodeBackground(map, node, radius)
     -- Determine sprite behavior based on node state - sprites handle their own colors
     local showSelected = false
     local selectedRotation = 0
-    
+
     if isCurrentNode then
         -- Current node shows selected sprite (static)
         showSelected = true
@@ -2938,19 +3008,19 @@ function UI.Renderer.drawNodeBackground(map, node, radius)
         showSelected = true
     end
     -- Completed and unavailable nodes only show base sprite
-    
-    -- Always draw base sprite first (static, behind animated layer) - preserve original sprite colors
+
+    -- Always draw base sprite first (static, behind animated layer)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(sprites.base, node.x, node.y, 0, spriteScale, spriteScale, 
+    love.graphics.draw(sprites.base, node.x, node.y, 0, spriteScale, spriteScale,
                       sprites.base:getWidth()/2, sprites.base:getHeight()/2)
-    
+
     -- Draw selected sprite overlay with animation on top for depth
     if showSelected and sprites.selected then
         love.graphics.setColor(1, 1, 1, 1)
         love.graphics.draw(sprites.selected, node.x, node.y, selectedRotation, spriteScale, spriteScale,
                           sprites.selected:getWidth()/2, sprites.selected:getHeight()/2)
     end
-    
+
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -2984,28 +3054,28 @@ end
 -- Draw a single map tile using proper domino rendering system
 function UI.Renderer.drawMapTile(map, tile)
     local highlight = UI.Renderer.getMapTileHighlight(map, tile)
-    
+
     -- Apply highlighting effects to tile properties
     if highlight.glow > 0 then
         tile.selectScale = 1 + highlight.glow * 0.15 -- More pronounced glow effect
     else
         tile.selectScale = 1.0
     end
-    
-    -- Set color tint based on highlight
+
+    -- Set color tint based on highlight (no fog tinting - overlay handles that)
     love.graphics.setColor(highlight.color[1], highlight.color[2], highlight.color[3], highlight.color[4])
-    
+
     -- Debug: Draw a simple circle for path tiles if they're not rendering properly
     if tile.isPathTile and not tile.mapNode then
         love.graphics.setColor(1, 0, 0, 0.8) -- Red debug circle
         love.graphics.circle("fill", tile.x, tile.y, 8)
         love.graphics.setColor(highlight.color[1], highlight.color[2], highlight.color[3], highlight.color[4])
     end
-    
+
     -- Draw using existing domino renderer with map scale
     -- The scale parameter is handled within drawDomino via sprite scaling
     UI.Renderer.drawDomino(tile, tile.x, tile.y, nil, tile.orientation)
-    
+
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -3026,19 +3096,15 @@ function UI.Renderer.getMapTileHighlight(map, tile)
         local isCompleted = map.completedNodes[node.id]
         
         if isCurrentNode then
-            -- Current position - bright gold with strong pulse
-            local pulse = math.sin(time * 4) * 0.4
-            local secondaryPulse = math.sin(time * 6) * 0.1
+            -- Current position - bright gold (no animation)
             return {
-                glow = 0.6 + pulse + secondaryPulse,
+                glow = 0,
                 color = {1, 0.9, 0.3, 1}
             }
         elseif isAvailable then
-            -- Available nodes - bright green with breathing effect
-            local breathe = math.sin(time * 2.5) * 0.25
-            local shimmer = math.sin(time * 8) * 0.05
+            -- Available nodes - bright green (no animation)
             return {
-                glow = 0.4 + breathe + shimmer,
+                glow = 0,
                 color = {0.2, 1, 0.3, 1}
             }
         elseif isCompleted then
@@ -3137,6 +3203,104 @@ function UI.Renderer.drawPreviewTile(map, tile)
     -- Restore original scale
     tile.selectScale = originalSelectScale
     
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw fog of war darkness overlay that covers only the undiscovered areas
+function UI.Renderer.drawMapFogOverlay(map)
+    if not map or not map.levels or #map.levels == 0 or not map.currentNode then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Calculate the x-position threshold where fog starts (current node depth + 2 levels)
+    local currentDepth = map.currentNode.depth
+    local fogStartDepth = currentDepth + 2  -- Fog starts 2 levels ahead
+
+    -- Get the x-position of nodes at the fog start depth
+    local fogStartX = nil
+    if map.levels[fogStartDepth] and #map.levels[fogStartDepth] > 0 then
+        -- Use the leftmost node at this depth as the fog start point
+        fogStartX = map.levels[fogStartDepth][1].x
+    else
+        -- If there are no nodes at that depth, use a position based on camera
+        -- Estimate based on node spacing
+        local marginX = UI.Layout.scale(60)
+        local levelSpacing = UI.Layout.scale(140)
+        fogStartX = marginX + (fogStartDepth - 1) * levelSpacing - map.cameraX
+    end
+
+    -- Only draw fog if the fog zone is visible on screen
+    if fogStartX and fogStartX < screenWidth then
+        -- Draw gradient overlay with concave (curved) shape
+        -- The gradient transitions from fully transparent (left) to fully dark (right)
+        local gradientWidth = UI.Layout.scale(300)  -- Width of gradient transition zone
+        local numVerticalSlices = 100  -- Higher number = smoother curve
+
+        -- Add realistic candle flicker using layered sine waves (Perlin-like noise)
+        local time = love.timer.getTime()
+
+        -- Multiple sine waves at different frequencies create irregular flicker
+        local flicker1 = math.sin(time * 3.2) * 6       -- Fast, sharp flicker
+        local flicker2 = math.sin(time * 1.7) * 4       -- Medium speed variation
+        local flicker3 = math.sin(time * 0.9) * 8       -- Slow sway
+        local flicker4 = math.sin(time * 5.1) * 2       -- Very fast shimmer
+        local flicker5 = math.sin(time * 0.4) * 5       -- Very slow breathing
+
+        -- Combine all frequencies for realistic candle-like movement
+        local totalFlicker = flicker1 + flicker2 + flicker3 + flicker4 + flicker5
+
+        -- Calculate center Y for the concave curve with flickering depth
+        local centerY = screenHeight / 2
+        local baseCurveDepth = UI.Layout.scale(80)  -- Base curve depth
+        local curveDepth = baseCurveDepth + totalFlicker  -- Animated curve depth with candle flicker
+
+        for sliceY = 0, numVerticalSlices do
+            local yProgress = sliceY / numVerticalSlices
+            local currentY = (yProgress * screenHeight)
+            local nextY = ((sliceY + 1) / numVerticalSlices) * screenHeight
+
+            -- Calculate horizontal offset for concave curve
+            -- Use cosine curve: centerY has max offset, top/bottom have less offset
+            local normalizedY = (currentY - centerY) / (screenHeight / 2)  -- -1 to 1
+            local curveOffset = math.cos(normalizedY * math.pi / 2) * curveDepth  -- Concave bulge
+
+            -- Draw horizontal gradient strips for this Y slice
+            local numGradientSteps = 40
+            for i = 0, numGradientSteps do
+                local progress = i / numGradientSteps
+
+                -- Apply curve offset to x position (more offset in center, less at edges)
+                local stripX = fogStartX + (progress * gradientWidth) + curveOffset
+
+                -- Calculate darkness based on position in gradient
+                local darkness = progress
+
+                -- Draw a rectangle for this gradient step
+                local stripWidth = (gradientWidth / numGradientSteps) + 2  -- +2 to avoid gaps
+                local stripHeight = (screenHeight / numVerticalSlices) + 2  -- +2 to avoid gaps
+
+                love.graphics.setColor(
+                    UI.Colors.OUTLINE[1],
+                    UI.Colors.OUTLINE[2],
+                    UI.Colors.OUTLINE[3],
+                    darkness  -- Alpha controls darkness intensity
+                )
+                love.graphics.rectangle("fill", stripX, currentY, stripWidth, stripHeight)
+            end
+
+            -- Draw solid darkness beyond the gradient for this Y slice
+            local solidDarkX = fogStartX + gradientWidth + curveOffset
+            if solidDarkX < screenWidth then
+                love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1.0)
+                love.graphics.rectangle("fill", solidDarkX, currentY, screenWidth - solidDarkX, (screenHeight / numVerticalSlices) + 2)
+            end
+        end
+    end
+
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end

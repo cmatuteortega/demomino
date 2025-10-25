@@ -41,6 +41,7 @@ function love.load()
     loadTitleScreenSprites()
     loadNodeSprites()
     loadCoinSprite()
+    loadCandleSprites()
     loadToolSprites()
     
     gameState = {
@@ -188,9 +189,9 @@ function love.load()
     UI.Fonts.load()
     UI.Audio.load()
 
-    -- Load CRT shader and create render canvas
+    -- Load CRT shader and create render canvas with depth/stencil support for fog of war
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
-    mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
+    mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0, dpiscale = 1})
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -245,7 +246,7 @@ function resetGameToFresh()
     initializeGame(false)
 
     -- Generate new map
-    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height)
+    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
 end
 
 function initializeGame(isNewRound)
@@ -1148,6 +1149,26 @@ function animateButtonPress(buttonName)
     end
 end
 
+-- Update candle light animation (cycle through frames at 12 fps)
+function updateCandleLightAnimation(dt)
+    if not candleLightFrames or #candleLightFrames == 0 then
+        return
+    end
+
+    candleLightAnimationTime = candleLightAnimationTime + dt
+
+    -- Check if we need to advance to the next frame
+    if candleLightAnimationTime >= candleLightFrameDuration then
+        candleLightAnimationTime = candleLightAnimationTime - candleLightFrameDuration
+        candleLightFrameIndex = candleLightFrameIndex + 1
+
+        -- Loop back to first frame
+        if candleLightFrameIndex > #candleLightFrames then
+            candleLightFrameIndex = 1
+        end
+    end
+end
+
 function love.update(dt)
     Touch.update(dt)
     UI.Animation.update(dt)
@@ -1158,6 +1179,7 @@ function love.update(dt)
     updateToolStackAnimation(dt)
     updateToolExplosionAnimation(dt)
     updateToolIdleAnimations(dt)
+    updateCandleLightAnimation(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
@@ -1284,7 +1306,7 @@ function love.resize(w, h)
     if mainCanvas then
         mainCanvas:release()
     end
-    mainCanvas = love.graphics.newCanvas(w, h, {format = "rgba8", readable = true, msaa = 0})
+    mainCanvas = love.graphics.newCanvas(w, h, {format = "rgba8", readable = true, msaa = 0, dpiscale = 1})
     
     UI.Fonts.recalculate()
     
@@ -1852,6 +1874,35 @@ function loadCoinSprite()
     if love.filesystem.getInfo(coinFilename) then
         coinSprite = love.graphics.newImage(coinFilename)
     end
+end
+
+function loadCandleSprites()
+    -- Load 3 different candle base sprites for variety
+    candleSprites = {}
+    for i = 1, 3 do
+        local candleFilename = "sprites/map/candle" .. i .. ".png"
+        if love.filesystem.getInfo(candleFilename) then
+            local sprite = love.graphics.newImage(candleFilename)
+            sprite:setFilter("nearest", "nearest")  -- Pixel art filtering
+            table.insert(candleSprites, sprite)
+        end
+    end
+
+    -- Load animated candle light frames (4 frames, slowed down to 8 fps)
+    candleLightFrames = {}
+    for i = 1, 4 do
+        local lightFilename = "sprites/map/light" .. i .. ".png"
+        if love.filesystem.getInfo(lightFilename) then
+            local frame = love.graphics.newImage(lightFilename)
+            frame:setFilter("nearest", "nearest")  -- Pixel art filtering
+            table.insert(candleLightFrames, frame)
+        end
+    end
+
+    -- Initialize candle animation state
+    candleLightAnimationTime = 0
+    candleLightFrameIndex = 1
+    candleLightFrameDuration = 1 / 8  -- 8 fps (slower animation)
 end
 
 function loadToolSprites()
