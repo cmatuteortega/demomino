@@ -129,6 +129,11 @@ function Save.serializeMap(map)
         completedNodes = {},
         currentNodeId = map.currentNode and map.currentNode.id or nil,
         usedDemonNames = map.usedDemonNames or {},  -- Save demon name tracking
+        traversedConnections = {},  -- Save path history
+        screenWidth = map.screenWidth or 800,
+        screenHeight = map.screenHeight or 600,
+        currentRound = map.currentRound or 1,
+        candles = {},  -- Save candle states
         levels = {}
     }
 
@@ -137,22 +142,46 @@ function Save.serializeMap(map)
         table.insert(mapData.completedNodes, nodeId)
     end
 
+    -- Save traversed connections (which paths the player actually took)
+    if map.traversedConnections then
+        for fromNodeId, connections in pairs(map.traversedConnections) do
+            mapData.traversedConnections[fromNodeId] = {}
+            for toNodeId, _ in pairs(connections) do
+                mapData.traversedConnections[fromNodeId][toNodeId] = true
+            end
+        end
+    end
+
+    -- Save candle states
+    if map.candles then
+        for _, candle in ipairs(map.candles) do
+            table.insert(mapData.candles, {
+                depth = candle.depth,
+                x = candle.x,
+                y = candle.y,
+                lit = candle.lit,
+                spriteVariant = candle.spriteVariant
+            })
+        end
+    end
+
     -- Save level structure
     for levelIndex, level in ipairs(map.levels or {}) do
         mapData.levels[levelIndex] = {}
         for _, node in ipairs(level) do
             local nodeData = {
                 id = node.id,
-                x = node.x,
-                y = node.y,
-                worldX = node.worldX,
+                -- Save world coordinates (position) not screen coordinates (x/y)
+                positionX = node.position and node.position.x or node.x,
+                positionY = node.position and node.position.y or node.y,
                 nodeType = node.nodeType,
                 depth = node.depth,  -- Save depth property
                 path = node.path,    -- Save path/row property
                 column = node.column,
                 lane = node.lane,
                 connections = node.connections or {},
-                demonName = node.demonName  -- Save demon name for combat/boss nodes
+                demonName = node.demonName,  -- Save demon name for combat/boss nodes
+                fogVisibility = node.fogVisibility  -- Save fog visibility state
             }
             table.insert(mapData.levels[levelIndex], nodeData)
         end
@@ -186,12 +215,26 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         userDragging = false,
         manualCameraMode = false,
         usedDemonNames = mapData.usedDemonNames or {},  -- Restore demon name tracking
+        candles = {},  -- Will be restored after node positioning
+        screenWidth = mapData.screenWidth or screenWidth or 800,
+        screenHeight = mapData.screenHeight or screenHeight or 600,
+        currentRound = mapData.currentRound or 1,
         columns = {}  -- Legacy compatibility
     }
 
     -- Restore completed nodes
     for _, nodeId in ipairs(mapData.completedNodes or {}) do
         map.completedNodes[nodeId] = true
+    end
+
+    -- Restore traversed connections (which paths the player actually took)
+    if mapData.traversedConnections then
+        for fromNodeId, connections in pairs(mapData.traversedConnections) do
+            map.traversedConnections[fromNodeId] = {}
+            for toNodeId, _ in pairs(connections) do
+                map.traversedConnections[fromNodeId][toNodeId] = true
+            end
+        end
     end
 
     -- Restore level structure
@@ -201,9 +244,6 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         for _, nodeData in ipairs(levelData) do
             local node = {
                 id = nodeData.id,
-                x = nodeData.x,
-                y = nodeData.y,
-                worldX = nodeData.worldX,
                 nodeType = nodeData.nodeType,
                 depth = nodeData.depth or levelIndex,  -- Restore depth property (fallback to levelIndex)
                 path = nodeData.path or 1,  -- Restore path property
@@ -211,8 +251,16 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
                 lane = nodeData.lane or nodeData.path or 1,
                 completed = false,
                 connections = nodeData.connections or {},
-                position = {x = nodeData.x or 0, y = nodeData.y or 0},  -- Initialize position table
-                demonName = nodeData.demonName  -- Restore demon name for combat/boss nodes
+                -- Restore world coordinates to position table
+                position = {
+                    x = nodeData.positionX or nodeData.x or 0,
+                    y = nodeData.positionY or nodeData.y or 0
+                },
+                -- Screen coordinates will be calculated after camera is applied
+                x = 0,
+                y = 0,
+                demonName = nodeData.demonName,  -- Restore demon name for combat/boss nodes
+                fogVisibility = nodeData.fogVisibility or 1.0  -- Restore fog visibility (default fully visible)
             }
             table.insert(map.levels[levelIndex], node)
             table.insert(map.columns[levelIndex], node)  -- Legacy
@@ -227,11 +275,67 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         end
     end
 
+    -- Apply camera position and recalculate screen coordinates for all nodes
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            -- Calculate screen position from world position with camera offset
+            node.x = node.position.x - map.cameraX
+            node.y = node.position.y
+        end
+    end
+
+    -- Recalculate total map width for camera bounds
+    -- Use the same calculation as Map.calculateNodePositions
+    local marginX = 60  -- Base margin (will be scaled by UI.Layout)
+    if UI and UI.Layout and UI.Layout.scale then
+        marginX = UI.Layout.scale(60)
+    end
+
+    -- Calculate level spacing from first two levels if they exist
+    if #map.levels >= 2 then
+        local level1 = map.levels[1]
+        local level2 = map.levels[2]
+        if #level1 > 0 and #level2 > 0 then
+            local node1 = level1[1]
+            local node2 = level2[1]
+            local levelSpacing = node2.position.x - node1.position.x
+            local numLevels = #map.levels
+            map.totalWidth = marginX + (numLevels - 1) * levelSpacing + marginX
+        end
+    end
+
     -- Regenerate map tiles (visual representation)
     Map.generateMapTiles(map)
 
     -- Recalculate available nodes based on completed nodes
     Map.updateAvailableNodes(map)
+
+    -- Restore candles with their saved states
+    if mapData.candles and #mapData.candles > 0 then
+        for _, candleData in ipairs(mapData.candles) do
+            local candle = {
+                depth = candleData.depth,
+                x = candleData.x,
+                y = candleData.y,
+                screenX = candleData.x - map.cameraX,  -- Recalculate screen position
+                screenY = candleData.y,
+                lit = candleData.lit,
+                spriteVariant = candleData.spriteVariant
+            }
+            table.insert(map.candles, candle)
+        end
+    else
+        -- If no saved candles, create them from scratch (for backward compatibility)
+        Map.createCandles(map, map.screenWidth, map.screenHeight)
+        -- Then update their lighting state based on current node
+        Map.updateCandleLighting(map)
+    end
+
+    -- Update fog of war visibility based on current node position
+    Map.updateFogOfWar(map)
+
+    -- Update path visibility to show traversed paths
+    Map.updatePathVisibility(map)
 
     return map
 end

@@ -54,10 +54,11 @@ function Map.selectDemonName(usedNames, isBoss)
 end
 
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
-function Map.generateMap(screenWidth, screenHeight)
+function Map.generateMap(screenWidth, screenHeight, currentRound)
     -- Use default dimensions if not provided for backward compatibility
     screenWidth = screenWidth or 800
     screenHeight = screenHeight or 600
+    currentRound = currentRound or 1
     local map = {
         nodes = {},        -- All nodes in the DAG
         levels = {},       -- Nodes organized by depth level
@@ -78,8 +79,16 @@ function Map.generateMap(screenWidth, screenHeight)
         -- Path preview animation system
         previewTiles = {}, -- Preview tiles for node selection animation
 
+        -- Candle lighting system
+        candles = {}, -- Candles placed at each level for atmospheric lighting
+
         -- Demon name tracking
         usedDemonNames = {}, -- Track recently used demon names to avoid repetition
+
+        -- Store generation parameters for potential regeneration
+        screenWidth = screenWidth,
+        screenHeight = screenHeight,
+        currentRound = currentRound,
 
         -- Legacy compatibility for renderer
         columns = {}
@@ -117,10 +126,10 @@ function Map.generateMap(screenWidth, screenHeight)
     for depth = 2, numLevels - 1 do
         -- Select which rows to populate at this level (sparse placement)
         local selectedRows = Map.selectSparseRows(depth, numLevels, maxPaths)
-        
+
         -- Generate nodes for selected rows only
         for _, rowNumber in ipairs(selectedRows) do
-            local nodeType = Map.selectRandomNodeType(depth, numLevels)
+            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentRound)
             local node = Map.createNode(depth, rowNumber, nodeType)
             map.nodes[node.id] = node
             table.insert(map.levels[depth], node)
@@ -130,9 +139,9 @@ function Map.generateMap(screenWidth, screenHeight)
     
     -- Generate DAG connections
     Map.generateDAGConnections(map, minConnections, maxConnections)
-    
+
     -- Validate DAG structure and ensure all paths lead to boss
-    Map.validateAndFixDAG(map)
+    Map.validateAndFixDAG(map, currentRound)
     
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
@@ -143,11 +152,20 @@ function Map.generateMap(screenWidth, screenHeight)
     -- Position nodes first before creating tiles
     Map.calculateNodePositions(map, screenWidth, screenHeight)
 
+    -- Create candles for atmospheric lighting
+    Map.createCandles(map, screenWidth, screenHeight)
+
     -- Generate domino tiles for visualization
     Map.generateMapTiles(map)
 
     -- Do NOT reveal initial paths - paths are only revealed after first node selection
     -- Map.updatePathVisibility(map) -- Removed: no initial path visibility
+
+    -- Initialize fog of war visibility
+    Map.updateFogOfWar(map)
+
+    -- Initialize candle lighting state
+    Map.updateCandleLighting(map)
 
     return map
 end
@@ -165,6 +183,7 @@ function Map.createNode(depth, path, nodeType)
         completed = false,
         connections = {},      -- Array of connected node IDs (directed edges)
         position = {x = 0, y = 0}, -- Position coordinates
+        fogVisibility = 1.0,   -- Fog of war visibility (0.0 = hidden, 1.0 = visible)
 
         -- Legacy fields for compatibility with existing renderer
         column = depth,
@@ -195,31 +214,35 @@ function Map.assignDemonNames(map)
 end
 
 -- Select a random node type for regular nodes with balanced distribution
--- Now more combat-aware to reduce post-generation corrections
-function Map.selectRandomNodeType(depth, numLevels)
-    local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
+-- For Round 1 (Night 1): Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels starting from 2)
+-- For Round 2+: Combat nodes must be separated by at least 1 non-combat level
+function Map.selectRandomNodeType(depth, numLevels, currentRound)
+    currentRound = currentRound or 1
 
-    -- Increase combat probability to ensure adequate coverage
-    -- We need at least 3 combat nodes per path, so be more aggressive
-    local combatChance
+    if currentRound == 1 then
+        -- Round 1: Deterministic combat at levels 2, 5, 8, 11, etc.
+        -- Level 2 is the first playable node since level 1 is the start node
+        local isCombatLevel = (depth % 3 == 2)
 
-    if depth <= 3 then
-        -- Early levels: high combat chance to establish baseline
-        combatChance = 0.6
-    elseif depth <= numLevels * 0.6 then
-        -- Middle levels: moderate combat chance
-        combatChance = 0.5
+        if isCombatLevel then
+            return "combat"
+        else
+            -- Non-combat levels: randomly select from other node types
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            return otherTypes[love.math.random(1, #otherTypes)]
+        end
     else
-        -- Later levels: still reasonable combat chance
-        combatChance = 0.4
-    end
+        -- Round 2+: Random placement with at least 1 level separation
+        -- This will be validated/corrected by ensuring no two consecutive combat levels
+        local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
+        local combatChance = 0.4  -- Base 40% chance for combat
 
-    if love.math.random() < combatChance then
-        return "combat"
-    else
-        -- Randomly select from the other types (trade, alchemy, artifacts, contracts)
-        local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
-        return otherTypes[love.math.random(1, #otherTypes)]
+        if love.math.random() < combatChance then
+            return "combat"
+        else
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            return otherTypes[love.math.random(1, #otherTypes)]
+        end
     end
 end
 
@@ -590,8 +613,9 @@ function Map.removeUnreachableNodes(map)
 end
 
 -- Validate and fix DAG structure to ensure proper connectivity
-function Map.validateAndFixDAG(map)
+function Map.validateAndFixDAG(map, currentRound)
     local numLevels = #map.levels
+    currentRound = currentRound or 1
     
     -- Remove unreachable nodes first (forward reachability from start)
     Map.removeUnreachableNodes(map)
@@ -600,7 +624,7 @@ function Map.validateAndFixDAG(map)
     if #map.levels[numLevels] == 0 then
         -- Boss was removed, regenerate map (this should be rare)
         print("Warning: Boss node was unreachable, regenerating map...")
-        return Map.generateMap() -- Recursive regeneration
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration
     end
     
     local bossNode = map.levels[numLevels][1] -- Boss is always the single node at final level
@@ -616,23 +640,17 @@ function Map.validateAndFixDAG(map)
     
     -- NEW: Validate and improve path balance
     Map.validatePathBalance(map)
-    
-    -- NEW: Validate combat node requirements (minimum 3 combat nodes per path)
-    local combatValid = Map.validateCombatRequirements(map)
-    if not combatValid then
-        print("Combat requirements not met, attempting correction...")
-        local combatCorrected = Map.correctCombatDeficiency(map)
-        if not combatCorrected then
-            print("Critical: Could not satisfy combat requirements, regenerating map...")
-            return Map.generateMap() -- Recursive regeneration as fallback
-        end
+
+    -- For Round 2+, validate that no two combat levels are consecutive
+    if map.currentRound > 1 then
+        Map.validateConsecutiveCombatLevels(map)
     end
-    
+
     -- FINAL: Comprehensive connectivity validation with regeneration fallback
     local connectivityValid = Map.performFinalConnectivityCheck(map)
     if not connectivityValid then
         print("Critical: Final connectivity check failed, regenerating map...")
-        return Map.generateMap() -- Recursive regeneration as last resort
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration as last resort
     end
 end
 
@@ -928,10 +946,16 @@ function Map.moveToNode(map, nodeId)
     
     map.currentNode = targetNode
     map.completedNodes[targetNode.id] = true
-    
+
+    -- Update fog of war visibility for new position
+    Map.updateFogOfWar(map)
+
+    -- Update candle lighting for new position
+    Map.updateCandleLighting(map)
+
     -- Update path visibility to reveal paths from newly completed nodes
     Map.updatePathVisibility(map)
-    
+
     -- Update available nodes for next move
     Map.updateAvailableNodes(map)
     
@@ -2231,6 +2255,142 @@ function Map.getReachableNodes(map, startNode)
     return reachable
 end
 
+-- Update fog of war visibility for all nodes based on distance from current node
+function Map.updateFogOfWar(map)
+    if not map or not map.currentNode or not map.levels then
+        return
+    end
+
+    local currentDepth = map.currentNode.depth
+    local currentPath = map.currentNode.path
+
+    -- Iterate through all nodes and calculate their fog visibility
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            local depthDistance = node.depth - currentDepth
+            local pathDistance = math.abs(node.path - currentPath)
+
+            -- Base visibility based on depth distance with smooth gradient
+            local baseVisibility = 1.0
+
+            if depthDistance < 0 then
+                -- Nodes before current (already visited area) - fully visible
+                baseVisibility = 1.0
+            elseif depthDistance <= 3 then
+                -- Current level and 3 levels ahead - fully visible
+                baseVisibility = 1.0
+            elseif depthDistance == 4 then
+                -- Level 4 ahead - start of gradient transition
+                baseVisibility = 0.5
+            elseif depthDistance == 5 then
+                -- Level 5 ahead - deeper in gradient
+                baseVisibility = 0.15
+            elseif depthDistance >= 6 then
+                -- Level 6+ ahead - fully hidden
+                baseVisibility = 0.0
+            end
+
+            -- Apply vertical distance factor for nodes further from current path
+            -- Nodes far from the current path fade faster
+            local verticalFactor = 1.0
+            if depthDistance > 0 and depthDistance <= 4 then
+                -- Only apply vertical fading in the visible range
+                -- Each path unit away reduces visibility
+                local maxVerticalDistance = 4 -- Maximum meaningful vertical distance
+                local normalizedPathDistance = math.min(pathDistance / maxVerticalDistance, 1.0)
+
+                -- Quadratic falloff for smooth gradient
+                verticalFactor = 1.0 - (normalizedPathDistance * normalizedPathDistance * 0.3)
+                verticalFactor = math.max(0.0, verticalFactor)
+            end
+
+            -- Calculate final visibility
+            node.fogVisibility = baseVisibility * verticalFactor
+
+            -- Clamp to 0.0 - 1.0 range
+            node.fogVisibility = math.max(0.0, math.min(1.0, node.fogVisibility))
+        end
+    end
+end
+
+-- Create candles at each level for atmospheric lighting
+function Map.createCandles(map, screenWidth, screenHeight)
+    if not map or not map.levels or #map.levels == 0 then
+        return
+    end
+
+    local marginX = UI.Layout.scale(60)
+    local marginY = UI.Layout.scale(120)
+
+    -- Calculate level spacing (same as node positioning)
+    local tempNodeTile = Domino.new(1, 1)
+    tempNodeTile.orientation = "vertical"
+    tempNodeTile.isMapTile = true
+
+    local tempHorizontalTile = Domino.new(1, 2)
+    tempHorizontalTile.orientation = "horizontal"
+    tempHorizontalTile.isMapTile = true
+
+    local nodeWidth = Map.getMapTileDisplayWidth(tempNodeTile)
+    local horizontalWidth = Map.getMapTileDisplayWidth(tempHorizontalTile)
+    local levelSpacing = nodeWidth + 2 * horizontalWidth - UI.Layout.scale(2)
+
+    -- Calculate vertical spacing to find midpoint between rows 2 and 3
+    local tempVerticalTile = Domino.new(1, 2)
+    tempVerticalTile.orientation = "vertical"
+    tempVerticalTile.isMapTile = true
+
+    local verticalHeight = Map.getMapTileDisplayHeight(tempVerticalTile)
+    local tileGap = UI.Layout.scale(2)
+    local pathSpacing = math.max(UI.Layout.scale(90), 2 * verticalHeight + 3 * tileGap)
+    pathSpacing = pathSpacing - verticalHeight * 0.2 - UI.Layout.scale(2)
+
+    -- Calculate starting Y position (same as node positioning)
+    local startY = marginY + UI.Layout.scale(50)
+    local availableHeight = screenHeight - 2 * marginY - UI.Layout.scale(100)
+    local totalPossibleHeight = 3 * pathSpacing
+    local levelStartY = startY + (availableHeight - totalPossibleHeight) / 2
+
+    -- Create a candle for each level (except first and last)
+    local numLevels = #map.levels
+    for depth = 2, numLevels - 1 do  -- Skip level 1 (start) and last level (boss)
+        local baseX = marginX + (depth - 1) * levelSpacing
+
+        -- Calculate Y position as midpoint between row 2 (path=2) and row 3 (path=3)
+        local row2Y = levelStartY + (2 - 1) * pathSpacing
+        local row3Y = levelStartY + (3 - 1) * pathSpacing
+        local candleY = (row2Y + row3Y) / 2
+
+        -- Create candle object with random sprite variant (1-3)
+        local candle = {
+            depth = depth,
+            x = baseX,  -- World X position
+            y = candleY,  -- World Y position
+            screenX = baseX - map.cameraX,  -- Screen X position with camera offset
+            screenY = candleY,  -- Screen Y position (no vertical camera movement)
+            lit = false,  -- Initially unlit
+            spriteVariant = love.math.random(1, 3)  -- Random candle sprite (1-3)
+        }
+
+        table.insert(map.candles, candle)
+    end
+end
+
+-- Update candle lighting state based on current node position
+function Map.updateCandleLighting(map)
+    if not map or not map.currentNode or not map.candles then
+        return
+    end
+
+    local currentDepth = map.currentNode.depth
+
+    -- Light candles one level ahead of current node
+    -- Candles at depth <= (currentDepth + 1) should be lit
+    for _, candle in ipairs(map.candles) do
+        candle.lit = (candle.depth <= currentDepth + 1)
+    end
+end
+
 -- Get all nodes that can reach the boss (backward reachability)
 function Map.getNodesCanReachBoss(map, bossNode)
     local canReachBoss = {[bossNode.id] = true}
@@ -2347,6 +2507,51 @@ function Map.analyzePathCombatCounts(map)
         deficientPaths = deficientPaths,
         minCombatRequired = minCombatRequired
     }
+end
+
+-- Validate that no two consecutive levels are both combat (for Round 2+)
+-- If found, convert some combat nodes to non-combat nodes
+function Map.validateConsecutiveCombatLevels(map)
+    local numLevels = #map.levels
+    local fixed = false
+
+    for depth = 2, numLevels - 1 do
+        local currentLevelHasCombat = false
+        local nextLevelHasCombat = false
+
+        -- Check if current level has any combat nodes
+        for _, node in ipairs(map.levels[depth]) do
+            if node.nodeType == "combat" then
+                currentLevelHasCombat = true
+                break
+            end
+        end
+
+        -- Check if next level has any combat nodes
+        if depth < numLevels then
+            for _, node in ipairs(map.levels[depth + 1]) do
+                if node.nodeType == "combat" then
+                    nextLevelHasCombat = true
+                    break
+                end
+            end
+        end
+
+        -- If both levels have combat, convert the next level's combat nodes to non-combat
+        if currentLevelHasCombat and nextLevelHasCombat then
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            for _, node in ipairs(map.levels[depth + 1]) do
+                if node.nodeType == "combat" then
+                    node.nodeType = otherTypes[love.math.random(1, #otherTypes)]
+                    fixed = true
+                end
+            end
+        end
+    end
+
+    if fixed then
+        print("Fixed consecutive combat levels by converting some to non-combat")
+    end
 end
 
 -- Validate that all paths have at least 3 combat nodes
