@@ -1175,6 +1175,7 @@ end
 function love.update(dt)
     Touch.update(dt)
     UI.Animation.update(dt)
+    UI.Animation.updateShadowFlicker(dt)
     UI.Animation.updateDiePhysics(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)

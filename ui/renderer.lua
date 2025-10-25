@@ -338,14 +338,17 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     local progressionScale = domino.progressionScale or 1.0
     spriteScale = spriteScale * (domino.dragScale or 1.0) * (domino.selectScale or 1.0) * (domino.scoreScale or 1.0) * progressionScale
 
-    -- Draw shadow for all demon tiles (both hand and board)
-    -- Shadow offset: right and UP (light from bottom-left)
-    local shadowOpacity = 0.15
-    local shadowOffsetX = 5  -- Right
-    local shadowOffsetY = -5  -- UP (negative = up)
-    love.graphics.setColor(0, 0, 0, shadowOpacity)
-    love.graphics.draw(baseSprite, x + shadowOffsetX, y + shadowOffsetY, 0, spriteScale, spriteScale,
-        baseSprite:getWidth()/2, baseSprite:getHeight()/2)
+    -- Draw shadow for all demon tiles (unless explicitly skipped)
+    if not domino._skipShadow then
+        -- All tiles: vertical only (0, -5)
+        local shadowOpacity = 0.15
+        local shadowOffsetX = 0
+        local shadowOffsetY = -5
+
+        love.graphics.setColor(0, 0, 0, shadowOpacity)
+        love.graphics.draw(baseSprite, x + shadowOffsetX, y + shadowOffsetY, 0, spriteScale, spriteScale,
+            baseSprite:getWidth()/2, baseSprite:getHeight()/2)
+    end
 
     -- Draw base sprite
     love.graphics.setColor(1, 1, 1, 1)
@@ -384,6 +387,82 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     end
 
     love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Helper function to draw ONLY the shadow for a demon domino (for layered rendering)
+function UI.Renderer.drawDemonDominoShadow(domino, x, y, scale, orientation, dynamicScale)
+    scale = scale or gameState.screen.scale
+    orientation = orientation or "vertical"
+    dynamicScale = dynamicScale or 1.0
+
+    -- Use visual position if dragging or animating
+    if domino.isDragging or domino.isAnimating then
+        x = domino.visualX
+        y = domino.visualY
+    else
+        x = x or domino.x
+        y = y or domino.y
+    end
+
+    -- Apply scoring shake effect
+    if domino.scoreShake and domino.scoreShake > 0 then
+        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        x = x + shakeX
+        y = y + shakeY
+    end
+
+    -- Check if demon sprites are loaded
+    if not demonTileSprites then
+        return
+    end
+
+    -- Choose base sprite based on orientation
+    local baseSprite
+    if orientation == "horizontal" then
+        baseSprite = demonTileSprites.tilted
+    else
+        baseSprite = demonTileSprites.vertical
+    end
+
+    if not baseSprite then
+        return
+    end
+
+    -- Calculate sprite scaling based on screen size (same as regular tiles)
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    -- Apply dynamic scaling for board tiles
+    if dynamicScale < 1.0 then
+        spriteScale = spriteScale * dynamicScale
+    end
+
+    -- Apply drag scaling, selection scaling, and score scaling
+    local progressionScale = domino.progressionScale or 1.0
+    spriteScale = spriteScale * (domino.dragScale or 1.0) * (domino.selectScale or 1.0) * (domino.scoreScale or 1.0) * progressionScale
+
+    -- Draw shadow only
+    local shadowOpacity = 0.15
+    local shadowOffsetX = 0
+    local shadowOffsetY = -5
+
+    love.graphics.setColor(0, 0, 0, shadowOpacity)
+    love.graphics.draw(baseSprite, x + shadowOffsetX, y + shadowOffsetY, 0, spriteScale, spriteScale,
+        baseSprite:getWidth()/2, baseSprite:getHeight()/2)
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Helper function to draw ONLY the sprite (no shadow) for a demon domino
+function UI.Renderer.drawDemonDominoSprite(domino, x, y, scale, orientation, dynamicScale)
+    -- Use the main function but skip shadow rendering
+    local originalSkipShadow = domino._skipShadow
+    domino._skipShadow = true
+
+    UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicScale)
+
+    domino._skipShadow = originalSkipShadow  -- Restore
 end
 
 -- Helper function to draw numbers on X tiles (for values >= 10)
@@ -436,6 +515,118 @@ local function drawNumberOnXTile(domino, x, y, spriteScale, orientation, sprite)
             UI.Fonts.drawText(text, x, bottomY + bottomVerticalOffset, fontSize, color, "center")
         end
     end
+end
+
+-- Helper: Draw ONLY the shadow for a domino tile
+function UI.Renderer.drawDominoShadow(domino, x, y, scale, orientation, dynamicScale)
+    scale = scale or gameState.screen.scale
+    orientation = orientation or "vertical"
+    dynamicScale = dynamicScale or 1.0
+
+    -- Use visual position if dragging or animating
+    if domino.isDragging or domino.isAnimating then
+        x = domino.visualX
+        y = domino.visualY
+    else
+        x = x or domino.x
+        y = y or domino.y
+    end
+
+    -- Apply offsets (same as full draw)
+    if domino.selectOffset then
+        y = y + domino.selectOffset
+    end
+
+    if domino.idleFloatOffset and orientation == "vertical" then
+        y = y + domino.idleFloatOffset
+    end
+
+    if domino.scoreShake and domino.scoreShake > 0 then
+        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        x = x + shakeX
+        y = y + shakeY
+    end
+
+    -- Get sprite
+    local leftVal, rightVal = domino.left, domino.right
+    local spriteKey
+    local leftSpriteVal = leftVal
+    local rightSpriteVal = rightVal
+
+    if type(leftVal) == "number" and leftVal >= 10 then
+        leftSpriteVal = "x"
+    end
+    if type(rightVal) == "number" and rightVal >= 10 then
+        rightSpriteVal = "x"
+    end
+
+    if type(leftSpriteVal) == "string" or type(rightSpriteVal) == "string" then
+        spriteKey = leftSpriteVal .. rightSpriteVal
+    else
+        local minVal = math.min(leftSpriteVal, rightSpriteVal)
+        local maxVal = math.max(leftSpriteVal, rightSpriteVal)
+        spriteKey = minVal .. maxVal
+    end
+
+    local spriteData
+    if orientation == "horizontal" then
+        local tiltedKey = leftSpriteVal .. rightSpriteVal
+        spriteData = dominoTiltedSprites and dominoTiltedSprites[tiltedKey]
+    else
+        spriteData = dominoSprites and dominoSprites[spriteKey]
+    end
+
+    if spriteData and spriteData.sprite then
+        local sprite = spriteData.sprite
+        if sprite and sprite.getWidth and sprite.getHeight then
+            -- Calculate scaling (same as full draw)
+            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+            local spriteScale = math.max(minScale * 2.0, 1.0)
+
+            if dynamicScale < 1.0 then
+                spriteScale = spriteScale * dynamicScale
+            end
+
+            local progressionScale = domino.progressionScale or 1.0
+            spriteScale = spriteScale * (domino.dragScale or 1.0) * (domino.selectScale or 1.0) * (domino.scoreScale or 1.0) * progressionScale
+
+            local rotation = 0
+            local scaleX, scaleY = spriteScale, spriteScale
+
+            if orientation == "horizontal" and spriteData.flipped then
+                scaleX = -spriteScale
+            end
+
+            -- Calculate shadow offset
+            local shadowOffsetX = 0
+            local shadowOffsetY = -5
+
+            if orientation == "vertical" and domino.idleShadowOffset then
+                shadowOffsetX = 3 + domino.idleShadowOffset
+                shadowOffsetY = 3 + domino.idleShadowOffset
+            end
+
+            -- Draw ONLY shadow
+            local shadowOpacity = 0.15
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, x + shadowOffsetX, y + shadowOffsetY, rotation, scaleX, scaleY,
+                sprite:getWidth()/2, sprite:getHeight()/2)
+            love.graphics.setColor(1, 1, 1, 1)
+        end
+    end
+end
+
+-- Helper: Draw ONLY the sprite for a domino tile (no shadow)
+function UI.Renderer.drawDominoSprite(domino, x, y, scale, orientation, dynamicScale)
+    -- This is the same as drawDomino but without the shadow drawing code
+    -- We'll use the existing drawDomino but skip shadow by setting a flag
+    local originalSkipShadow = domino._skipShadow
+    domino._skipShadow = true
+
+    UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
+
+    domino._skipShadow = originalSkipShadow  -- Restore
 end
 
 function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
@@ -576,19 +767,51 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
                 end
             end
             
-            -- Draw shadow for tiles (both hand and board tiles)
-            local shouldDrawShadow = false
-            local shadowOffsetX = 5  -- Right
-            local shadowOffsetY = -5  -- UP (light from bottom-left)
+            -- Draw shadow for all tiles (unless explicitly skipped)
+            local shouldDrawShadow = not domino._skipShadow
+            local shadowOffsetX = 0
+            local shadowOffsetY = -5
 
             if orientation == "vertical" and domino.idleShadowOffset then
-                -- Hand tiles with idle animation (shadow goes down with idle float)
+                -- ONLY hand tiles with idle animation get diagonal shadow
                 shadowOffsetX = 3 + domino.idleShadowOffset
-                shadowOffsetY = 3 + domino.idleShadowOffset  -- Down for hand tiles
-                shouldDrawShadow = true
-            elseif orientation == "horizontal" then
-                -- Board tiles always get shadow (up and right)
-                shouldDrawShadow = true
+                shadowOffsetY = 3 + domino.idleShadowOffset
+            elseif domino.isPathTile then
+                -- Map path tiles get candle-based shadow with flicker
+                local flicker = UI.Animation.getShadowFlickerOffset()
+
+                -- Special handling for L-shaped paths - skip shadow for specific vertical tiles
+                if domino.orientation == "vertical" and domino.isLShapeCornerTile then
+                    local isUpDiagonal = domino.fromNode.path < domino.toNode.path
+
+                    -- For L-shaped paths going down: skip ALL vertical tiles
+                    -- For L-shaped paths going up: skip bottom vertical, show top vertical
+                    if not isUpDiagonal then
+                        -- Going down - skip shadow completely
+                        shouldDrawShadow = false
+                    elseif domino.isBottomVerticalTile then
+                        -- Going up - skip bottom vertical tile only
+                        shouldDrawShadow = false
+                    end
+                end
+
+                -- Determine shadow direction based on tile position relative to screen center (where candles are)
+                local screenCenterY = gameState.screen.height / 2
+                local tileY = y or domino.y
+
+                if tileY < screenCenterY then
+                    -- Tile is ABOVE center (above candles): light from below, shadow points DOWN
+                    shadowOffsetX = 0
+                    shadowOffsetY = -5 + flicker
+                else
+                    -- Tile is BELOW center (below candles): light from above, shadow points UP
+                    shadowOffsetX = 0
+                    shadowOffsetY = 5 + flicker
+                end
+            else
+                -- All other tiles (board, shop, fusion, etc.) - vertical shadow only
+                shadowOffsetX = 0
+                shadowOffsetY = -5
             end
 
             if shouldDrawShadow then
@@ -877,21 +1100,29 @@ function UI.Renderer.drawPlacedTiles()
     -- Get dynamic scale for board tiles
     local dynamicScale = Board.calculateDynamicScale()
 
-    -- Draw non-dragging placed tiles first
+    -- PASS 1: Draw ALL shadows first (behind all tiles)
     for i, domino in ipairs(gameState.placedTiles) do
         if not domino.isDragging then
-            -- Check if this is an anchor tile
             if domino.isAnchor then
-                -- Draw demon tile
-                UI.Renderer.drawDemonDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
+                UI.Renderer.drawDemonDominoShadow(domino, nil, nil, nil, domino.orientation, dynamicScale)
             else
-                -- Draw regular tile
-                UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
+                UI.Renderer.drawDominoShadow(domino, nil, nil, nil, domino.orientation, dynamicScale)
             end
         end
     end
 
-    -- Draw dragging placed tiles on top
+    -- PASS 2: Draw non-dragging tile sprites (on top of all shadows)
+    for i, domino in ipairs(gameState.placedTiles) do
+        if not domino.isDragging then
+            if domino.isAnchor then
+                UI.Renderer.drawDemonDominoSprite(domino, nil, nil, nil, domino.orientation, dynamicScale)
+            else
+                UI.Renderer.drawDominoSprite(domino, nil, nil, nil, domino.orientation, dynamicScale)
+            end
+        end
+    end
+
+    -- PASS 3: Draw dragging placed tiles on top (shadow + sprite)
     for i, domino in ipairs(gameState.placedTiles) do
         if domino.isDragging then
             if domino.isAnchor then

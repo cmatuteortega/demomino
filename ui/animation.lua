@@ -148,6 +148,29 @@ function UI.Animation.smoothStep(current, target, speed, dt)
     return current + distance * speed * dt
 end
 
+-- Simple Perlin-like noise function for shadow flicker
+-- Uses layered sine waves to create smooth, organic flickering
+local shadowFlickerTime = 0
+
+function UI.Animation.updateShadowFlicker(dt)
+    shadowFlickerTime = shadowFlickerTime + dt
+end
+
+function UI.Animation.getShadowFlickerOffset()
+    local time = shadowFlickerTime
+
+    -- Multiple sine waves at different frequencies create Perlin-like noise
+    local flicker1 = math.sin(time * 3.2) * 0.8   -- Fast flicker
+    local flicker2 = math.sin(time * 1.7) * 0.6   -- Medium speed variation
+    local flicker3 = math.sin(time * 0.9) * 1.2   -- Slow sway
+    local flicker4 = math.sin(time * 5.1) * 0.3   -- Very fast shimmer
+    local flicker5 = math.sin(time * 0.4) * 0.7   -- Very slow breathing
+
+    -- Combine all frequencies for realistic candle-like shadow movement
+    -- Range: approximately -2 to +2 pixels
+    return flicker1 + flicker2 + flicker3 + flicker4 + flicker5
+end
+
 local floatingTexts = {}
 
 function UI.Animation.createFloatingText(text, x, y, options)

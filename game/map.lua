@@ -1657,6 +1657,9 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     firstVerticalTile.x = firstVerticalTile.worldX
     firstVerticalTile.y = firstVerticalTile.worldY
 
+    -- Mark vertical tiles in L-shaped paths for special shadow handling
+    firstVerticalTile.isLShapeCornerTile = true
+
     -- Tile 4: Second vertical tile - positioned relative to the first vertical tile
     local secondVerticalTile = Domino.new(chainValues[4][1], chainValues[4][2])
     secondVerticalTile.isMapTile = true
@@ -1665,6 +1668,7 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     secondVerticalTile.fromNode = fromNode
     secondVerticalTile.toNode = toNode
     secondVerticalTile.visible = false -- Path tiles are hidden initially
+    secondVerticalTile.isLShapeCornerTile = true
 
     -- Position overlapping with the first vertical tile for better visual connection
     secondVerticalTile.worldX = firstVerticalTile.worldX
@@ -1672,9 +1676,13 @@ function Map.createDiagonalChain(fromNode, toNode, pathValues)
     if isUpDiagonal then
         -- For up diagonals: continue upward positioning (total 2 tile height offset)
         secondVerticalTile.worldY = firstVerticalTile.worldY - verticalHeight * 0.9
+        -- For up diagonals: first is top (show shadow), second is bottom (skip shadow)
+        secondVerticalTile.isBottomVerticalTile = true
     else
         -- For down diagonals: continue downward positioning (original behavior)
         secondVerticalTile.worldY = firstVerticalTile.worldY + verticalHeight * 0.9
+        -- For down diagonals: first is top (show shadow), second is bottom (skip shadow)
+        secondVerticalTile.isBottomVerticalTile = true
     end
     secondVerticalTile.x = secondVerticalTile.worldX
     secondVerticalTile.y = secondVerticalTile.worldY
