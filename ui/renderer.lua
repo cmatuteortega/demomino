@@ -338,6 +338,15 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     local progressionScale = domino.progressionScale or 1.0
     spriteScale = spriteScale * (domino.dragScale or 1.0) * (domino.selectScale or 1.0) * (domino.scoreScale or 1.0) * progressionScale
 
+    -- Draw shadow for all demon tiles (both hand and board)
+    -- Shadow offset: right and UP (light from bottom-left)
+    local shadowOpacity = 0.15
+    local shadowOffsetX = 5  -- Right
+    local shadowOffsetY = -5  -- UP (negative = up)
+    love.graphics.setColor(0, 0, 0, shadowOpacity)
+    love.graphics.draw(baseSprite, x + shadowOffsetX, y + shadowOffsetY, 0, spriteScale, spriteScale,
+        baseSprite:getWidth()/2, baseSprite:getHeight()/2)
+
     -- Draw base sprite
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(baseSprite, x, y, 0, spriteScale, spriteScale,
@@ -567,12 +576,25 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
                 end
             end
             
-            -- Draw subtle shadow for hand tiles
+            -- Draw shadow for tiles (both hand and board tiles)
+            local shouldDrawShadow = false
+            local shadowOffsetX = 5  -- Right
+            local shadowOffsetY = -5  -- UP (light from bottom-left)
+
             if orientation == "vertical" and domino.idleShadowOffset then
+                -- Hand tiles with idle animation (shadow goes down with idle float)
+                shadowOffsetX = 3 + domino.idleShadowOffset
+                shadowOffsetY = 3 + domino.idleShadowOffset  -- Down for hand tiles
+                shouldDrawShadow = true
+            elseif orientation == "horizontal" then
+                -- Board tiles always get shadow (up and right)
+                shouldDrawShadow = true
+            end
+
+            if shouldDrawShadow then
                 local shadowOpacity = 0.15
-                local shadowOffset = 2 + domino.idleShadowOffset
                 love.graphics.setColor(0, 0, 0, shadowOpacity)
-                love.graphics.draw(sprite, x + shadowOffset, y + shadowOffset, rotation, scaleX, scaleY,
+                love.graphics.draw(sprite, x + shadowOffsetX, y + shadowOffsetY, rotation, scaleX, scaleY,
                     sprite:getWidth()/2, sprite:getHeight()/2)
                 love.graphics.setColor(r, g, b, a)  -- Reset color for main sprite
             end
@@ -794,10 +816,25 @@ function UI.Renderer.drawToolSprites()
             -- Check if this tool is being dragged
             local isDragging = false
             if gameState.draggedTool and gameState.draggedTool.toolIndex == i then
-                -- Use dragged position
-                x = gameState.draggedTool.visualX
-                y = gameState.draggedTool.visualY
+                -- Use lagged visual position for smooth drag effect
+                x = gameState.draggedTool.lagVisualX or gameState.draggedTool.visualX
+                y = gameState.draggedTool.lagVisualY or gameState.draggedTool.visualY
                 isDragging = true
+            end
+
+            -- Draw shadow for dragged tools
+            if isDragging then
+                local shadowOpacity = 0.15
+                local shadowOffset = 5  -- Larger shadow for consistency
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(
+                    sprite,
+                    x + shadowOffset, y + shadowOffset,
+                    rotation,
+                    scale, scale,
+                    sprite:getWidth() / 2,
+                    sprite:getHeight() / 2
+                )
             end
 
             -- Draw the sprite
@@ -3620,6 +3657,42 @@ function UI.Renderer.drawFuseButton()
 
     -- Store button bounds
     gameState.fuseButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = canFuse}
+end
+
+-- Draw settled dice on the board (persistent after tool use)
+function UI.Renderer.drawActiveDieSprites()
+    if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
+        return
+    end
+
+    if not gameState.activeDieSprites or #gameState.activeDieSprites == 0 then
+        return
+    end
+
+    if not toolSprites then
+        return
+    end
+
+    -- Draw each settled die
+    for _, die in ipairs(gameState.activeDieSprites) do
+        local sprite = toolSprites[die.spriteType]
+        if sprite then
+            love.graphics.push()
+            love.graphics.translate(die.x, die.y)
+            love.graphics.rotate(die.rotation)
+
+            -- Draw shadow first (offset and semi-transparent)
+            local shadowOpacity = 0.15
+            local shadowOffset = 5  -- Larger shadow for consistency
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            -- Draw die sprite on top
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+            love.graphics.pop()
+        end
+    end
 end
 
 return UI.Renderer

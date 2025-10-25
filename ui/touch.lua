@@ -102,15 +102,31 @@ function Touch.update(dt)
     if touchState.isPressed then
         touchState.pressTime = touchState.pressTime + dt
     end
-    
+
     -- Update dragged tile visual position with lag effect
     if touchState.draggedTile and touchState.draggedTile.isDragging then
         local tile = touchState.draggedTile
         local dragSpeed = 10 -- Higher = less lag, lower = more lag
-        
+
         -- Update visual position to smoothly follow drag position
         tile.visualX = UI.Animation.smoothStep(tile.visualX, tile.dragX, dragSpeed, dt)
         tile.visualY = UI.Animation.smoothStep(tile.visualY, tile.dragY, dragSpeed, dt)
+    end
+
+    -- Update dragged tool visual position with lag effect
+    if gameState.draggedTool then
+        local tool = gameState.draggedTool
+        local dragSpeed = 10 -- Higher = less lag, lower = more lag
+
+        -- Initialize visual position on first frame if needed
+        if not tool.lagVisualX then
+            tool.lagVisualX = tool.visualX
+            tool.lagVisualY = tool.visualY
+        end
+
+        -- Update lagged visual position to smoothly follow actual position
+        tool.lagVisualX = UI.Animation.smoothStep(tool.lagVisualX, tool.visualX, dragSpeed, dt)
+        tool.lagVisualY = UI.Animation.smoothStep(tool.lagVisualY, tool.visualY, dragSpeed, dt)
     end
 end
 
@@ -1038,8 +1054,8 @@ function Touch.released(x, y, istouch, touchId)
         if Touch.isDragging() then
             -- Check if dropped over board area
             if isInBoardArea(x, y) then
-                -- Use the tool when dropped on board
-                Touch.useToolDirectly(gameState.draggedTool.toolId, gameState.draggedTool.toolIndex)
+                -- Start physics animation instead of instant use
+                Touch.startDiePhysicsAnimation(gameState.draggedTool, x, y)
             else
                 -- Dropped outside board - animate back to stack position
                 Touch.animateToolBackToStack(gameState.draggedTool.toolIndex)
@@ -1346,7 +1362,12 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                     toolIndex = toolIndex,
                     spriteType = spriteType,
                     visualX = x,
-                    visualY = y
+                    visualY = y,
+                    lastX = x,
+                    lastY = y,
+                    velocityX = 0,
+                    velocityY = 0,
+                    lastTime = love.timer.getTime()
                 }
 
                 -- Activate wobble animation when drag starts
@@ -1365,10 +1386,25 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
             end
         end
 
-        -- Update dragged tool position
+        -- Update dragged tool position and velocity
         if gameState.draggedTool then
+            local currentTime = love.timer.getTime()
+            local dt = currentTime - gameState.draggedTool.lastTime
+
+            -- Calculate velocity (pixels per second)
+            if dt > 0 then
+                local dx = x - gameState.draggedTool.lastX
+                local dy = y - gameState.draggedTool.lastY
+                gameState.draggedTool.velocityX = dx / dt
+                gameState.draggedTool.velocityY = dy / dt
+            end
+
+            -- Update position and tracking
             gameState.draggedTool.visualX = x
             gameState.draggedTool.visualY = y
+            gameState.draggedTool.lastX = x
+            gameState.draggedTool.lastY = y
+            gameState.draggedTool.lastTime = currentTime
         end
 
         -- Update drag position for dragged tile
@@ -2640,6 +2676,103 @@ function Touch.animateToolBackToStack(toolIndex)
 
     -- Deselect the tool
     gameState.toolStackAnimation.selectedToolIndex = nil
+end
+
+-- Start die physics animation when tool is dropped on board
+function Touch.startDiePhysicsAnimation(draggedTool, releaseX, releaseY)
+    -- Check if tool can be used before starting animation
+    local canUse, reason = Tools.canUse(draggedTool.toolId, gameState)
+
+    if not canUse then
+        -- Show error message
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText(reason:upper(), centerX, centerY - UI.Layout.scale(50), {
+            color = {0.9, 0.3, 0.3, 1},
+            fontSize = "medium",
+            duration = 1.2,
+            riseDistance = 30,
+            startScale = 0.8,
+            endScale = 1.1,
+            shake = 2,
+            easing = "easeOutQuart"
+        })
+
+        -- Animate tool back to stack
+        Touch.animateToolBackToStack(draggedTool.toolIndex)
+        return
+    end
+
+    -- Start physics animation with velocity from drag
+    -- Use lagged position for more impactful throw (sprite "snaps" forward when released)
+    local startX = draggedTool.lagVisualX or draggedTool.visualX or releaseX
+    local startY = draggedTool.lagVisualY or draggedTool.visualY or releaseY
+
+    -- Check if release position is in an invalid area (slow drag, not throw)
+    -- Only allow if they're throwing (has significant velocity)
+    local velocityX = draggedTool.velocityX or 0
+    local velocityY = draggedTool.velocityY or 0
+    local speed = math.sqrt(velocityX^2 + velocityY^2)
+    local minThrowSpeed = 100  -- Minimum speed to be considered a "throw"
+
+    -- If dragged slowly into invalid area, reject and animate back
+    if speed < minThrowSpeed then
+        -- Check if release position overlaps invalid areas using same logic as die placement
+        if UI.Animation.isPositionInvalid then
+            local dieRadius = 20  -- Approximate die size
+            if UI.Animation.isPositionInvalid(releaseX, releaseY, dieRadius) then
+                -- Invalid slow drag - animate tool back to stack
+                Touch.animateToolBackToStack(draggedTool.toolIndex)
+
+                -- Show error feedback
+                UI.Animation.createFloatingText("THROW IT!", releaseX, releaseY - 30, {
+                    color = {0.9, 0.3, 0.3, 1},
+                    fontSize = "medium",
+                    duration = 0.8,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+
+                -- Play cancel sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+
+                return
+            end
+        end
+    end
+
+    UI.Animation.createDiePhysics({
+        startX = startX,
+        startY = startY,
+        velocityX = velocityX,
+        velocityY = velocityY,
+        spriteType = draggedTool.spriteType,
+        toolId = draggedTool.toolId,
+        toolIndex = draggedTool.toolIndex,
+        onComplete = function(settledDie)
+            -- When die settles, execute the tool effect
+            Touch.useToolDirectly(draggedTool.toolId, draggedTool.toolIndex)
+
+            -- Add settled die to persistent board sprites
+            if not gameState.activeDieSprites then
+                gameState.activeDieSprites = {}
+            end
+
+            table.insert(gameState.activeDieSprites, {
+                x = settledDie.x,
+                y = settledDie.y,
+                rotation = settledDie.rotation,
+                scale = settledDie.scale,
+                spriteType = settledDie.spriteType,
+                toolId = settledDie.toolId
+            })
+        end
+    })
 end
 
 -- Collapse the tool tower (animate back to stacked state)

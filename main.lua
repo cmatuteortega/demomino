@@ -173,6 +173,7 @@ function love.load()
         },
         draggedTool = nil,  -- Currently dragged tool data {toolId, toolIndex, spriteType, visualX, visualY}
         toolSpritePositions = nil,  -- Animated positions during gravity {[index] = {visualX, visualY, scale}}
+        activeDieSprites = {},  -- Persistent dice on board {x, y, rotation, scale, spriteType, toolId}
         -- Win sequence tracking
         winSequenceTriggered = false,  -- Track if win sequence already started
         -- Title screen animation system
@@ -292,6 +293,7 @@ function initializeGame(isNewRound)
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
+    gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
         playButton = {scale = 1.0, pressed = false, yOffset = 0},
         discardButton = {scale = 1.0, pressed = false, yOffset = 0},
@@ -342,6 +344,7 @@ function initializeCombatRound()
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
     gameState.winSequenceTriggered = false  -- Reset win sequence flag
+    gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
         playButton = {scale = 1.0, pressed = false, yOffset = 0},
         discardButton = {scale = 1.0, pressed = false, yOffset = 0},
@@ -1172,6 +1175,7 @@ end
 function love.update(dt)
     Touch.update(dt)
     UI.Animation.update(dt)
+    UI.Animation.updateDiePhysics(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)
     updateCoinBreakdownAnimation(dt)
@@ -1235,6 +1239,8 @@ function love.draw()
         UI.Renderer.drawBackground()
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
+        UI.Animation.drawDiePhysics()  -- Draw flying/settling dice
+        UI.Renderer.drawActiveDieSprites()  -- Draw settled dice on board
         UI.Renderer.drawHand(gameState.hand)
         UI.Renderer.drawToolButtons()  -- Draw tool buttons
         UI.Renderer.drawScore(gameState.score)

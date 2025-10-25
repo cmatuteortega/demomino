@@ -28,6 +28,24 @@ local function easeOutElastic(t)
     end
 end
 
+local function easeOutBounce(t)
+    local n1 = 7.5625
+    local d1 = 2.75
+
+    if t < 1 / d1 then
+        return n1 * t * t
+    elseif t < 2 / d1 then
+        t = t - (1.5 / d1)
+        return n1 * t * t + 0.75
+    elseif t < 2.5 / d1 then
+        t = t - (2.25 / d1)
+        return n1 * t * t + 0.9375
+    else
+        t = t - (2.625 / d1)
+        return n1 * t * t + 0.984375
+    end
+end
+
 local function lerp(a, b, t)
     return a + (b - a) * t
 end
@@ -43,6 +61,8 @@ function UI.Animation.create(target, properties, duration, easing)
         easingFunc = easeOutElastic
     elseif easing == "easeInQuart" then
         easingFunc = easeInQuart
+    elseif easing == "easeOutBounce" then
+        easingFunc = easeOutBounce
     elseif easing == "linear" then
         easingFunc = function(t) return t end
     end
@@ -296,6 +316,450 @@ function UI.Animation.update(dt)
     end
 
     UI.Animation.updateFloatingTexts(dt)
+end
+
+-- Physics-based die trajectory animation (top-down pool ball style)
+local diePhysicsAnimations = {}
+
+-- Physics constants (module-level)
+local friction = 0.92   -- Velocity multiplier per frame (friction/drag)
+local wallBounce = 0.7  -- Energy retained on wall bounce (70%)
+local minVelocity = 20  -- Stop sliding below this speed
+local rotationSpeed = 0.008  -- radians per pixel moved
+
+-- Helper: Get all UI zones to avoid when placing dice
+local function getAvoidanceZones()
+    local zones = {}
+    local padding = 7  -- Extra space around obstacles (reduced from 20)
+
+    -- Top-left corner: Round counter and challenges (ADAPTIVE to actual text height)
+    local leftX = UI.Layout.scale(40)
+    local leftY = UI.Layout.scale(20)
+    local roundTextHeight = UI.Layout.scale(60)  -- Approximate height of round text + challenges
+
+    table.insert(zones, {
+        x = 0,
+        y = 0,
+        width = UI.Layout.scale(280),  -- Width to cover round name
+        height = roundTextHeight + leftY + UI.Layout.scale(20),  -- Adaptive to text
+        padding = padding
+    })
+
+    -- Top-right: Score and formula display (ADAPTIVE to score height)
+    local rightX = UI.Layout.scale(40)
+    local rightY = UI.Layout.scale(20)
+    local scoreHeight = UI.Layout.scale(100)  -- Score + formula height
+
+    table.insert(zones, {
+        x = gameState.screen.width - UI.Layout.scale(250),
+        y = 0,
+        width = UI.Layout.scale(250),
+        height = scoreHeight + rightY + UI.Layout.scale(20),  -- Adaptive to text
+        padding = padding
+    })
+
+    -- Central horizontal strip where tiles are placed (FULL WIDTH)
+    -- This prevents dice from landing in the tile play area
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY = UI.Layout.getBoardCenter()
+    local stripHeight = UI.Layout.scale(140)  -- Height of the tile zone
+    local stripOffsetUp = UI.Layout.scale(30)  -- Move the strip UP from center
+
+    table.insert(zones, {
+        x = 0,
+        y = centerY - stripHeight / 2 - stripOffsetUp,  -- Shifted up
+        width = gameState.screen.width,
+        height = stripHeight,
+        padding = padding
+    })
+
+    -- Second horizontal strip at actual tile position (if tiles exist)
+    -- This follows where tiles are actually placed on the board
+    if gameState.placedTiles and #gameState.placedTiles > 0 then
+        -- Get Y position from first placed tile (they all share same Y)
+        local tileY = gameState.placedTiles[1].y
+        local tileStripHeight = UI.Layout.scale(140)
+
+        table.insert(zones, {
+            x = 0,
+            y = tileY - tileStripHeight / 2,
+            width = gameState.screen.width,
+            height = tileStripHeight,
+            padding = padding
+        })
+    end
+
+    -- Hand area (bottom section)
+    local handArea = UI.Layout.getHandArea()
+    table.insert(zones, {
+        x = handArea.x,
+        y = handArea.y,
+        width = handArea.width,
+        height = handArea.height,
+        padding = padding
+    })
+
+    -- Tool stack (bottom-left)
+    local toolStackX, toolStackY = UI.Layout.getToolStackPosition()
+    if toolStackX and toolStackY then
+        table.insert(zones, {
+            x = toolStackX - 50,
+            y = toolStackY - 120,
+            width = 100,
+            height = 150,
+            padding = padding
+        })
+    end
+
+    return zones
+end
+
+-- Helper: Check if circle overlaps rectangle (with padding)
+local function checkOverlap(circleX, circleY, circleRadius, zone)
+    -- Expand zone by padding and circle radius
+    local expandedX = zone.x - zone.padding - circleRadius
+    local expandedY = zone.y - zone.padding - circleRadius
+    local expandedWidth = zone.width + (zone.padding + circleRadius) * 2
+    local expandedHeight = zone.height + (zone.padding + circleRadius) * 2
+
+    -- Simple AABB check (circle center inside expanded rectangle)
+    return circleX >= expandedX and circleX <= expandedX + expandedWidth and
+           circleY >= expandedY and circleY <= expandedY + expandedHeight
+end
+
+-- Public function: Check if a position is in an invalid area (for drag validation)
+function UI.Animation.isPositionInvalid(x, y, radius)
+    local zones = getAvoidanceZones()
+    for _, zone in ipairs(zones) do
+        if checkOverlap(x, y, radius, zone) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper: Find nearest safe position away from obstacles
+local function findNearestSafePosition(dieX, dieY, dieRadius, boardArea)
+    local avoidanceZones = getAvoidanceZones()
+
+    -- Check if current position overlaps anything
+    local hasOverlap = false
+    for _, zone in ipairs(avoidanceZones) do
+        if checkOverlap(dieX, dieY, dieRadius, zone) then
+            hasOverlap = true
+            break
+        end
+    end
+
+    if not hasOverlap then
+        return dieX, dieY, false  -- No adjustment needed
+    end
+
+    -- Test positions in expanding circles with more aggressive search
+    local testAngles = 24  -- More directions for better coverage
+    local testDistances = {15, 30, 50, 75, 100, 125, 150}  -- Wider search range
+
+    for _, distance in ipairs(testDistances) do
+        for i = 0, testAngles - 1 do
+            local angle = (i / testAngles) * math.pi * 2
+            local testX = dieX + math.cos(angle) * distance
+            local testY = dieY + math.sin(angle) * distance
+
+            -- Check if test position is within board bounds
+            local halfWidth = dieRadius
+            local halfHeight = dieRadius
+            if testX - halfWidth >= boardArea.x and
+               testX + halfWidth <= boardArea.x + boardArea.width and
+               testY - halfHeight >= boardArea.y and
+               testY + halfHeight <= boardArea.y + boardArea.height then
+
+                -- Check if this position is clear of all obstacles
+                local isClear = true
+                for _, zone in ipairs(avoidanceZones) do
+                    if checkOverlap(testX, testY, dieRadius, zone) then
+                        isClear = false
+                        break
+                    end
+                end
+
+                if isClear then
+                    return testX, testY, true  -- Found safe position
+                end
+            end
+        end
+    end
+
+    -- If no safe position found, return original (shouldn't happen often)
+    return dieX, dieY, false
+end
+
+function UI.Animation.createDiePhysics(options)
+    -- options: startX, startY, velocityX, velocityY, spriteType, toolId, toolIndex, onComplete
+    local boardArea = UI.Layout.getBoardArea()
+
+    -- Calculate target rotation (110-140 degrees left/counter-clockwise from start)
+    local targetRotationDegrees = love.math.random(110, 140)
+    local targetRotation = -math.rad(targetRotationDegrees)  -- Negative for counter-clockwise
+
+    local dieAnim = {
+        x = options.startX,
+        y = options.startY,
+        velocityX = options.velocityX or 0,
+        velocityY = options.velocityY or 0,
+        rotation = 0,
+        targetRotation = targetRotation,
+        scale = 1.0,
+        spriteType = options.spriteType,
+        toolId = options.toolId,
+        toolIndex = options.toolIndex,
+        elapsed = 0,
+        settled = false,
+        onComplete = options.onComplete,
+        boardArea = boardArea
+    }
+
+    table.insert(diePhysicsAnimations, dieAnim)
+    return dieAnim
+end
+
+function UI.Animation.updateDiePhysics(dt)
+    for i = #diePhysicsAnimations, 1, -1 do
+        local die = diePhysicsAnimations[i]
+
+        if not die.settled then
+            -- Apply friction (top-down pool ball physics)
+            die.velocityX = die.velocityX * friction
+            die.velocityY = die.velocityY * friction
+
+            -- Calculate velocity magnitude
+            local velocityMagnitude = math.sqrt(die.velocityX^2 + die.velocityY^2)
+
+            -- Update position based on velocity
+            die.x = die.x + die.velocityX * dt
+            die.y = die.y + die.velocityY * dt
+
+            -- Rotate die based on distance traveled (rolling motion)
+            local distanceTraveled = velocityMagnitude * dt
+            local rotationIncrement = distanceTraveled * rotationSpeed
+
+            -- Interpolate toward target rotation as die slows down
+            local rotationProgress = 1 - (velocityMagnitude / 500)  -- 0 at fast speeds, 1 when stopped
+            rotationProgress = math.max(0, math.min(1, rotationProgress))  -- Clamp 0-1
+
+            -- Mix rolling rotation with target rotation
+            local rollingRotation = die.rotation + rotationIncrement
+            die.rotation = lerp(rollingRotation, die.targetRotation, rotationProgress * 0.1)
+
+            -- Animate scale reduction during slide (1.0 → 0.85)
+            local targetScale = 0.9
+            if die.scale > targetScale then
+                die.scale = math.max(targetScale, die.scale - 0.5 * dt)
+            end
+
+            -- Get sprite dimensions for collision
+            local spriteWidth = 32
+            local spriteHeight = 32
+            if toolSprites and toolSprites[die.spriteType] then
+                spriteWidth = toolSprites[die.spriteType]:getWidth() * die.scale
+                spriteHeight = toolSprites[die.spriteType]:getHeight() * die.scale
+            end
+
+            local halfWidth = spriteWidth / 2
+            local halfHeight = spriteHeight / 2
+
+            -- Wall collisions with bounce (like pool table cushions)
+            local bounced = false
+
+            -- Left wall
+            if die.x - halfWidth < die.boardArea.x then
+                die.x = die.boardArea.x + halfWidth
+                die.velocityX = math.abs(die.velocityX) * wallBounce
+                bounced = true
+            end
+
+            -- Right wall
+            if die.x + halfWidth > die.boardArea.x + die.boardArea.width then
+                die.x = die.boardArea.x + die.boardArea.width - halfWidth
+                die.velocityX = -math.abs(die.velocityX) * wallBounce
+                bounced = true
+            end
+
+            -- Top wall
+            if die.y - halfHeight < die.boardArea.y then
+                die.y = die.boardArea.y + halfHeight
+                die.velocityY = math.abs(die.velocityY) * wallBounce
+                bounced = true
+            end
+
+            -- Bottom wall
+            if die.y + halfHeight > die.boardArea.y + die.boardArea.height then
+                die.y = die.boardArea.y + die.boardArea.height - halfHeight
+                die.velocityY = -math.abs(die.velocityY) * wallBounce
+                bounced = true
+            end
+
+            -- Play bounce sound on impact
+            if bounced and UI.Audio and UI.Audio.playTilePlaced then
+                UI.Audio.playTilePlaced()
+            end
+
+            -- Check if settled (velocity below threshold)
+            if velocityMagnitude < minVelocity then
+                -- First, ensure die is within basic bounds
+                die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
+                die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
+
+                -- Check for overlaps and find safe position
+                local dieRadius = math.max(halfWidth, halfHeight)
+                local adjustedX, adjustedY, wasAdjusted = findNearestSafePosition(die.x, die.y, dieRadius, die.boardArea)
+
+                -- If position needed adjustment, animate to safe position
+                if wasAdjusted then
+                    -- Mark as adjusting (not fully settled yet)
+                    die.isAdjusting = true
+                    die.adjustStartX = die.x
+                    die.adjustStartY = die.y
+                    die.adjustTargetX = adjustedX
+                    die.adjustTargetY = adjustedY
+                    die.adjustProgress = 0
+                    die.adjustDuration = 0.2  -- 200ms smooth slide
+                    die.velocityX = 0
+                    die.velocityY = 0
+                else
+                    -- No adjustment needed, settle immediately
+                    die.settled = true
+                    die.velocityX = 0
+                    die.velocityY = 0
+                    die.rotation = die.targetRotation  -- Snap to target rotation
+
+                    -- Trigger completion callback
+                    if die.onComplete then
+                        die.onComplete(die)
+                    end
+
+                    -- Remove from physics animations
+                    table.remove(diePhysicsAnimations, i)
+                end
+            end
+
+            -- Handle position adjustment animation
+            if die.isAdjusting then
+                die.adjustProgress = die.adjustProgress + dt
+
+                if die.adjustProgress >= die.adjustDuration then
+                    -- Adjustment complete, settle at final position
+                    die.x = die.adjustTargetX
+                    die.y = die.adjustTargetY
+                    die.settled = true
+                    die.isAdjusting = false
+                    die.rotation = die.targetRotation
+
+                    -- Trigger completion callback
+                    if die.onComplete then
+                        die.onComplete(die)
+                    end
+
+                    -- Remove from physics animations
+                    table.remove(diePhysicsAnimations, i)
+                else
+                    -- Animate position with smooth easing
+                    local t = die.adjustProgress / die.adjustDuration
+                    local easedT = easeOutQuart(t)  -- Smooth deceleration
+                    die.x = lerp(die.adjustStartX, die.adjustTargetX, easedT)
+                    die.y = lerp(die.adjustStartY, die.adjustTargetY, easedT)
+                    die.rotation = lerp(die.rotation, die.targetRotation, easedT * 0.5)
+                end
+            end
+
+            die.elapsed = die.elapsed + dt
+        end
+    end
+end
+
+function UI.Animation.drawDiePhysics()
+    for _, die in ipairs(diePhysicsAnimations) do
+        local sprite = toolSprites and toolSprites[die.spriteType]
+        if sprite then
+            love.graphics.push()
+            love.graphics.translate(die.x, die.y)
+            love.graphics.rotate(die.rotation)
+
+            -- Draw shadow first (offset and semi-transparent)
+            local shadowOpacity = 0.15
+            local shadowOffset = 5  -- Larger shadow for consistency
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            -- Draw die sprite on top
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+            love.graphics.pop()
+        end
+    end
+end
+
+-- Debug: Draw avoidance zones (for manual tweaking)
+function UI.Animation.drawDebugAvoidanceZones()
+    local zones = getAvoidanceZones()
+
+    -- Draw each zone with semi-transparent overlay
+    for i, zone in ipairs(zones) do
+        -- Determine color based on zone type
+        local r, g, b, a
+        if i == 1 then
+            -- Top-left (round counter) - ADAPTIVE
+            r, g, b, a = 1, 0, 0, 0.3  -- Red
+        elseif i == 2 then
+            -- Top-right (score) - ADAPTIVE
+            r, g, b, a = 0, 0, 1, 0.3  -- Blue
+        elseif i == 3 then
+            -- Central horizontal strip (tile play area)
+            r, g, b, a = 1, 1, 0, 0.25  -- Yellow
+        else
+            -- Hand area and tool stack
+            r, g, b, a = 1, 0, 1, 0.3  -- Magenta
+        end
+
+        -- Draw filled rectangle
+        love.graphics.setColor(r, g, b, a)
+        love.graphics.rectangle("fill", zone.x, zone.y, zone.width, zone.height)
+
+        -- Draw border
+        love.graphics.setColor(r, g, b, 0.8)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", zone.x, zone.y, zone.width, zone.height)
+
+        -- Draw padding area (expanded zone)
+        love.graphics.setColor(r, g, b, 0.15)
+        love.graphics.rectangle("line",
+            zone.x - zone.padding,
+            zone.y - zone.padding,
+            zone.width + zone.padding * 2,
+            zone.height + zone.padding * 2)
+    end
+
+    -- Draw legend in bottom-right corner
+    love.graphics.setColor(0, 0, 0, 0.7)
+    local legendX = gameState.screen.width - 200
+    local legendY = gameState.screen.height - 150
+    love.graphics.rectangle("fill", legendX - 10, legendY - 10, 210, 160)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    local font = love.graphics.getFont()
+    love.graphics.print("DEBUG: Avoidance Zones", legendX, legendY)
+    love.graphics.setColor(1, 0, 0, 1)
+    love.graphics.print("■ Top-Left (Adaptive)", legendX, legendY + 20)
+    love.graphics.setColor(0, 0, 1, 1)
+    love.graphics.print("■ Top-Right (Adaptive)", legendX, legendY + 40)
+    love.graphics.setColor(1, 1, 0, 1)
+    love.graphics.print("■ Center Strip (Tiles)", legendX, legendY + 60)
+    love.graphics.setColor(1, 0, 1, 1)
+    love.graphics.print("■ Hand/Tools", legendX, legendY + 80)
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.print("Dashed = Padding", legendX, legendY + 100)
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 return UI.Animation
