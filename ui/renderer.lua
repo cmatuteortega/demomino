@@ -3216,87 +3216,72 @@ function UI.Renderer.drawMapFogOverlay(map)
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
-    -- Calculate the x-position threshold where fog starts (current node depth + 2 levels)
-    local currentDepth = map.currentNode.depth
-    local fogStartDepth = currentDepth + 2  -- Fog starts 2 levels ahead
+    -- TWEAK THIS: Light radius around each lit candle
+    local lightRadius = UI.Layout.scale(400)
 
-    -- Get the x-position of nodes at the fog start depth
-    local fogStartX = nil
-    if map.levels[fogStartDepth] and #map.levels[fogStartDepth] > 0 then
-        -- Use the leftmost node at this depth as the fog start point
-        fogStartX = map.levels[fogStartDepth][1].x
-    else
-        -- If there are no nodes at that depth, use a position based on camera
-        -- Estimate based on node spacing
-        local marginX = UI.Layout.scale(60)
-        local levelSpacing = UI.Layout.scale(140)
-        fogStartX = marginX + (fogStartDepth - 1) * levelSpacing - map.cameraX
+    -- Add realistic candle flicker using layered sine waves (Perlin-like noise)
+    local time = love.timer.getTime()
+
+    -- Multiple sine waves at different frequencies create irregular flicker
+    local flicker1 = math.sin(time * 3.2) * 6       -- Fast, sharp flicker
+    local flicker2 = math.sin(time * 1.7) * 4       -- Medium speed variation
+    local flicker3 = math.sin(time * 0.9) * 8       -- Slow sway
+    local flicker4 = math.sin(time * 5.1) * 2       -- Very fast shimmer
+    local flicker5 = math.sin(time * 0.4) * 5       -- Very slow breathing
+
+    -- Combine all frequencies for realistic candle-like movement
+    local totalFlicker = flicker1 + flicker2 + flicker3 + flicker4 + flicker5
+
+    -- Draw fog as individual rectangles/pixels, skipping areas lit by candles
+    -- This creates "light holes" around each lit candle
+    local pixelSize = 4  -- Size of fog "pixels" for performance
+
+    -- Collect all lit candle positions for distance checks
+    local litCandles = {}
+    if map.candles and #map.candles > 0 then
+        for _, candle in ipairs(map.candles) do
+            if candle.lit then
+                table.insert(litCandles, {
+                    x = candle.x - map.cameraX,
+                    y = candle.y
+                })
+            end
+        end
     end
 
-    -- Only draw fog if the fog zone is visible on screen
-    if fogStartX and fogStartX < screenWidth then
-        -- Draw gradient overlay with concave (curved) shape
-        -- The gradient transitions from fully transparent (left) to fully dark (right)
-        local gradientWidth = UI.Layout.scale(300)  -- Width of gradient transition zone
-        local numVerticalSlices = 100  -- Higher number = smoother curve
+    -- Draw fog with holes cut out around lit candles
+    for y = 0, screenHeight, pixelSize do
+        for x = 0, screenWidth, pixelSize do
+            -- Check distance to all lit candles
+            local minDistance = math.huge
+            for _, candle in ipairs(litCandles) do
+                local dx = x - candle.x
+                local dy = y - candle.y
+                local distance = math.sqrt(dx * dx + dy * dy)
+                minDistance = math.min(minDistance, distance)
+            end
 
-        -- Add realistic candle flicker using layered sine waves (Perlin-like noise)
-        local time = love.timer.getTime()
+            -- Apply flicker to the light radius check
+            local flickeringRadius = lightRadius + totalFlicker
 
-        -- Multiple sine waves at different frequencies create irregular flicker
-        local flicker1 = math.sin(time * 3.2) * 6       -- Fast, sharp flicker
-        local flicker2 = math.sin(time * 1.7) * 4       -- Medium speed variation
-        local flicker3 = math.sin(time * 0.9) * 8       -- Slow sway
-        local flicker4 = math.sin(time * 5.1) * 2       -- Very fast shimmer
-        local flicker5 = math.sin(time * 0.4) * 5       -- Very slow breathing
+            -- Calculate fog opacity based on distance to nearest lit candle
+            local fogAlpha = 1.0
+            if minDistance < flickeringRadius then
+                -- Inside light radius: fade from transparent (center) to opaque (edge)
+                local normalizedDistance = minDistance / flickeringRadius
+                -- Use inverse square falloff for realistic light
+                fogAlpha = normalizedDistance * normalizedDistance
+            end
 
-        -- Combine all frequencies for realistic candle-like movement
-        local totalFlicker = flicker1 + flicker2 + flicker3 + flicker4 + flicker5
-
-        -- Calculate center Y for the concave curve with flickering depth
-        local centerY = screenHeight / 2
-        local baseCurveDepth = UI.Layout.scale(80)  -- Base curve depth
-        local curveDepth = baseCurveDepth + totalFlicker  -- Animated curve depth with candle flicker
-
-        for sliceY = 0, numVerticalSlices do
-            local yProgress = sliceY / numVerticalSlices
-            local currentY = (yProgress * screenHeight)
-            local nextY = ((sliceY + 1) / numVerticalSlices) * screenHeight
-
-            -- Calculate horizontal offset for concave curve
-            -- Use cosine curve: centerY has max offset, top/bottom have less offset
-            local normalizedY = (currentY - centerY) / (screenHeight / 2)  -- -1 to 1
-            local curveOffset = math.cos(normalizedY * math.pi / 2) * curveDepth  -- Concave bulge
-
-            -- Draw horizontal gradient strips for this Y slice
-            local numGradientSteps = 40
-            for i = 0, numGradientSteps do
-                local progress = i / numGradientSteps
-
-                -- Apply curve offset to x position (more offset in center, less at edges)
-                local stripX = fogStartX + (progress * gradientWidth) + curveOffset
-
-                -- Calculate darkness based on position in gradient
-                local darkness = progress
-
-                -- Draw a rectangle for this gradient step
-                local stripWidth = (gradientWidth / numGradientSteps) + 2  -- +2 to avoid gaps
-                local stripHeight = (screenHeight / numVerticalSlices) + 2  -- +2 to avoid gaps
-
+            -- Draw fog pixel if it has opacity
+            if fogAlpha > 0.05 then
                 love.graphics.setColor(
                     UI.Colors.OUTLINE[1],
                     UI.Colors.OUTLINE[2],
                     UI.Colors.OUTLINE[3],
-                    darkness  -- Alpha controls darkness intensity
+                    fogAlpha * 0.95
                 )
-                love.graphics.rectangle("fill", stripX, currentY, stripWidth, stripHeight)
-            end
-
-            -- Draw solid darkness beyond the gradient for this Y slice
-            local solidDarkX = fogStartX + gradientWidth + curveOffset
-            if solidDarkX < screenWidth then
-                love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1.0)
-                love.graphics.rectangle("fill", solidDarkX, currentY, screenWidth - solidDarkX, (screenHeight / numVerticalSlices) + 2)
+                love.graphics.rectangle("fill", x, y, pixelSize, pixelSize)
             end
         end
     end
