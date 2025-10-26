@@ -192,7 +192,7 @@ function love.load()
 
     -- Load CRT shader and create render canvas with depth/stencil support for fog of war
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
-    mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0, dpiscale = 1})
+    mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -1353,7 +1353,7 @@ function love.resize(w, h)
     if mainCanvas then
         mainCanvas:release()
     end
-    mainCanvas = love.graphics.newCanvas(w, h, {format = "rgba8", readable = true, msaa = 0, dpiscale = 1})
+    mainCanvas = love.graphics.newCanvas(w, h, {format = "rgba8", readable = true, msaa = 0})
     
     UI.Fonts.recalculate()
     
