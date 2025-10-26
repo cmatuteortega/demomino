@@ -436,12 +436,18 @@ local function getAvoidanceZones()
 
     -- Previously thrown dice (to prevent overlapping)
     for _, die in ipairs(diePhysicsAnimations) do
-        if die.settled then
-            -- Create avoidance zone around settled dice
+        -- Include settled dice AND dice that are adjusting position
+        -- This prevents new dice from being placed where another die is moving to
+        if die.settled or die.isAdjusting then
             local dieSize = UI.Layout.scale(50)  -- Approximate die size
+
+            -- Use target position if adjusting, current position if settled
+            local posX = die.isAdjusting and die.adjustTargetX or die.x
+            local posY = die.isAdjusting and die.adjustTargetY or die.y
+
             table.insert(zones, {
-                x = die.x - dieSize / 2,
-                y = die.y - dieSize / 2,
+                x = posX - dieSize / 2,
+                y = posY - dieSize / 2,
                 width = dieSize,
                 height = dieSize,
                 padding = padding

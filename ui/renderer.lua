@@ -3376,17 +3376,15 @@ function UI.Renderer.getMapTileHighlight(map, tile)
                 color = {0.2, 1, 0.3, 1}
             }
         elseif isCompleted then
-            -- Completed nodes - cool blue with subtle glow
-            local softGlow = math.sin(time * 1.5) * 0.1
+            -- Completed nodes - cool blue (static)
             return {
-                glow = 0.15 + softGlow,
+                glow = 0.15,
                 color = {0.6, 0.8, 1, 1}
             }
         else
-            -- Locked nodes - desaturated with very dim pulse
-            local dimPulse = math.sin(time * 1) * 0.05
+            -- Locked nodes - desaturated (static)
             return {
-                glow = dimPulse,
+                glow = 0,
                 color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.7}
             }
         end
