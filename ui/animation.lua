@@ -434,6 +434,21 @@ local function getAvoidanceZones()
         })
     end
 
+    -- Previously thrown dice (to prevent overlapping)
+    for _, die in ipairs(diePhysicsAnimations) do
+        if die.settled then
+            -- Create avoidance zone around settled dice
+            local dieSize = UI.Layout.scale(50)  -- Approximate die size
+            table.insert(zones, {
+                x = die.x - dieSize / 2,
+                y = die.y - dieSize / 2,
+                width = dieSize,
+                height = dieSize,
+                padding = padding
+            })
+        end
+    end
+
     return zones
 end
 

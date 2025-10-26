@@ -1367,7 +1367,9 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                     lastY = y,
                     velocityX = 0,
                     velocityY = 0,
-                    lastTime = love.timer.getTime()
+                    lastTime = love.timer.getTime(),
+                    -- Track last N positions for trajectory calculation
+                    positionHistory = {{x = x, y = y, time = love.timer.getTime()}}
                 }
 
                 -- Activate wobble animation when drag starts
@@ -1391,17 +1393,33 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
             local currentTime = love.timer.getTime()
             local dt = currentTime - gameState.draggedTool.lastTime
 
-            -- Calculate velocity (pixels per second)
-            if dt > 0 then
-                local dx = x - gameState.draggedTool.lastX
-                local dy = y - gameState.draggedTool.lastY
+            -- Track position history for smoother trajectory calculation
+            table.insert(gameState.draggedTool.positionHistory, {x = x, y = y, time = currentTime})
 
-                -- Mobile devices have faster touch sampling, so scale down velocity
-                local isMobile = love.system.getOS() == "Android" or love.system.getOS() == "iOS"
-                local velocityScale = isMobile and 0.35 or 1.0
+            -- Keep only last 8 samples (covers ~133ms at 60fps, ~66ms at 120fps)
+            local maxSamples = 8
+            while #gameState.draggedTool.positionHistory > maxSamples do
+                table.remove(gameState.draggedTool.positionHistory, 1)
+            end
 
-                gameState.draggedTool.velocityX = (dx / dt) * velocityScale
-                gameState.draggedTool.velocityY = (dy / dt) * velocityScale
+            -- Calculate average velocity over entire trajectory
+            local history = gameState.draggedTool.positionHistory
+            if #history >= 2 then
+                local oldest = history[1]
+                local newest = history[#history]
+                local totalDt = newest.time - oldest.time
+
+                if totalDt > 0 then
+                    local totalDx = newest.x - oldest.x
+                    local totalDy = newest.y - oldest.y
+
+                    -- Mobile devices have faster touch sampling, so scale down velocity
+                    local isMobile = love.system.getOS() == "Android" or love.system.getOS() == "iOS"
+                    local velocityScale = isMobile and 1.0 or 1.0
+
+                    gameState.draggedTool.velocityX = (totalDx / totalDt) * velocityScale
+                    gameState.draggedTool.velocityY = (totalDy / totalDt) * velocityScale
+                end
             end
 
             -- Update position and tracking
