@@ -1395,8 +1395,13 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
             if dt > 0 then
                 local dx = x - gameState.draggedTool.lastX
                 local dy = y - gameState.draggedTool.lastY
-                gameState.draggedTool.velocityX = dx / dt
-                gameState.draggedTool.velocityY = dy / dt
+
+                -- Mobile devices have faster touch sampling, so scale down velocity
+                local isMobile = love.system.getOS() == "Android" or love.system.getOS() == "iOS"
+                local velocityScale = isMobile and 0.35 or 1.0
+
+                gameState.draggedTool.velocityX = (dx / dt) * velocityScale
+                gameState.draggedTool.velocityY = (dy / dt) * velocityScale
             end
 
             -- Update position and tracking
