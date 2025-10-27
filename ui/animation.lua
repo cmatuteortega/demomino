@@ -559,7 +559,8 @@ function UI.Animation.createDiePhysics(options)
         elapsed = 0,
         settled = false,
         onComplete = options.onComplete,
-        boardArea = boardArea
+        boardArea = boardArea,
+        settlementStartTime = nil  -- Track when die first reaches low velocity for timeout
     }
 
     table.insert(diePhysicsAnimations, dieAnim)
@@ -649,69 +650,113 @@ function UI.Animation.updateDiePhysics(dt)
 
             -- Check if settled (velocity below threshold)
             if velocityMagnitude < minVelocity then
-                -- First, ensure die is within basic bounds
-                die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
-                die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
+                -- Mark settlement start time on first frame below threshold
+                if not die.settlementStartTime then
+                    die.settlementStartTime = die.elapsed
+                end
 
-                -- Check for overlaps and find safe position
-                local dieRadius = math.max(halfWidth, halfHeight)
-                local adjustedX, adjustedY, wasAdjusted = findNearestSafePosition(die.x, die.y, dieRadius, die.boardArea)
+                -- Calculate time spent trying to settle
+                local settlementDuration = die.elapsed - die.settlementStartTime
+                local settlementTimeout = 0.2 -- Force settlement after 0.5 seconds
 
-                -- If position needed adjustment, animate to safe position
-                if wasAdjusted then
-                    -- Mark as adjusting (not fully settled yet)
-                    die.isAdjusting = true
-                    die.adjustStartX = die.x
-                    die.adjustStartY = die.y
-                    die.adjustTargetX = adjustedX
-                    die.adjustTargetY = adjustedY
-                    die.adjustProgress = 0
-                    die.adjustDuration = 0.2  -- 200ms smooth slide
-                    die.velocityX = 0
-                    die.velocityY = 0
-                else
-                    -- No adjustment needed, settle immediately
+                -- If timeout exceeded, force settlement immediately at current position
+                if settlementDuration >= settlementTimeout then
+                    -- Force settle at current position (ignore overlaps)
+                    die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
+                    die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
+
                     die.settled = true
                     die.velocityX = 0
                     die.velocityY = 0
-                    die.rotation = die.targetRotation  -- Snap to target rotation
+                    die.rotation = die.targetRotation
+                    die.isAdjusting = false  -- Cancel any adjustment
 
-                    -- Trigger completion callback
                     if die.onComplete then
                         die.onComplete(die)
                     end
+                else
+                    -- Normal settlement logic (try to find safe position)
+                    -- First, ensure die is within basic bounds
+                    die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
+                    die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
 
-                    -- Don't remove from physics animations yet - keep it visible on board
-                    -- It will be removed when it starts animating to hand
+                    -- Check for overlaps and find safe position
+                    local dieRadius = math.max(halfWidth, halfHeight)
+                    local adjustedX, adjustedY, wasAdjusted = findNearestSafePosition(die.x, die.y, dieRadius, die.boardArea)
+
+                    -- If position needed adjustment, animate to safe position
+                    if wasAdjusted then
+                        -- Mark as adjusting (not fully settled yet)
+                        die.isAdjusting = true
+                        die.adjustStartX = die.x
+                        die.adjustStartY = die.y
+                        die.adjustTargetX = adjustedX
+                        die.adjustTargetY = adjustedY
+                        die.adjustProgress = 0
+                        die.adjustDuration = 0.2  -- 200ms smooth slide
+                        die.velocityX = 0
+                        die.velocityY = 0
+                    else
+                        -- No adjustment needed, settle immediately
+                        die.settled = true
+                        die.velocityX = 0
+                        die.velocityY = 0
+                        die.rotation = die.targetRotation  -- Snap to target rotation
+
+                        -- Trigger completion callback
+                        if die.onComplete then
+                            die.onComplete(die)
+                        end
+
+                        -- Don't remove from physics animations yet - keep it visible on board
+                        -- It will be removed when it starts animating to hand
+                    end
                 end
             end
 
             -- Handle position adjustment animation
             if die.isAdjusting then
-                die.adjustProgress = die.adjustProgress + dt
+                -- Check timeout during adjustment as well
+                local settlementDuration = die.elapsed - (die.settlementStartTime or die.elapsed)
+                local settlementTimeout = 0.5
 
-                if die.adjustProgress >= die.adjustDuration then
-                    -- Adjustment complete, settle at final position
-                    die.x = die.adjustTargetX
-                    die.y = die.adjustTargetY
+                if settlementDuration >= settlementTimeout then
+                    -- Timeout during adjustment - force settle at current position
                     die.settled = true
                     die.isAdjusting = false
+                    die.velocityX = 0
+                    die.velocityY = 0
                     die.rotation = die.targetRotation
 
-                    -- Trigger completion callback
                     if die.onComplete then
                         die.onComplete(die)
                     end
-
-                    -- Don't remove from physics animations yet - keep it visible on board
-                    -- It will be removed when it starts animating to hand
                 else
-                    -- Animate position with smooth easing
-                    local t = die.adjustProgress / die.adjustDuration
-                    local easedT = easeOutQuart(t)  -- Smooth deceleration
-                    die.x = lerp(die.adjustStartX, die.adjustTargetX, easedT)
-                    die.y = lerp(die.adjustStartY, die.adjustTargetY, easedT)
-                    die.rotation = lerp(die.rotation, die.targetRotation, easedT * 0.5)
+                    die.adjustProgress = die.adjustProgress + dt
+
+                    if die.adjustProgress >= die.adjustDuration then
+                        -- Adjustment complete, settle at final position
+                        die.x = die.adjustTargetX
+                        die.y = die.adjustTargetY
+                        die.settled = true
+                        die.isAdjusting = false
+                        die.rotation = die.targetRotation
+
+                        -- Trigger completion callback
+                        if die.onComplete then
+                            die.onComplete(die)
+                        end
+
+                        -- Don't remove from physics animations yet - keep it visible on board
+                        -- It will be removed when it starts animating to hand
+                    else
+                        -- Animate position with smooth easing
+                        local t = die.adjustProgress / die.adjustDuration
+                        local easedT = easeOutQuart(t)  -- Smooth deceleration
+                        die.x = lerp(die.adjustStartX, die.adjustTargetX, easedT)
+                        die.y = lerp(die.adjustStartY, die.adjustTargetY, easedT)
+                        die.rotation = lerp(die.rotation, die.targetRotation, easedT * 0.5)
+                    end
                 end
             end
 
@@ -1042,23 +1087,30 @@ function UI.Animation.updateCupAnimations(dt)
             if not cup.toolsThrown and cup.elapsed >= 0.3 and cup.tools and #cup.tools > 0 then
                 cup.toolsThrown = true
 
-                -- Get center position for targeting
-                local centerX, centerY = UI.Layout.getBoardCenter()
+                -- Define throw directions for each die (in degrees)
+                -- These angles create good separation between dice
+                local throwAngles = {45, 10, 75}  -- 45° down-right, 10° almost horizontal right, 75° down
+                local speedMultipliers = {2.5, 1, 1}  -- 45° die at 3x speed, others at normal speed
+
+                -- Base throw speed (pixels per second)
+                local baseSpeed = 400
 
                 -- Throw all tools at once from behind cup position
                 for toolIndex, tool in ipairs(cup.tools) do
-                    -- Calculate direction toward center (right and down from cup)
-                    local baseVelocityX = (centerX - cup.x) * 4  -- Toward center X (right)
-                    local baseVelocityY = (centerY - cup.y) * 4  -- Toward center Y (down)
+                    -- Get throw angle for this die (cycle through angles if more than 3 dice)
+                    local angleIndex = ((toolIndex - 1) % #throwAngles) + 1
+                    local angleDegrees = throwAngles[angleIndex]
+                    local angleRadians = math.rad(angleDegrees)
+                    local speedMultiplier = speedMultipliers[angleIndex]
 
-                    -- Add random variation to velocity (±30%)
-                    local velocityX = baseVelocityX * love.math.random(70, 130) / 100
-                    local velocityY = baseVelocityY * love.math.random(70, 130) / 100
+                    -- Calculate velocity components based on angle
+                    -- Positive X = right, Positive Y = down
+                    local velocityX = math.cos(angleRadians) * baseSpeed * speedMultiplier
+                    local velocityY = math.sin(angleRadians) * baseSpeed * speedMultiplier
 
-                    -- TWEAK VELOCITY HERE: Adjust the multiplier on lines 1028-1029 above
-                    -- Current: 0.8 multiplier on base velocity
-                    -- Higher values = faster throws (try 1.0, 1.2, etc.)
-                    -- Lower values = slower throws (try 0.6, 0.4, etc.)
+                    -- Add slight random variation (±15%) to make it feel natural
+                    velocityX = velocityX * love.math.random(85, 115) / 100
+                    velocityY = velocityY * love.math.random(85, 115) / 100
 
                     -- Create physics animation for tool
                     UI.Animation.createDiePhysics({
