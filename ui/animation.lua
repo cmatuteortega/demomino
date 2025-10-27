@@ -1048,8 +1048,8 @@ function UI.Animation.updateCupAnimations(dt)
                 -- Throw all tools at once from behind cup position
                 for toolIndex, tool in ipairs(cup.tools) do
                     -- Calculate direction toward center (right and down from cup)
-                    local baseVelocityX = (centerX - cup.x) * 10  -- Toward center X (right)
-                    local baseVelocityY = (centerY - cup.y) * 10  -- Toward center Y (down)
+                    local baseVelocityX = (centerX - cup.x) * 4  -- Toward center X (right)
+                    local baseVelocityY = (centerY - cup.y) * 4  -- Toward center Y (down)
 
                     -- Add random variation to velocity (±30%)
                     local velocityX = baseVelocityX * love.math.random(70, 130) / 100
