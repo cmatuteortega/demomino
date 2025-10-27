@@ -2583,6 +2583,9 @@ function UI.Renderer.drawArtifactsMenu()
     -- Draw flying/settling tool physics animations
     UI.Animation.drawDiePhysics()
 
+    -- Draw cup animations (for selling tools)
+    UI.Animation.drawCupAnimations()
+
     -- Draw tool stack (bottom-left corner showing owned tools)
     UI.Renderer.drawToolStack()
 
@@ -2781,25 +2784,30 @@ function UI.Renderer.drawArtifactsShopSettledTools()
 
     -- Draw each settled tool sprite
     for _, settledTool in ipairs(gameState.artifactsShopSettledTools) do
-        local sprite = toolSprites and toolSprites[settledTool.spriteType]
-        if sprite then
-            love.graphics.push()
-            love.graphics.translate(settledTool.x, settledTool.y)
-            love.graphics.rotate(settledTool.rotation)
+        -- Skip drawing if this die is being hidden by cup animation
+        if UI.Animation and UI.Animation.isDieHiddenByCup and UI.Animation.isDieHiddenByCup(settledTool) then
+            -- Don't draw - cup is capturing it
+        else
+            local sprite = toolSprites and toolSprites[settledTool.spriteType]
+            if sprite then
+                love.graphics.push()
+                love.graphics.translate(settledTool.x, settledTool.y)
+                love.graphics.rotate(settledTool.rotation)
 
-            -- Draw shadow first (offset and semi-transparent)
-            local shadowOpacity = 0.15
-            local shadowOffset = 5
-            love.graphics.setColor(0, 0, 0, shadowOpacity)
-            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, settledTool.scale, settledTool.scale,
-                sprite:getWidth() / 2, sprite:getHeight() / 2)
+                -- Draw shadow first (offset and semi-transparent)
+                local shadowOpacity = 0.15
+                local shadowOffset = 5
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, settledTool.scale, settledTool.scale,
+                    sprite:getWidth() / 2, sprite:getHeight() / 2)
 
-            -- Draw sprite on top
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.draw(sprite, 0, 0, 0, settledTool.scale, settledTool.scale,
-                sprite:getWidth() / 2, sprite:getHeight() / 2)
+                -- Draw sprite on top
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(sprite, 0, 0, 0, settledTool.scale, settledTool.scale,
+                    sprite:getWidth() / 2, sprite:getHeight() / 2)
 
-            love.graphics.pop()
+                love.graphics.pop()
+            end
         end
     end
 

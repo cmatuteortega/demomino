@@ -3950,41 +3950,60 @@ function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
         end
     end
 
-    -- Add 1 coin with falling animation
     local sellValue = 1
-    updateCoins(gameState.coins + sellValue, {hasBonus = false})
 
-    -- Create falling coin at settled position
-    if not gameState.fallingCoins then
-        gameState.fallingCoins = {}
-    end
+    -- Pass the settled die physics object directly to cup animation
+    -- The die will be kept in the physics array and rendered until cup hides it
+    local dieToHide = settledDie
 
-    table.insert(gameState.fallingCoins, {
-        x = settledDie.x,
-        y = settledDie.y,
-        targetX = gameState.screen.width - UI.Layout.scale(40),
-        targetY = UI.Layout.scale(20),
-        progress = 0,
-        duration = 0.8,
-        value = sellValue
-    })
+    -- Trigger cup animation to capture the die
+    UI.Animation.animateCupCapture(settledDie.x, settledDie.y, dieToHide, function()
+        -- Called when cup animation completes (after ascending off-screen)
+        -- Remove the die sprite from settled tools now that it's been sold
+        if dieToHide and gameState.artifactsShopSettledTools then
+            for i, settledTool in ipairs(gameState.artifactsShopSettledTools) do
+                if settledTool == dieToHide then
+                    table.remove(gameState.artifactsShopSettledTools, i)
+                    break
+                end
+            end
+        end
 
-    -- Play sell sound
-    if UI.Audio and UI.Audio.playTilePlaced then
-        UI.Audio.playTilePlaced()
-    end
+        -- Add 1 coin with falling animation
+        updateCoins(gameState.coins + sellValue, {hasBonus = false})
 
-    -- Show sell confirmation at settled position
-    UI.Animation.createFloatingText("SOLD FOR " .. sellValue .. "$!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
-        color = {1, 0.9, 0.3, 1},  -- Gold color
-        fontSize = "large",
-        duration = 1.5,
-        riseDistance = 60,
-        startScale = 0.5,
-        endScale = 1.3,
-        bounce = true,
-        easing = "easeOutBack"
-    })
+        -- Create falling coin at settled position
+        if not gameState.fallingCoins then
+            gameState.fallingCoins = {}
+        end
+
+        table.insert(gameState.fallingCoins, {
+            x = settledDie.x,
+            y = settledDie.y,
+            targetX = gameState.screen.width - UI.Layout.scale(40),
+            targetY = UI.Layout.scale(20),
+            progress = 0,
+            duration = 0.8,
+            value = sellValue
+        })
+
+        -- Play sell sound
+        if UI.Audio and UI.Audio.playTilePlaced then
+            UI.Audio.playTilePlaced()
+        end
+
+        -- Show sell confirmation at settled position
+        UI.Animation.createFloatingText("SOLD FOR " .. sellValue .. "$!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
+            color = {1, 0.9, 0.3, 1},  -- Gold color
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 60,
+            startScale = 0.5,
+            endScale = 1.3,
+            bounce = true,
+            easing = "easeOutBack"
+        })
+    end)
 
     -- Animate remaining tools falling down with gravity
     Touch.animateToolGravity(toolIndex)

@@ -14,6 +14,8 @@ local buttonReleaseSound = nil
 local buttonDefaultSound = nil
 local playButtonSound = nil
 local discardButtonSound = nil
+local cupFrame4Sound = nil
+local cupSlidingSounds = {}
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -145,6 +147,26 @@ function UI.Audio.load()
             local sound = love.audio.newSource(path, "static")
             sound:setVolume(mapTextureVolume)
             mapTextureSounds[name] = sound
+        end
+    end
+
+    -- Load cup animation sounds
+    local cupFrame4Path = "sounds/fx/cup_frame_4.mp3"
+    if love.filesystem.getInfo(cupFrame4Path) then
+        cupFrame4Sound = love.audio.newSource(cupFrame4Path, "static")
+        cupFrame4Sound:setVolume(sfxVolume)
+    end
+
+    local cupSlidingPaths = {
+        "sounds/fx/sliding_cup_1.mp3",
+        "sounds/fx/sliding_cup_2.mp3"
+    }
+
+    for i, path in ipairs(cupSlidingPaths) do
+        if love.filesystem.getInfo(path) then
+            local sound = love.audio.newSource(path, "static")
+            sound:setVolume(sfxVolume)
+            table.insert(cupSlidingSounds, sound)
         end
     end
 end
@@ -376,6 +398,35 @@ function UI.Audio.playDiscardButton()
     if discardButtonSound then
         discardButtonSound:clone():play()
     end
+end
+
+-- Cup animation sounds
+
+function UI.Audio.playCupFrame4()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if cupFrame4Sound then
+        cupFrame4Sound:clone():play()
+    end
+end
+
+function UI.Audio.playCupSliding()
+    if not gameState or not gameState.sfxEnabled then
+        return nil
+    end
+
+    if #cupSlidingSounds > 0 then
+        -- Pick a random sliding sound variant
+        local randomIndex = love.math.random(1, #cupSlidingSounds)
+        local sound = cupSlidingSounds[randomIndex]
+        local soundSource = sound:clone()
+        soundSource:play()
+        return soundSource  -- Return the source so caller can control volume/fade
+    end
+
+    return nil
 end
 
 -- Map ambiance control functions

@@ -722,22 +722,27 @@ end
 
 function UI.Animation.drawDiePhysics()
     for _, die in ipairs(diePhysicsAnimations) do
-        local sprite = toolSprites and toolSprites[die.spriteType]
-        if sprite then
-            love.graphics.push()
-            love.graphics.translate(die.x, die.y)
-            love.graphics.rotate(die.rotation)
+        -- Skip drawing if this die is being hidden by cup animation
+        if UI.Animation.isDieHiddenByCup and UI.Animation.isDieHiddenByCup(die) then
+            -- Don't draw - cup is capturing it
+        else
+            local sprite = toolSprites and toolSprites[die.spriteType]
+            if sprite then
+                love.graphics.push()
+                love.graphics.translate(die.x, die.y)
+                love.graphics.rotate(die.rotation)
 
-            -- Draw shadow first (offset and semi-transparent)
-            local shadowOpacity = 0.15
-            local shadowOffset = 5  -- Larger shadow for consistency
-            love.graphics.setColor(0, 0, 0, shadowOpacity)
-            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+                -- Draw shadow first (offset and semi-transparent)
+                local shadowOpacity = 0.15
+                local shadowOffset = 5  -- Larger shadow for consistency
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
 
-            -- Draw die sprite on top
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
-            love.graphics.pop()
+                -- Draw die sprite on top
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+                love.graphics.pop()
+            end
         end
     end
 end
@@ -801,6 +806,252 @@ function UI.Animation.drawDebugAvoidanceZones()
     love.graphics.print("■ Hand/Tools", legendX, legendY + 80)
     love.graphics.setColor(1, 1, 1, 0.6)
     love.graphics.print("Dashed = Padding", legendX, legendY + 100)
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Cup animation system for selling dice
+local cupAnimations = {}
+
+function UI.Animation.animateCupCapture(x, y, dieToHide, onComplete)
+    -- Apply offset to final cup position (30 scaled pixels left, 1px up)
+    local offsetX = -30
+    if UI and UI.Layout and UI.Layout.scale then
+        offsetX = -UI.Layout.scale(58)
+    end
+    local offsetY = -UI.Layout.scale(45)
+
+    -- Calculate target position (where die is, with offset)
+    local targetX = x + offsetX
+    local targetY = y + offsetY
+
+    -- Start position: ALWAYS off-screen top-left
+    -- Use screen dimensions to ensure cup starts outside viewport
+    local screenWidth = gameState and gameState.screen and gameState.screen.width or 800
+    local screenHeight = gameState and gameState.screen and gameState.screen.height or 600
+
+    -- Start from top-left corner, well outside screen bounds
+    -- Position cup at angle so it swoops toward target
+    local startX = -100  -- 100px left of screen edge
+    local startY = -100  -- 100px above screen edge
+
+    -- Adjust start position to maintain ~45 degree angle toward target
+    local dx = targetX - startX
+    local dy = targetY - startY
+
+    -- If target is near screen edge, push start position further out
+    if targetX < screenWidth * 0.3 then
+        startX = targetX - 250  -- Push further left
+    end
+    if targetY < screenHeight * 0.3 then
+        startY = targetY - 250  -- Push further up
+    end
+
+    -- Store a copy of die rendering data so we can draw it even after it's removed from physics
+    local dieRenderData = nil
+    if dieToHide then
+        dieRenderData = {
+            x = dieToHide.x,
+            y = dieToHide.y,
+            rotation = dieToHide.rotation or 0,
+            scale = dieToHide.scale or 0.9,
+            spriteType = dieToHide.spriteType
+        }
+    end
+
+    -- Create cup animation that enters diagonally, closes, and exits upward
+    local cupAnim = {
+        x = startX,  -- Start off-screen top-left
+        y = startY,
+        startX = startX,
+        startY = startY,
+        targetX = targetX,  -- Final position at die
+        targetY = targetY,
+        rotation = 0,
+        scale = 1.33,
+        frame = 1,  -- Current cup frame (1-4)
+        phase = "entering",  -- "entering", "closing", "ascending"
+        elapsed = 0,
+        frameTimer = 0,
+        dieToHide = dieToHide,  -- Reference to die sprite to hide
+        dieRenderData = dieRenderData,  -- Cached die rendering data
+        dieHidden = false,  -- Track if die has been hidden
+        onComplete = onComplete
+    }
+
+    table.insert(cupAnimations, cupAnim)
+end
+
+-- Check if a die sprite should be hidden by cup animation
+function UI.Animation.isDieHiddenByCup(dieSprite)
+    for _, cup in ipairs(cupAnimations) do
+        if cup.dieToHide == dieSprite and cup.dieHidden then
+            return true
+        end
+    end
+    return false
+end
+
+function UI.Animation.updateCupAnimations(dt)
+    for i = #cupAnimations, 1, -1 do
+        local cup = cupAnimations[i]
+        cup.elapsed = cup.elapsed + dt
+
+        if cup.phase == "entering" then
+            -- Diagonal entry from top-left off-screen to die position
+            -- CONSTANT SPEED: 500 pixels/second (independent of distance)
+            local enterSpeed = 500
+
+            -- Calculate total distance on first frame
+            if cup.elapsed == dt then
+                local dx = cup.targetX - cup.startX
+                local dy = cup.targetY - cup.startY
+                cup.totalDistance = math.sqrt(dx * dx + dy * dy)
+                cup.enterDuration = cup.totalDistance / enterSpeed
+            end
+
+            -- Calculate progress based on elapsed time and distance
+            local progress = math.min(cup.elapsed / cup.enterDuration, 1.0)
+
+            -- easeOutQuart for smooth deceleration
+            local easedProgress = 1 - math.pow(1 - progress, 4)
+
+            -- Interpolate position diagonally
+            cup.x = cup.startX + (cup.targetX - cup.startX) * easedProgress
+            cup.y = cup.startY + (cup.targetY - cup.startY) * easedProgress
+
+            -- Check if reached target
+            if progress >= 1.0 then
+                cup.x = cup.targetX
+                cup.y = cup.targetY
+                cup.phase = "closing"
+                cup.frameTimer = 0
+                cup.frame = 1
+                cup.elapsed = 0  -- Reset for next phase
+            end
+
+        elseif cup.phase == "closing" then
+            -- Animate through frames 1→4 at 10 fps (slower, more visible)
+            cup.frameTimer = cup.frameTimer + dt
+
+            if cup.frameTimer >= (1/10) then
+                cup.frameTimer = 0
+                cup.frame = cup.frame + 1
+
+                -- Hide die sprite when cup reaches frame 4 (fully closed)
+                if cup.frame == 4 and not cup.dieHidden then
+                    cup.dieHidden = true
+                    -- Play cup closing sound (setting on table)
+                    if UI.Audio and UI.Audio.playCupFrame4 then
+                        UI.Audio.playCupFrame4()
+                    end
+                end
+
+                -- After frame 4, start ascending
+                if cup.frame > 4 then
+                    cup.phase = "ascending"
+                    cup.slidingSoundPlayed = false  -- Track if sliding sound has played
+                end
+            end
+
+        elseif cup.phase == "ascending" then
+            -- Play sliding sound once when ascending starts
+            if not cup.slidingSoundPlayed then
+                cup.slidingSoundPlayed = true
+                if UI.Audio and UI.Audio.playCupSliding then
+                    cup.slidingSoundSource = UI.Audio.playCupSliding()  -- Store reference to fade later
+                end
+            end
+
+            -- Exit straight up off top of screen (slower for better visibility)
+            -- Speed: 400 pixels/second with slight acceleration
+            local ascendSpeed = 400 + (cup.elapsed * 150)  -- Accelerates as it goes up
+            cup.y = cup.y - ascendSpeed * dt
+
+            -- Fade out sliding sound as cup approaches top of screen
+            local screenTop = -100  -- Exit 100px above screen
+            local fadeStartY = 50  -- Start fading when cup is 50px from top of screen (y < 50)
+            if cup.y < fadeStartY and cup.slidingSoundSource then
+                -- Calculate fade progress (1.0 at fadeStartY, 0.0 at screenTop)
+                local fadeProgress = (cup.y - screenTop) / (fadeStartY - screenTop)
+                fadeProgress = math.max(0, math.min(1, fadeProgress))  -- Clamp 0-1
+
+                -- Apply volume fade (full volume → 0)
+                local baseVolume = 1.0  -- Base SFX volume
+                cup.slidingSoundSource:setVolume(baseVolume * fadeProgress)
+            end
+
+            -- Check if fully off-screen at top
+            if cup.y < screenTop then
+                -- Stop sliding sound completely
+                if cup.slidingSoundSource then
+                    cup.slidingSoundSource:stop()
+                    cup.slidingSoundSource = nil
+                end
+
+                -- Animation complete
+                if cup.onComplete then
+                    cup.onComplete()
+                end
+                table.remove(cupAnimations, i)
+            end
+        end
+    end
+end
+
+function UI.Animation.drawCupAnimations()
+    if not cupSprites or #cupSprites == 0 then
+        return
+    end
+
+    for _, cup in ipairs(cupAnimations) do
+        -- Draw the cached die sprite if it exists and hasn't been hidden yet
+        if cup.dieRenderData and not cup.dieHidden then
+            local dieSprite = toolSprites and toolSprites[cup.dieRenderData.spriteType]
+            if dieSprite then
+                love.graphics.push()
+                love.graphics.translate(cup.dieRenderData.x, cup.dieRenderData.y)
+                love.graphics.rotate(cup.dieRenderData.rotation)
+
+                -- Draw die shadow
+                local shadowOpacity = 0.15
+                local shadowOffset = 5
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(dieSprite, shadowOffset, shadowOffset, 0, cup.dieRenderData.scale, cup.dieRenderData.scale,
+                    dieSprite:getWidth() / 2, dieSprite:getHeight() / 2)
+
+                -- Draw die sprite
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(dieSprite, 0, 0, 0, cup.dieRenderData.scale, cup.dieRenderData.scale,
+                    dieSprite:getWidth() / 2, dieSprite:getHeight() / 2)
+
+                love.graphics.pop()
+            end
+        end
+
+        -- Draw cup sprite
+        local frameIndex = math.min(math.max(1, math.floor(cup.frame)), 4)
+        local sprite = cupSprites[frameIndex]
+
+        if sprite then
+            love.graphics.push()
+            love.graphics.translate(cup.x, cup.y)
+            love.graphics.rotate(cup.rotation)
+
+            -- Draw shadow first (offset and semi-transparent, matching die shadows)
+            local shadowOpacity = 0.15
+            local shadowOffset = 5
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, cup.scale, cup.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            -- Draw cup sprite on top
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, 0, 0, 0, cup.scale, cup.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            love.graphics.pop()
+        end
+    end
 
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)

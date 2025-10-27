@@ -43,6 +43,7 @@ function love.load()
     loadCoinSprite()
     loadCandleSprites()
     loadToolSprites()
+    loadCupSprites()
     
     gameState = {
         screen = {
@@ -1177,6 +1178,7 @@ function love.update(dt)
     UI.Animation.update(dt)
     UI.Animation.updateShadowFlicker(dt)
     UI.Animation.updateDiePhysics(dt)
+    UI.Animation.updateCupAnimations(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)
     updateCoinBreakdownAnimation(dt)
@@ -1987,6 +1989,19 @@ function loadToolSprites()
     for spriteType, filename in pairs(toolSpriteMap) do
         if love.filesystem.getInfo(filename) then
             toolSprites[spriteType] = love.graphics.newImage(filename)
+        end
+    end
+end
+
+function loadCupSprites()
+    -- Global table to store cup animation frames
+    cupSprites = {}
+
+    -- Load 4 cup frames
+    for i = 1, 4 do
+        local filename = "sprites/dice/cup_" .. i .. ".png"
+        if love.filesystem.getInfo(filename) then
+            cupSprites[i] = love.graphics.newImage(filename)
         end
     end
 end
