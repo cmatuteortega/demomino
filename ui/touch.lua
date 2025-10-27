@@ -161,6 +161,11 @@ function Touch.pressed(x, y, istouch, touchId)
     touchState.draggedTile = nil
     touchState.draggedFrom = nil
 
+    -- Block interactions during artifact shop intro animation
+    if gameState.artifactsShopIntroPlaying then
+        return
+    end
+
     -- Handle settings menu interactions (takes priority when open)
     if gameState.settingsMenuOpen then
         return
@@ -2459,7 +2464,8 @@ function Touch.enterSelectedNode()
                 x = targetX,
                 y = targetY,
                 visualX = targetX,
-                visualY = targetY
+                visualY = targetY,
+                hiddenForIntro = true  -- Hidden until cup animation throws them
             }
 
             table.insert(gameState.offeredTools, toolSprite)
@@ -2475,9 +2481,15 @@ function Touch.enterSelectedNode()
             discardButton = {scale = 1.0, pressed = false, yOffset = 0}
         }
 
-        -- Animate tool sprites drawing from right
+        -- Block interactions during intro animation
+        gameState.artifactsShopIntroPlaying = true
+
+        -- Start cup intro animation (cup throws tools onto board, then to hand)
         if gameState.offeredTools then
-            animateToolSpritesDraw(gameState.offeredTools, 0)
+            UI.Animation.animateCupIntroArtifactShop(gameState.offeredTools, function()
+                -- Animation complete, enable interactions
+                gameState.artifactsShopIntroPlaying = false
+            end)
         end
 
         gameState.gamePhase = "artifacts_menu"

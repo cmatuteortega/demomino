@@ -814,6 +814,80 @@ end
 -- Cup animation system for selling dice
 local cupAnimations = {}
 
+-- Artifact shop intro animation: cup throws tools onto board
+function UI.Animation.animateCupIntroArtifactShop(tools, onComplete)
+    -- Position cup at demon tile position (same as placed tiles)
+    local centerX, centerY = UI.Layout.getBoardCenter()
+
+    -- Apply offset to cup position (same as cup capture animation)
+    local offsetX = -30
+    if UI and UI.Layout and UI.Layout.scale then
+        offsetX = -UI.Layout.scale(58)
+    end
+    local offsetY = -UI.Layout.scale(45)
+
+    local cupX = centerX + offsetX
+    local cupY = centerY + offsetY
+
+    -- Create cup animation that enters at frame 4 (closed), shakes, then exits throwing tools
+    local cupAnim = {
+        x = cupX,
+        y = cupY,
+        rotation = 0,
+        scale = 1.5,
+        frame = 4,  -- Start at frame 4 (closed cup)
+        phase = "shaking",  -- Start directly at shaking
+        elapsed = 0,
+        shakeDuration = 0.5,  -- Shake for 0.5 seconds
+        shakeAmplitude = UI.Layout.scale(15),  -- Shake ±15 pixels
+        shakeRotationAmplitude = math.rad(5),  -- Tilt ±5 degrees
+        startX = cupX,
+        startY = cupY,
+        tools = tools,  -- Store tools to throw
+        thrownTools = {},  -- Track which tools have been thrown
+        onComplete = onComplete
+    }
+
+    table.insert(cupAnimations, cupAnim)
+    return cupAnim
+end
+
+-- Animate tools from board positions to hand
+function UI.Animation.animateToolsFromBoardToHand(tools, onComplete)
+    local animationsComplete = 0
+    local totalAnimations = #tools
+
+    for i, tool in ipairs(tools) do
+        -- Calculate target hand position
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #tools)
+
+        -- Set initial position from board (fallback to center if not set)
+        tool.visualX = tool.boardX or targetX
+        tool.visualY = tool.boardY or targetY
+        tool.x = targetX
+        tool.y = targetY
+
+        -- Mark as animating and visible
+        tool.isAnimating = true
+        tool.hiddenForIntro = false  -- Now visible in hand
+
+        -- Animate from board to hand (staggering handled via animation system)
+        UI.Animation.animateTo(tool, {
+            visualX = targetX,
+            visualY = targetY
+        }, 0.4, "easeOutQuart", function()
+            tool.isAnimating = false
+            animationsComplete = animationsComplete + 1
+
+            -- Call onComplete when all tools animated
+            if animationsComplete == totalAnimations and onComplete then
+                print("All tools animated to hand, calling onComplete")
+                onComplete()
+            end
+        end)
+    end
+end
+
 function UI.Animation.animateCupCapture(x, y, dieToHide, onComplete)
     -- Apply offset to final cup position (30 scaled pixels left, 1px up)
     local offsetX = -30
@@ -869,7 +943,7 @@ function UI.Animation.animateCupCapture(x, y, dieToHide, onComplete)
         targetX = targetX,  -- Final position at die
         targetY = targetY,
         rotation = 0,
-        scale = 1.33,
+        scale = 1.5,
         frame = 1,  -- Current cup frame (1-4)
         phase = "entering",  -- "entering", "closing", "ascending"
         elapsed = 0,
@@ -898,7 +972,140 @@ function UI.Animation.updateCupAnimations(dt)
         local cup = cupAnimations[i]
         cup.elapsed = cup.elapsed + dt
 
-        if cup.phase == "entering" then
+        -- Handle settlement delay before animating to hand
+        if cup.allToolsSettled and cup.settlementDelay then
+            cup.settlementElapsed = (cup.settlementElapsed or 0) + dt
+            if cup.settlementElapsed >= cup.settlementDelay then
+                print("Settlement delay complete, animating tools to hand")
+                -- Delay complete, animate tools to hand
+                UI.Animation.animateToolsFromBoardToHand(cup.tools, cup.onComplete)
+                cup.allToolsSettled = false
+                cup.settlementDelay = nil
+            end
+        end
+
+        if cup.phase == "shaking" then
+            -- Oscillate left/right with decreasing amplitude
+            local shakeProgress = cup.elapsed / cup.shakeDuration
+            local frequency = 12  -- Hz (rapid shaking)
+            local t = cup.elapsed * frequency * math.pi * 2
+
+            -- Oscillate X position
+            local shakeFactor = 1 - shakeProgress  -- Decrease amplitude over time
+            cup.x = cup.startX + math.sin(t) * cup.shakeAmplitude * shakeFactor
+
+            -- Oscillate rotation (tilt effect on frame 4)
+            cup.rotation = math.sin(t * 1.3) * cup.shakeRotationAmplitude * shakeFactor
+
+            -- Check if shake complete
+            if cup.elapsed >= cup.shakeDuration then
+                cup.phase = "reverseAnimation"
+                cup.elapsed = 0
+                cup.x = cup.startX  -- Reset to center
+                cup.rotation = 0  -- Reset rotation
+                cup.frameTimer = 0
+                cup.reverseStartX = cup.startX
+                cup.reverseTargetX = cup.startX - UI.Layout.scale(80)  -- Move left
+                cup.reverseDuration = 0.4  -- Duration for reverse + left movement
+            end
+
+        elseif cup.phase == "reverseAnimation" then
+            -- Animate through frames 4→3→2→1 while moving left
+            cup.frameTimer = cup.frameTimer + dt
+
+            -- Frame animation at 8 fps (slower for better visibility)
+            if cup.frameTimer >= (1/8) and cup.frame > 1 then
+                cup.frameTimer = 0
+                cup.frame = cup.frame - 1
+            end
+
+            -- Move cup left with constant speed
+            local progress = math.min(cup.elapsed / cup.reverseDuration, 1.0)
+            cup.x = cup.reverseStartX + (cup.reverseTargetX - cup.reverseStartX) * progress
+
+            -- Check if reverse animation complete
+            if progress >= 1.0 then
+                cup.phase = "diagonalExit"
+                cup.elapsed = 0
+                cup.exitStartX = cup.x
+                cup.exitStartY = cup.y
+                cup.exitTargetX = -100  -- Off-screen left
+                cup.exitTargetY = -100  -- Off-screen top
+                cup.exitDuration = 1.0  -- Slower exit (1 second)
+            end
+
+        elseif cup.phase == "diagonalExit" then
+            -- Throw dice at 0.5s into diagonal exit
+            if not cup.toolsThrown and cup.elapsed >= 0.5 and cup.tools and #cup.tools > 0 then
+                cup.toolsThrown = true
+
+                -- Get center position for targeting
+                local centerX, centerY = UI.Layout.getBoardCenter()
+
+                -- Throw all tools at once from behind cup position
+                for toolIndex, tool in ipairs(cup.tools) do
+                    -- Calculate direction toward center (right and down from cup)
+                    local baseVelocityX = (centerX - cup.x) * 5  -- Toward center X (right)
+                    local baseVelocityY = (centerY - cup.y) * 5  -- Toward center Y (down)
+
+                    -- Add random variation to velocity (±30%)
+                    local velocityX = baseVelocityX * love.math.random(70, 130) / 100
+                    local velocityY = baseVelocityY * love.math.random(70, 130) / 100
+
+                    -- TWEAK VELOCITY HERE: Adjust the multiplier on lines 1048-1049 above
+                    -- Current: 0.8 multiplier on base velocity
+                    -- Higher values = faster throws (try 1.0, 1.2, etc.)
+                    -- Lower values = slower throws (try 0.6, 0.4, etc.)
+
+                    -- Create physics animation for tool
+                    UI.Animation.createDiePhysics({
+                        startX = cup.x,
+                        startY = cup.y,
+                        velocityX = velocityX,
+                        velocityY = velocityY,
+                        spriteType = tool.spriteType,
+                        toolId = tool.toolId,
+                        toolIndex = toolIndex,
+                        onComplete = function(settledDie)
+                            -- Store settled position for later hand animation
+                            tool.boardX = settledDie.x
+                            tool.boardY = settledDie.y
+                            tool.boardRotation = settledDie.rotation
+                            table.insert(cup.thrownTools, tool)
+
+                            print("Tool settled: " .. #cup.thrownTools .. "/" .. #cup.tools)
+
+                            -- If all tools thrown and settled, animate to hand
+                            if #cup.thrownTools == #cup.tools then
+                                print("All tools settled, starting delay before hand animation")
+                                -- Store completion callback with delay
+                                cup.allToolsSettled = true
+                                cup.settlementDelay = 0.7  -- Dice stay on table for 0.7 seconds
+                                cup.settlementElapsed = 0
+                            end
+                        end
+                    })
+                end
+
+                -- Play throw sound once
+                if UI.Audio and UI.Audio.playTilePlaced then
+                    UI.Audio.playTilePlaced()
+                end
+            end
+
+            -- Move cup diagonally off-screen at slower constant speed
+            local progress = math.min(cup.elapsed / cup.exitDuration, 1.0)
+
+            cup.x = cup.exitStartX + (cup.exitTargetX - cup.exitStartX) * progress
+            cup.y = cup.exitStartY + (cup.exitTargetY - cup.exitStartY) * progress
+
+            -- Check if fully off-screen
+            if cup.y < -100 then
+                -- Animation complete (tools will handle their own completion)
+                table.remove(cupAnimations, i)
+            end
+
+        elseif cup.phase == "entering" then
             -- Diagonal entry from top-left off-screen to die position
             -- CONSTANT SPEED: 500 pixels/second (independent of distance)
             local enterSpeed = 500

@@ -2638,7 +2638,7 @@ function UI.Renderer.drawToolOffers()
     -- Draw tool sprites in layers (similar to tile shop)
     -- Layer 1: Non-dragging, non-purchased tools
     for i, tool in ipairs(gameState.offeredTools) do
-        if not tool.isDragging and not tool.shopPurchased then
+        if not tool.isDragging and not tool.shopPurchased and not tool.hiddenForIntro then
             UI.Renderer.drawToolSprite(tool)
 
             -- Draw price tag ABOVE tool sprite
@@ -2651,7 +2651,7 @@ function UI.Renderer.drawToolOffers()
 
     -- Layer 2: Purchased tools (grayed out)
     for i, tool in ipairs(gameState.offeredTools) do
-        if not tool.isDragging and tool.shopPurchased then
+        if not tool.isDragging and tool.shopPurchased and not tool.hiddenForIntro then
             -- Draw with reduced opacity
             local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
 
@@ -2669,7 +2669,7 @@ function UI.Renderer.drawToolOffers()
 
     -- Layer 3: Dragging tools (on top)
     for i, tool in ipairs(gameState.offeredTools) do
-        if tool.isDragging then
+        if tool.isDragging and not tool.hiddenForIntro then
             UI.Renderer.drawToolSprite(tool)
         end
     end
