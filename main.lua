@@ -1233,6 +1233,24 @@ function love.update(dt)
                     Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
                 end
             end
+        elseif gameState.gamePhase == "artifacts_menu" then
+            -- Update tool sprite animations (similar to tile shop)
+            if gameState.offeredTools then
+                -- Update positions for all tool sprites
+                for i, tool in ipairs(gameState.offeredTools) do
+                    local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
+                    if not tool.isDragging and not tool.isAnimating then
+                        tool.visualX = x
+                        tool.visualY = y
+                    end
+                    tool.x = x
+                    tool.y = y
+                end
+
+                -- Animate draw, idle animations
+                updateToolSpriteDrawAnimations(gameState.offeredTools, dt)
+                updateToolSpriteIdleAnimations(gameState.offeredTools, dt)
+            end
         end
     elseif gameState.gamePhase == "map" then
         -- Start map ambiance when entering map phase

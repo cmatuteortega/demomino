@@ -2360,11 +2360,15 @@ function UI.Renderer.drawArtifactsMenu()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
-    local centerY = screenHeight / 2
 
     -- Background
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Draw lighter background strip at hand level (like combat/trade)
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
     -- Draw node title and demon name in top corners (same style as trade/alchemy)
     local rightX = screenWidth - UI.Layout.scale(40)
@@ -2425,119 +2429,92 @@ function UI.Renderer.drawArtifactsMenu()
     UI.Renderer.drawCoinSprites()
     UI.Renderer.drawCoinText()
 
-    -- Instructions
-    local instructionColor = UI.Colors.FONT_WHITE
-    local maxToolsText = "Max 3 tools at a time"
-    UI.Fonts.drawText(maxToolsText, centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
+    -- Draw board area (for placing tool sprites)
+    UI.Renderer.drawArtifactsShopPlacedTools()
 
-    -- Draw tool offers
-    UI.Renderer.drawToolOffers()
+    -- Draw offered tool sprites (as draggable hand)
+    if gameState.offeredTools and #gameState.offeredTools > 0 then
+        UI.Renderer.drawToolOffers()
+    else
+        -- Fallback if no tools offered
+        local errorColor = UI.Colors.FONT_WHITE
+        UI.Fonts.drawText("No tools available", centerX, screenHeight / 2, "large", errorColor, "center")
+    end
 
-    -- Draw NEXT> button to exit artifacts menu
+    -- Draw purchase/reroll buttons
+    UI.Renderer.drawArtifactsShopUI()
+
+    -- Draw NEXT> button to exit artifacts menu (last layer priority)
     UI.Renderer.drawArtifactsNextButton()
 end
 
 function UI.Renderer.drawToolOffers()
+    -- Draw tool sprites at hand positions (similar to tile shop)
+    if not gameState.offeredTools then
+        return
+    end
+
     local screenWidth = gameState.screen.width
-    local centerX = screenWidth / 2
-    local startY = UI.Layout.scale(180)
+    local screenHeight = gameState.screen.height
 
-    -- Get tool definitions
-    local toolDefs = Tools.getDefinitions()
-    local ownedTools = gameState.ownedTools or {}
-    local offeredTools = gameState.offeredTools or {}
+    -- Update positions for all tool sprites using hand layout
+    for i, tool in ipairs(gameState.offeredTools) do
+        -- Initialize animation properties if not set
+        if tool.selectScale == nil then tool.selectScale = 1.0 end
+        if tool.selectOffset == nil then tool.selectOffset = 0 end
+        if tool.idleFloatOffset == nil then tool.idleFloatOffset = 0 end
+        if tool.idleRotation == nil then tool.idleRotation = 0 end
+        if tool.idleShadowOffset == nil then tool.idleShadowOffset = 0 end
+        if tool.dragScale == nil then tool.dragScale = 1.0 end
+        if tool.dragOpacity == nil then tool.dragOpacity = 1.0 end
 
-    -- Reset tool purchase button bounds
-    gameState.toolPurchaseButtons = {}
+        -- Calculate hand position for this tool
+        local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
 
-    -- Display only the offered tools (3 random tools)
-    for i, toolId in ipairs(offeredTools) do
-        local toolDef = toolDefs[toolId]
-
-        if not toolDef then
-            -- Skip if tool definition not found
-            goto continue
+        -- Set visual position if not dragging/animating
+        if not tool.isDragging and not tool.isAnimating then
+            tool.visualX = x
+            tool.visualY = y
         end
+    end
 
-        local y = startY + (i - 1) * UI.Layout.scale(110)
+    -- Draw tool sprites in layers (similar to tile shop)
+    -- Layer 1: Non-dragging, non-purchased tools
+    for i, tool in ipairs(gameState.offeredTools) do
+        if not tool.isDragging and not tool.shopPurchased then
+            UI.Renderer.drawToolSprite(tool)
 
-        -- Count how many copies of this tool are owned
-        local ownedCount = 0
-        for _, ownedId in ipairs(ownedTools) do
-            if ownedId == toolId then
-                ownedCount = ownedCount + 1
-            end
+            -- Draw price tag ABOVE tool sprite
+            local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
+            local priceY = y - UI.Layout.scale(110)  -- Above sprite
+            local priceColor = {1, 0.9, 0.3, 1}  -- Gold
+            UI.Fonts.drawText(tool.basePrice .. "$", x, priceY, "large", priceColor, "center")
         end
+    end
 
-        -- Draw tool card background
-        local cardX = centerX - UI.Layout.scale(200)
-        local cardWidth = UI.Layout.scale(400)
-        local cardHeight = UI.Layout.scale(90)
+    -- Layer 2: Purchased tools (grayed out)
+    for i, tool in ipairs(gameState.offeredTools) do
+        if not tool.isDragging and tool.shopPurchased then
+            -- Draw with reduced opacity
+            local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
 
-        love.graphics.setColor(0.2, 0.2, 0.25, 0.9)
-        love.graphics.rectangle("fill", cardX, y, cardWidth, cardHeight, UI.Layout.scale(6), UI.Layout.scale(6))
+            -- Temporarily modify opacity for drawing
+            local originalOpacity = tool.dragOpacity
+            tool.dragOpacity = 0.3
+            UI.Renderer.drawToolSprite(tool)
+            tool.dragOpacity = originalOpacity
 
-        love.graphics.setColor(toolDef.color)
-        love.graphics.setLineWidth(UI.Layout.scale(3))
-        love.graphics.rectangle("line", cardX, y, cardWidth, cardHeight, UI.Layout.scale(6), UI.Layout.scale(6))
-
-        -- Draw tool name
-        UI.Fonts.drawText(toolDef.name, cardX + UI.Layout.scale(15), y + UI.Layout.scale(15), "large", toolDef.color, "left")
-
-        -- Draw tool description
-        UI.Fonts.drawText(toolDef.description, cardX + UI.Layout.scale(15), y + UI.Layout.scale(45), "small", UI.Colors.FONT_WHITE, "left")
-
-        -- Draw owned count if any
-        if ownedCount > 0 then
-            local countText = "x" .. ownedCount
-            UI.Fonts.drawText(countText, cardX + UI.Layout.scale(15), y + cardHeight - UI.Layout.scale(20), "medium", {0.3, 0.9, 0.3, 1}, "left")
+            -- Draw "SOLD" label
+            local soldY = y - UI.Layout.scale(20)
+            UI.Fonts.drawText("SOLD", x, soldY, "small", UI.Colors.FONT_RED, "center")
         end
+    end
 
-        -- Draw purchase button
-        local buttonX = cardX + cardWidth - UI.Layout.scale(110)
-        local buttonY = y + cardHeight / 2 - UI.Layout.scale(15)
-        local buttonWidth = UI.Layout.scale(90)
-        local buttonHeight = UI.Layout.scale(30)
-
-        -- Check if can afford and has space
-        local canAfford = gameState.coins >= toolDef.cost
-        local hasSpace = #ownedTools < 3
-
-        local buttonColor
-        local textColor
-        if canAfford and hasSpace then
-            buttonColor = {0.2, 0.7, 0.3, 1}
-            textColor = UI.Colors.FONT_WHITE
-        else
-            buttonColor = {0.3, 0.3, 0.3, 0.7}
-            textColor = {0.5, 0.5, 0.5, 1}
+    -- Layer 3: Dragging tools (on top)
+    for i, tool in ipairs(gameState.offeredTools) do
+        if tool.isDragging then
+            UI.Renderer.drawToolSprite(tool)
         end
-
-        -- Draw buy button
-        love.graphics.setColor(buttonColor)
-        love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(3), UI.Layout.scale(3))
-
-        love.graphics.setColor(UI.Colors.OUTLINE)
-        love.graphics.setLineWidth(UI.Layout.scale(2))
-        love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(3), UI.Layout.scale(3))
-
-        -- Draw button text
-        local buttonText = "BUY " .. toolDef.cost .. "$"
-        UI.Fonts.drawText(buttonText, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2, "small", textColor, "center")
-
-        -- Store button bounds if usable
-        if canAfford and hasSpace then
-            table.insert(gameState.toolPurchaseButtons, {
-                x = buttonX,
-                y = buttonY,
-                width = buttonWidth,
-                height = buttonHeight,
-                toolId = toolId,
-                cost = toolDef.cost
-            })
-        end
-
-        ::continue::
     end
 end
 
@@ -2566,6 +2543,201 @@ function UI.Renderer.drawContractsMenu()
 
     -- Return to Map button
     UI.Renderer.drawReturnToMapButton()
+end
+
+-- Draw tool sprite (for artifacts shop hand)
+function UI.Renderer.drawToolSprite(tool)
+    if not tool or not toolSprites then
+        return
+    end
+
+    local sprite = toolSprites[tool.spriteType]
+    if not sprite then
+        return
+    end
+
+    -- Get position (use visual position if dragging)
+    local x = tool.visualX or tool.x
+    local y = tool.visualY or tool.y
+
+    -- Apply idle float offset
+    if tool.idleFloatOffset then
+        y = y + tool.idleFloatOffset
+    end
+
+    -- Calculate sprite scaling (same as combat tools)
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    -- Apply drag scaling and selection scaling
+    spriteScale = spriteScale * (tool.dragScale or 1.0) * (tool.selectScale or 1.0)
+
+    -- Apply idle rotation
+    local rotation = tool.idleRotation or 0
+
+    -- Draw shadow (vertical offset, like hand tiles)
+    local shadowOpacity = 0.15
+    local shadowOffsetX = 0
+    local shadowOffsetY = -5
+
+    if tool.idleShadowOffset then
+        shadowOffsetX = 3 + tool.idleShadowOffset
+        shadowOffsetY = 3 + tool.idleShadowOffset
+    end
+
+    love.graphics.setColor(0, 0, 0, shadowOpacity)
+    love.graphics.draw(sprite, x + shadowOffsetX, y + shadowOffsetY, rotation, spriteScale, spriteScale,
+        sprite:getWidth()/2, sprite:getHeight()/2)
+
+    -- Draw sprite with opacity
+    local opacity = tool.dragOpacity or 1.0
+    love.graphics.setColor(1, 1, 1, opacity)
+    love.graphics.draw(sprite, x, y, rotation, spriteScale, spriteScale,
+        sprite:getWidth()/2, sprite:getHeight()/2)
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw placed tools on artifacts shop board (max 1)
+function UI.Renderer.drawArtifactsShopPlacedTools()
+    if not gameState.artifactsShopPlacedTools then
+        gameState.artifactsShopPlacedTools = {}
+    end
+
+    -- Draw placed tool in center of board
+    for _, tool in ipairs(gameState.artifactsShopPlacedTools) do
+        if not tool.isDragging then
+            UI.Renderer.drawToolSprite(tool)
+        end
+    end
+
+    -- Draw dragging tools on top
+    for _, tool in ipairs(gameState.artifactsShopPlacedTools) do
+        if tool.isDragging then
+            UI.Renderer.drawToolSprite(tool)
+        end
+    end
+end
+
+-- Draw purchase/reroll buttons for artifacts shop
+function UI.Renderer.drawArtifactsShopUI()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Check if tool is placed
+    local hasToolPlaced = gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools > 0
+
+    -- PLAY button (for purchasing)
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale = buttonAnim and buttonAnim.scale or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    -- Determine button color (enabled if tool placed and can afford)
+    local tool = hasToolPlaced and gameState.artifactsShopPlacedTools[1] or nil
+    local cost = tool and tool.basePrice or 2
+    local canAfford = gameState.coins >= cost
+
+    -- Check if player has space for more tools
+    local ownedTools = gameState.ownedTools or {}
+    local hasSpace = #ownedTools < 3
+
+    local enabled = hasToolPlaced and canAfford and hasSpace
+
+    local buttonColor = enabled and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    local textColor = enabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = hasToolPlaced and ("PURCHASE (" .. cost .. "$)") or "PLACE TOOL"
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center")
+
+    -- DISCARD button (for reroll)
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+
+    local discardAnim = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local discardScale = discardAnim and discardAnim.scale or 1.0
+    local discardYOffset = discardAnim and discardAnim.yOffset or 0
+
+    local rerollCost = gameState.shopRerollCost or 1
+    local canAffordReroll = gameState.coins >= rerollCost
+
+    local discardButtonColor = canAffordReroll and UI.Colors.BACKGROUND_LIGHT or {UI.Colors.BACKGROUND_LIGHT[1] * 0.5, UI.Colors.BACKGROUND_LIGHT[2] * 0.5, UI.Colors.BACKGROUND_LIGHT[3] * 0.5, 0.5}
+    love.graphics.setColor(discardButtonColor)
+    love.graphics.rectangle("fill", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    local discardTextColor = canAffordReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("REROLL (" .. rerollCost .. "$)", discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOffset, "button", discardTextColor, "center")
+end
+
+function UI.Renderer.drawArtifactsShopDebug()
+    local debugY = UI.Layout.scale(80)
+    local debugX = UI.Layout.scale(40)
+    local lineHeight = UI.Layout.scale(20)
+
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle("fill", debugX - 10, debugY - 10, 600, 260)
+
+    -- Show offeredTools state
+    local offeredCount = gameState.offeredTools and #gameState.offeredTools or 0
+    UI.Fonts.drawText("Offered Tools: " .. offeredCount, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+    debugY = debugY + lineHeight
+
+    if gameState.offeredTools then
+        for i, tool in ipairs(gameState.offeredTools) do
+            local posText = string.format("  [%d] %s x=%.0f y=%.0f vX=%.0f vY=%.0f drag=%s",
+                i, tool.toolId or "?",
+                tool.x or -1, tool.y or -1,
+                tool.visualX or -1, tool.visualY or -1,
+                tostring(tool.isDragging or false))
+            UI.Fonts.drawText(posText, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+            debugY = debugY + lineHeight
+        end
+    end
+
+    -- Show placed tools state
+    local placedCount = gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools or 0
+    UI.Fonts.drawText("Placed Tools: " .. placedCount, debugX, debugY, "small", UI.Colors.FONT_YELLOW, "left")
+    debugY = debugY + lineHeight
+
+    -- Show drag state from touchState
+    local touchState = Touch and Touch.getTouchState and Touch.getTouchState()
+    local dragState = "none"
+    if touchState and touchState.draggedTool then
+        dragState = string.format("%s (from: %s, idx: %s)",
+            touchState.draggedTool.toolId or "?",
+            touchState.draggedFrom or "?",
+            tostring(touchState.draggedIndex or "?"))
+    end
+    UI.Fonts.drawText("Drag: " .. dragState, debugX, debugY, "small", UI.Colors.FONT_PINK, "left")
+    debugY = debugY + lineHeight
+
+    -- Show button press state
+    local buttonState = "none"
+    if touchState then
+        if touchState.discardButtonPressed then
+            buttonState = "DISCARD"
+        elseif touchState.playButtonPressed then
+            buttonState = "PLAY"
+        end
+    end
+    UI.Fonts.drawText("Button: " .. buttonState, debugX, debugY, "small", {0.3, 0.9, 1, 1}, "left")
+    debugY = debugY + lineHeight
+
+    -- Show game phase
+    UI.Fonts.drawText("Phase: " .. (gameState.gamePhase or "?"), debugX, debugY, "small", {1, 0.7, 0.3, 1}, "left")
+    debugY = debugY + lineHeight
+
+    -- Show coins
+    UI.Fonts.drawText("Coins: " .. (gameState.coins or 0), debugX, debugY, "small", {1, 0.9, 0.3, 1}, "left")
 end
 
 function UI.Renderer.drawTileOffers()
