@@ -16,6 +16,8 @@ local playButtonSound = nil
 local discardButtonSound = nil
 local cupFrame4Sound = nil
 local cupSlidingSounds = {}
+local shakeCupSound = nil
+local diceSettleSounds = {}
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -168,6 +170,21 @@ function UI.Audio.load()
             sound:setVolume(sfxVolume)
             table.insert(cupSlidingSounds, sound)
         end
+    end
+
+    -- Load shake cup sound (for artifact shop intro)
+    local shakeCupPath = "sounds/fx/shake_cup.mp3"
+    if love.filesystem.getInfo(shakeCupPath) then
+        shakeCupSound = love.audio.newSource(shakeCupPath, "static")
+        shakeCupSound:setVolume(sfxVolume)
+    end
+
+    -- Load dice settle sound (for artifact shop intro)
+    local diceSettlePath = "sounds/fx/dice_settle.mp3"
+    if love.filesystem.getInfo(diceSettlePath) then
+        local sound = love.audio.newSource(diceSettlePath, "static")
+        sound:setVolume(sfxVolume)
+        table.insert(diceSettleSounds, sound)
     end
 end
 
@@ -427,6 +444,32 @@ function UI.Audio.playCupSliding()
     end
 
     return nil
+end
+
+function UI.Audio.playShakeCup()
+    if not gameState or not gameState.sfxEnabled then
+        return nil
+    end
+
+    if shakeCupSound then
+        local soundSource = shakeCupSound:clone()
+        soundSource:play()
+        return soundSource  -- Return the source so caller can control volume
+    end
+
+    return nil
+end
+
+function UI.Audio.playDiceSettle()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if #diceSettleSounds > 0 then
+        -- Play the dice settle sound
+        local sound = diceSettleSounds[1]
+        sound:clone():play()
+    end
 end
 
 -- Map ambiance control functions

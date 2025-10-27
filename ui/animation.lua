@@ -681,8 +681,8 @@ function UI.Animation.updateDiePhysics(dt)
                         die.onComplete(die)
                     end
 
-                    -- Remove from physics animations
-                    table.remove(diePhysicsAnimations, i)
+                    -- Don't remove from physics animations yet - keep it visible on board
+                    -- It will be removed when it starts animating to hand
                 end
             end
 
@@ -703,8 +703,8 @@ function UI.Animation.updateDiePhysics(dt)
                         die.onComplete(die)
                     end
 
-                    -- Remove from physics animations
-                    table.remove(diePhysicsAnimations, i)
+                    -- Don't remove from physics animations yet - keep it visible on board
+                    -- It will be removed when it starts animating to hand
                 else
                     -- Animate position with smooth easing
                     local t = die.adjustProgress / die.adjustDuration
@@ -845,8 +845,14 @@ function UI.Animation.animateCupIntroArtifactShop(tools, onComplete)
         startY = cupY,
         tools = tools,  -- Store tools to throw
         thrownTools = {},  -- Track which tools have been thrown
-        onComplete = onComplete
+        onComplete = onComplete,
+        shakeSoundSource = nil  -- Store shake sound source to stop it later
     }
+
+    -- Play shake cup sound and store the source
+    if UI.Audio and UI.Audio.playShakeCup then
+        cupAnim.shakeSoundSource = UI.Audio.playShakeCup()
+    end
 
     table.insert(cupAnimations, cupAnim)
     return cupAnim
@@ -856,6 +862,20 @@ end
 function UI.Animation.animateToolsFromBoardToHand(tools, onComplete)
     local animationsComplete = 0
     local totalAnimations = #tools
+
+    -- Remove all physics dice from the diePhysicsAnimations array
+    for i = #diePhysicsAnimations, 1, -1 do
+        local die = diePhysicsAnimations[i]
+        -- Remove any settled dice that match our tools
+        if die.settled then
+            for _, tool in ipairs(tools) do
+                if die.toolId == tool.toolId then
+                    table.remove(diePhysicsAnimations, i)
+                    break
+                end
+            end
+        end
+    end
 
     for i, tool in ipairs(tools) do
         -- Calculate target hand position
@@ -999,44 +1019,27 @@ function UI.Animation.updateCupAnimations(dt)
 
             -- Check if shake complete
             if cup.elapsed >= cup.shakeDuration then
+                -- Stop shake sound
+                if cup.shakeSoundSource then
+                    cup.shakeSoundSource:stop()
+                    cup.shakeSoundSource = nil
+                end
+
                 cup.phase = "reverseAnimation"
                 cup.elapsed = 0
                 cup.x = cup.startX  -- Reset to center
                 cup.rotation = 0  -- Reset rotation
                 cup.frameTimer = 0
                 cup.reverseStartX = cup.startX
+                cup.reverseStartY = cup.startY
                 cup.reverseTargetX = cup.startX - UI.Layout.scale(80)  -- Move left
-                cup.reverseDuration = 0.4  -- Duration for reverse + left movement
+                cup.reverseTargetY = cup.startY - UI.Layout.scale(60)  -- Move up
+                cup.reverseDuration = 0.4  -- Duration for reverse + diagonal movement
             end
 
         elseif cup.phase == "reverseAnimation" then
-            -- Animate through frames 4→3→2→1 while moving left
-            cup.frameTimer = cup.frameTimer + dt
-
-            -- Frame animation at 8 fps (slower for better visibility)
-            if cup.frameTimer >= (1/8) and cup.frame > 1 then
-                cup.frameTimer = 0
-                cup.frame = cup.frame - 1
-            end
-
-            -- Move cup left with constant speed
-            local progress = math.min(cup.elapsed / cup.reverseDuration, 1.0)
-            cup.x = cup.reverseStartX + (cup.reverseTargetX - cup.reverseStartX) * progress
-
-            -- Check if reverse animation complete
-            if progress >= 1.0 then
-                cup.phase = "diagonalExit"
-                cup.elapsed = 0
-                cup.exitStartX = cup.x
-                cup.exitStartY = cup.y
-                cup.exitTargetX = -100  -- Off-screen left
-                cup.exitTargetY = -100  -- Off-screen top
-                cup.exitDuration = 1.0  -- Slower exit (1 second)
-            end
-
-        elseif cup.phase == "diagonalExit" then
-            -- Throw dice at 0.5s into diagonal exit
-            if not cup.toolsThrown and cup.elapsed >= 0.5 and cup.tools and #cup.tools > 0 then
+            -- Throw dice at 0.3s into reverse animation
+            if not cup.toolsThrown and cup.elapsed >= 0.3 and cup.tools and #cup.tools > 0 then
                 cup.toolsThrown = true
 
                 -- Get center position for targeting
@@ -1045,14 +1048,14 @@ function UI.Animation.updateCupAnimations(dt)
                 -- Throw all tools at once from behind cup position
                 for toolIndex, tool in ipairs(cup.tools) do
                     -- Calculate direction toward center (right and down from cup)
-                    local baseVelocityX = (centerX - cup.x) * 5  -- Toward center X (right)
-                    local baseVelocityY = (centerY - cup.y) * 5  -- Toward center Y (down)
+                    local baseVelocityX = (centerX - cup.x) * 10  -- Toward center X (right)
+                    local baseVelocityY = (centerY - cup.y) * 10  -- Toward center Y (down)
 
                     -- Add random variation to velocity (±30%)
                     local velocityX = baseVelocityX * love.math.random(70, 130) / 100
                     local velocityY = baseVelocityY * love.math.random(70, 130) / 100
 
-                    -- TWEAK VELOCITY HERE: Adjust the multiplier on lines 1048-1049 above
+                    -- TWEAK VELOCITY HERE: Adjust the multiplier on lines 1028-1029 above
                     -- Current: 0.8 multiplier on base velocity
                     -- Higher values = faster throws (try 1.0, 1.2, etc.)
                     -- Lower values = slower throws (try 0.6, 0.4, etc.)
@@ -1080,19 +1083,45 @@ function UI.Animation.updateCupAnimations(dt)
                                 print("All tools settled, starting delay before hand animation")
                                 -- Store completion callback with delay
                                 cup.allToolsSettled = true
-                                cup.settlementDelay = 0.7  -- Dice stay on table for 0.7 seconds
+                                cup.settlementDelay = 0.5  -- Dice stay on table for 0.5 seconds
                                 cup.settlementElapsed = 0
                             end
                         end
                     })
                 end
 
-                -- Play throw sound once
-                if UI.Audio and UI.Audio.playTilePlaced then
-                    UI.Audio.playTilePlaced()
+                -- Play dice settle sound once (when dice are thrown)
+                if UI.Audio and UI.Audio.playDiceSettle then
+                    UI.Audio.playDiceSettle()
                 end
             end
 
+            -- Animate through frames 4→3→2→1 while moving diagonally up-left
+            cup.frameTimer = cup.frameTimer + dt
+
+            -- Frame animation at 8 fps (slower for better visibility)
+            if cup.frameTimer >= (1/8) and cup.frame > 1 then
+                cup.frameTimer = 0
+                cup.frame = cup.frame - 1
+            end
+
+            -- Move cup diagonally (left and up) with constant speed
+            local progress = math.min(cup.elapsed / cup.reverseDuration, 1.0)
+            cup.x = cup.reverseStartX + (cup.reverseTargetX - cup.reverseStartX) * progress
+            cup.y = cup.reverseStartY + (cup.reverseTargetY - cup.reverseStartY) * progress
+
+            -- Check if reverse animation complete
+            if progress >= 1.0 then
+                cup.phase = "diagonalExit"
+                cup.elapsed = 0
+                cup.exitStartX = cup.x
+                cup.exitStartY = cup.y
+                cup.exitTargetX = -100  -- Off-screen left
+                cup.exitTargetY = -100  -- Off-screen top
+                cup.exitDuration = 1.0  -- Slower exit (1 second)
+            end
+
+        elseif cup.phase == "diagonalExit" then
             -- Move cup diagonally off-screen at slower constant speed
             local progress = math.min(cup.elapsed / cup.exitDuration, 1.0)
 
