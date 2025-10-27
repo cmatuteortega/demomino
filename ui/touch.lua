@@ -737,6 +737,8 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsFromTitle = false
             -- Reset the entire game to a fresh state
             resetGameToFresh()
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
@@ -745,6 +747,8 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsFromTitle = false
             -- Auto-save current progress before returning to title
             Save.saveGame(gameState)
+            -- Clear any thrown tool sprites before returning to title
+            UI.Animation.clearAllDiePhysics()
             -- Reset title tiles for re-animation
             gameState.titleTilesInitialized = false
             gameState.titleTiles = {}
@@ -780,6 +784,8 @@ function Touch.released(x, y, istouch, touchId)
                 gameState.currentRound = gameState.currentRound + 1
                 gameState.targetScore = TARGET_SCORE
                 Save.updateBestRound(gameState.currentRound)
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
                 gameState.gamePhase = "map"
                 Save.saveGame(gameState)
 
@@ -814,11 +820,15 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.lostRestartButton and isPointInRect(x, y, gameState.lostRestartButton) then
             -- Reset the entire game to a fresh state
             resetGameToFresh()
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
             -- Delete save when returning to title from lost screen (game is over)
             Save.deleteSave()
+            -- Clear any thrown tool sprites before returning to title
+            UI.Animation.clearAllDiePhysics()
             -- Reset title tiles for re-animation
             gameState.titleTilesInitialized = false
             gameState.titleTiles = {}
@@ -984,6 +994,8 @@ function Touch.released(x, y, istouch, touchId)
                     [3] = UI.Colors.FONT_WHITE[3],
                     [4] = UI.Colors.FONT_WHITE[4]
                 }, 0.1, "easeOutQuart", function()
+                    -- Clear any thrown tool sprites before returning to map
+                    UI.Animation.clearAllDiePhysics()
                     -- Return to map
                     gameState.gamePhase = "map"
                 end)
@@ -1015,6 +1027,8 @@ function Touch.released(x, y, istouch, touchId)
                 [3] = UI.Colors.FONT_WHITE[3],
                 [4] = UI.Colors.FONT_WHITE[4]
             }, 0.1, "easeOutQuart", function()
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
                 -- Return to map
                 gameState.gamePhase = "map"
             end)
@@ -1045,6 +1059,8 @@ function Touch.released(x, y, istouch, touchId)
             }, 0.1, "easeOutQuart", function()
                 -- Clean up settled tool sprites before returning to map
                 gameState.artifactsShopSettledTools = {}
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
 
                 -- Return to map
                 gameState.gamePhase = "map"
@@ -1076,6 +1092,8 @@ function Touch.released(x, y, istouch, touchId)
     elseif gameState.gamePhase == "contracts_menu" then
         -- Handle menu screen interactions - only Return to Map button for now
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         end
         touchState.isPressed = false

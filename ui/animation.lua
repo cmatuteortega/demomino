@@ -792,6 +792,11 @@ function UI.Animation.drawDiePhysics()
     end
 end
 
+-- Clear all thrown tool/die sprites from the board
+function UI.Animation.clearAllDiePhysics()
+    diePhysicsAnimations = {}
+end
+
 -- Debug: Draw avoidance zones (for manual tweaking)
 function UI.Animation.drawDebugAvoidanceZones()
     local zones = getAvoidanceZones()
