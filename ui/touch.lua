@@ -1163,8 +1163,14 @@ function Touch.released(x, y, istouch, touchId)
         if Touch.isDragging() then
             -- Check if dropped over board area
             if isInBoardArea(x, y) then
-                -- Start physics animation instead of instant use
-                Touch.startDiePhysicsAnimation(gameState.draggedTool, x, y)
+                -- Different behavior based on game phase
+                if gameState.gamePhase == "artifacts_menu" then
+                    -- In artifacts shop: Sell the tool for 1 coin
+                    Touch.throwToolToSell(gameState.draggedTool, x, y)
+                else
+                    -- In combat: Use the tool effect
+                    Touch.startDiePhysicsAnimation(gameState.draggedTool, x, y)
+                end
             else
                 -- Dropped outside board - animate back to stack position
                 Touch.animateToolBackToStack(gameState.draggedTool.toolIndex)
@@ -3811,6 +3817,39 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
     end
     table.insert(gameState.ownedTools, tool.toolId)
 
+    -- Animate the new tool appearing in the stack with a "pop in" effect
+    local newToolIndex = #gameState.ownedTools
+    local spriteType = getToolSpriteType(tool.toolId)
+    if spriteType then
+        -- Initialize animated positions
+        if not gameState.toolSpritePositions then
+            gameState.toolSpritePositions = {}
+        end
+
+        -- Get target position in stack
+        local stackIndex = newToolIndex - 1  -- 0-based
+        local targetX, targetY, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+
+        -- Start from settled die position (where it landed on board)
+        gameState.toolSpritePositions[newToolIndex] = {
+            visualX = settledDie.x,
+            visualY = settledDie.y,
+            scale = settledDie.scale or 0.9
+        }
+
+        -- Animate to stack position with bounce
+        UI.Animation.animateTo(gameState.toolSpritePositions[newToolIndex], {
+            visualX = targetX,
+            visualY = targetY,
+            scale = spriteScale
+        }, 0.5, "easeOutBounce", function()
+            -- Clear animated position when done
+            if gameState.toolSpritePositions then
+                gameState.toolSpritePositions[newToolIndex] = nil
+            end
+        end)
+    end
+
     -- Play purchase sound
     UI.Audio.playPlayButton()
 
@@ -3826,6 +3865,129 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
         bounce = true,
         easing = "easeOutBack"
     })
+end
+
+-- Throw tool from stack to sell it in artifacts shop (returns 1 coin)
+function Touch.throwToolToSell(draggedTool, releaseX, releaseY)
+    if not draggedTool then
+        return
+    end
+
+    -- Get velocity from drag tracking
+    local velocityX = draggedTool.velocityX or 0
+    local velocityY = draggedTool.velocityY or 0
+    local speed = math.sqrt(velocityX^2 + velocityY^2)
+    local minThrowSpeed = 100  -- Minimum speed to be considered a "throw"
+
+    -- Use lagged position for more impactful throw
+    local startX = draggedTool.lagVisualX or draggedTool.visualX or releaseX
+    local startY = draggedTool.lagVisualY or draggedTool.visualY or releaseY
+
+    -- If dragged slowly, show feedback and return to stack
+    if speed < minThrowSpeed then
+        -- Check if release position overlaps invalid areas
+        if UI.Animation.isPositionInvalid then
+            local toolRadius = 20
+            if UI.Animation.isPositionInvalid(releaseX, releaseY, toolRadius) then
+                -- Invalid slow drag - animate tool back to stack
+                Touch.animateToolBackToStack(draggedTool.toolIndex)
+
+                -- Show error feedback
+                UI.Animation.createFloatingText("THROW IT!", releaseX, releaseY - 30, {
+                    color = {0.9, 0.3, 0.3, 1},
+                    fontSize = "medium",
+                    duration = 0.8,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+
+                -- Play cancel sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+
+                return
+            end
+        end
+    end
+
+    -- Create physics animation for selling
+    UI.Animation.createDiePhysics({
+        startX = startX,
+        startY = startY,
+        velocityX = velocityX,
+        velocityY = velocityY,
+        spriteType = draggedTool.spriteType,
+        toolId = draggedTool.toolId,
+        toolIndex = draggedTool.toolIndex,
+        onComplete = function(settledDie)
+            -- When tool settles, sell it for 1 coin
+            Touch.sellToolFromInventory(draggedTool.toolId, draggedTool.toolIndex, settledDie)
+        end
+    })
+end
+
+-- Sell a tool from inventory (called after physics animation settles)
+function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
+    if not toolId or not toolIndex then
+        return
+    end
+
+    -- Remove tool from owned tools
+    local ownedTools = gameState.ownedTools or {}
+    if toolIndex <= #ownedTools and ownedTools[toolIndex] == toolId then
+        table.remove(ownedTools, toolIndex)
+    else
+        -- Fallback: search for tool
+        for i, id in ipairs(ownedTools) do
+            if id == toolId then
+                table.remove(ownedTools, i)
+                toolIndex = i
+                break
+            end
+        end
+    end
+
+    -- Add 1 coin with falling animation
+    local sellValue = 1
+    updateCoins(gameState.coins + sellValue, {hasBonus = false})
+
+    -- Create falling coin at settled position
+    if not gameState.fallingCoins then
+        gameState.fallingCoins = {}
+    end
+
+    table.insert(gameState.fallingCoins, {
+        x = settledDie.x,
+        y = settledDie.y,
+        targetX = gameState.screen.width - UI.Layout.scale(40),
+        targetY = UI.Layout.scale(20),
+        progress = 0,
+        duration = 0.8,
+        value = sellValue
+    })
+
+    -- Play sell sound
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
+    end
+
+    -- Show sell confirmation at settled position
+    UI.Animation.createFloatingText("SOLD FOR " .. sellValue .. "$!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
+        color = {1, 0.9, 0.3, 1},  -- Gold color
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+
+    -- Animate remaining tools falling down with gravity
+    Touch.animateToolGravity(toolIndex)
 end
 
 function Touch.rerollArtifactsShopTools()

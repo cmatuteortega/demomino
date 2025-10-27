@@ -1090,6 +1090,151 @@ function UI.Renderer.drawToolSprites()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- Draw tool stack (works in all game phases, not just "playing")
+function UI.Renderer.drawToolStack()
+    if not toolSprites then
+        return
+    end
+
+    local ownedTools = gameState.ownedTools or {}
+    if #ownedTools == 0 then
+        return
+    end
+
+    -- Allow interaction in playing phase and artifacts menu
+    local isInteractive = (gameState.gamePhase == "playing" or gameState.gamePhase == "artifacts_menu")
+
+    if isInteractive then
+        -- Reset tool sprite bounds for click detection
+        gameState.toolSpriteBounds = {}
+    end
+
+    -- Draw each tool individually (not grouped by sprite type)
+    -- Stack from bottom to top
+    local explosion = gameState.toolStackExplosion
+    local totalTools = #ownedTools
+
+    for i, toolId in ipairs(ownedTools) do
+        local spriteType = getToolSpriteType(toolId)
+        local sprite = toolSprites[spriteType]
+
+        if sprite and spriteType then
+            local stackIndex = i - 1  -- 0-based for positioning (0 = bottom)
+
+            -- Get base position based on explosion state
+            local stackedX, stackedY, spriteScale
+            local explodedX, explodedY
+            local x, y
+
+            -- Calculate both stacked and exploded positions
+            if gameState.toolSpritePositions and gameState.toolSpritePositions[i] then
+                -- Use animated position during gravity animation
+                x = gameState.toolSpritePositions[i].visualX
+                y = gameState.toolSpritePositions[i].visualY
+                spriteScale = gameState.toolSpritePositions[i].scale
+            else
+                -- Get stacked position
+                stackedX, stackedY, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+
+                -- Get exploded position
+                explodedX, explodedY = UI.Layout.getToolExplodedPosition(i, totalTools, spriteType)
+
+                -- Lerp between stacked and exploded based on explosion progress
+                local progress = explosion and explosion.explosionProgress or 0
+                local easedProgress = 1 - math.pow(1 - progress, 3) -- easeOutCubic
+                if progress > 0.5 then
+                    easedProgress = easedProgress + (progress - 0.5) * 0.2 -- slight overshoot
+                end
+
+                x = stackedX + (explodedX - stackedX) * easedProgress
+                y = stackedY + (explodedY - stackedY) * easedProgress
+            end
+
+            -- In non-playing phases, always show full opacity
+            local alpha = 1.0
+            local tint = {1, 1, 1, 1}
+
+            -- Only dim unusable tools in playing phase (not in artifacts shop)
+            if gameState.gamePhase == "playing" then
+                -- Check if this specific tool can be used
+                local canUse, reason = Tools.canUse(toolId, gameState)
+                if not canUse then
+                    -- Dim unusable tools
+                    alpha = 0.5
+                    tint = {0.6, 0.6, 0.6, 0.5}
+                end
+            end
+
+            -- Apply animation
+            local scale = spriteScale
+            local rotation = 0
+
+            -- Apply idle animations when exploded (subtle float and tilt)
+            if explosion and explosion.isExploded and explosion.idleAnimations and explosion.idleAnimations[i] then
+                local anim = explosion.idleAnimations[i]
+                y = y + anim.floatOffset
+                rotation = anim.tiltAngle
+            end
+
+            -- Override with stronger animation if this tool is selected/dragging (only in playing)
+            if isInteractive and gameState.toolStackAnimation and gameState.toolStackAnimation.isActivated and gameState.toolStackAnimation.selectedToolIndex == i then
+                scale = scale * (gameState.toolStackAnimation.scale or 1.0)
+                rotation = gameState.toolStackAnimation.tiltAngle or 0
+            end
+
+            -- Check if this tool is being dragged (only in playing)
+            local isDragging = false
+            if isInteractive and gameState.draggedTool and gameState.draggedTool.toolIndex == i then
+                x = gameState.draggedTool.lagVisualX or gameState.draggedTool.visualX
+                y = gameState.draggedTool.lagVisualY or gameState.draggedTool.visualY
+                isDragging = true
+            end
+
+            -- Draw shadow for dragged tools
+            if isDragging then
+                local shadowOpacity = 0.15
+                local shadowOffset = 5
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(
+                    sprite,
+                    x + shadowOffset, y + shadowOffset,
+                    rotation,
+                    scale, scale,
+                    sprite:getWidth() / 2,
+                    sprite:getHeight() / 2
+                )
+            end
+
+            -- Draw the sprite
+            love.graphics.setColor(tint[1], tint[2], tint[3], tint[4] * alpha)
+            love.graphics.draw(
+                sprite,
+                x, y,
+                rotation,
+                scale, scale,
+                sprite:getWidth() / 2,
+                sprite:getHeight() / 2
+            )
+
+            -- Store bounds for click detection (only in playing phase)
+            if isInteractive and not isDragging then
+                local hitboxSize = sprite:getWidth() * spriteScale
+                table.insert(gameState.toolSpriteBounds, {
+                    x = x - hitboxSize / 2,
+                    y = y - hitboxSize / 2,
+                    width = hitboxSize,
+                    height = hitboxSize,
+                    toolId = toolId,
+                    toolIndex = i,
+                    spriteType = spriteType
+                })
+            end
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawBoard(board)
     for _, domino in ipairs(board) do
         UI.Renderer.drawDomino(domino, nil, nil, nil, "horizontal")
@@ -2437,6 +2582,9 @@ function UI.Renderer.drawArtifactsMenu()
 
     -- Draw flying/settling tool physics animations
     UI.Animation.drawDiePhysics()
+
+    -- Draw tool stack (bottom-left corner showing owned tools)
+    UI.Renderer.drawToolStack()
 
     -- Draw offered tool sprites (as draggable hand)
     if gameState.offeredTools and #gameState.offeredTools > 0 then
