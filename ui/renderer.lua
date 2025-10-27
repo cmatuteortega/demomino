@@ -2432,6 +2432,12 @@ function UI.Renderer.drawArtifactsMenu()
     -- Draw board area (for placing tool sprites)
     UI.Renderer.drawArtifactsShopPlacedTools()
 
+    -- Draw settled tool sprites (thrown via physics)
+    UI.Renderer.drawArtifactsShopSettledTools()
+
+    -- Draw flying/settling tool physics animations
+    UI.Animation.drawDiePhysics()
+
     -- Draw offered tool sprites (as draggable hand)
     if gameState.offeredTools and #gameState.offeredTools > 0 then
         UI.Renderer.drawToolOffers()
@@ -2619,43 +2625,49 @@ function UI.Renderer.drawArtifactsShopPlacedTools()
     end
 end
 
+--- Draw settled tool sprites (thrown via physics animation)
+function UI.Renderer.drawArtifactsShopSettledTools()
+    if not gameState.artifactsShopSettledTools then
+        return
+    end
+
+    -- Draw each settled tool sprite
+    for _, settledTool in ipairs(gameState.artifactsShopSettledTools) do
+        local sprite = toolSprites and toolSprites[settledTool.spriteType]
+        if sprite then
+            love.graphics.push()
+            love.graphics.translate(settledTool.x, settledTool.y)
+            love.graphics.rotate(settledTool.rotation)
+
+            -- Draw shadow first (offset and semi-transparent)
+            local shadowOpacity = 0.15
+            local shadowOffset = 5
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, settledTool.scale, settledTool.scale,
+                sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            -- Draw sprite on top
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, 0, 0, 0, settledTool.scale, settledTool.scale,
+                sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            love.graphics.pop()
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 -- Draw purchase/reroll buttons for artifacts shop
 function UI.Renderer.drawArtifactsShopUI()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
-    -- Check if tool is placed
-    local hasToolPlaced = gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools > 0
+    -- NOTE: Purchase button hidden - tools are now purchased automatically when thrown
+    -- Physics-based throwing replaces drag-and-drop placement
 
-    -- PLAY button (for purchasing)
+    -- Get button dimensions (needed for reroll button)
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
-    local playX, playY = UI.Layout.getPlayButtonPosition()
-
-    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
-    local scale = buttonAnim and buttonAnim.scale or 1.0
-    local yOffset = buttonAnim and buttonAnim.yOffset or 0
-
-    -- Determine button color (enabled if tool placed and can afford)
-    local tool = hasToolPlaced and gameState.artifactsShopPlacedTools[1] or nil
-    local cost = tool and tool.basePrice or 2
-    local canAfford = gameState.coins >= cost
-
-    -- Check if player has space for more tools
-    local ownedTools = gameState.ownedTools or {}
-    local hasSpace = #ownedTools < 3
-
-    local enabled = hasToolPlaced and canAfford and hasSpace
-
-    local buttonColor = enabled and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
-    love.graphics.setColor(buttonColor)
-    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
-
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
-
-    local textColor = enabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    local buttonText = hasToolPlaced and ("PURCHASE (" .. cost .. "$)") or "PLACE TOOL"
-    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center")
 
     -- DISCARD button (for reroll)
     local discardX, discardY = UI.Layout.getDiscardButtonPosition()

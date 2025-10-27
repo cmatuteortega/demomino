@@ -134,9 +134,19 @@ function Touch.update(dt)
         local tool = touchState.draggedTool
         local dragSpeed = 10 -- Higher = less lag, lower = more lag
 
+        -- Initialize lag position on first frame if needed
+        if not tool.lagVisualX then
+            tool.lagVisualX = tool.visualX
+            tool.lagVisualY = tool.visualY
+        end
+
         -- Update visual position to smoothly follow drag position
         tool.visualX = UI.Animation.smoothStep(tool.visualX, tool.dragX, dragSpeed, dt)
         tool.visualY = UI.Animation.smoothStep(tool.visualY, tool.dragY, dragSpeed, dt)
+
+        -- Update lagged visual position for throw effect
+        tool.lagVisualX = UI.Animation.smoothStep(tool.lagVisualX, tool.visualX, dragSpeed, dt)
+        tool.lagVisualY = UI.Animation.smoothStep(tool.lagVisualY, tool.visualY, dragSpeed, dt)
     end
 end
 
@@ -539,12 +549,18 @@ function Touch.pressed(x, y, istouch, touchId)
             touchState.draggedFrom = "artifactsShopHand"
             touchState.draggedIndex = index
 
-            -- Initialize drag state
+            -- Initialize drag state with velocity tracking
             tool.isDragging = false
             tool.dragX = x
             tool.dragY = y
             tool.visualX = tool.x
             tool.visualY = tool.y
+            tool.velocityX = 0
+            tool.velocityY = 0
+            tool.lastX = x
+            tool.lastY = y
+            tool.lastTime = love.timer.getTime()
+            tool.positionHistory = {{x = x, y = y, time = love.timer.getTime()}}
             return
         end
     end
@@ -1022,6 +1038,9 @@ function Touch.released(x, y, istouch, touchId)
                 [3] = UI.Colors.FONT_WHITE[3],
                 [4] = UI.Colors.FONT_WHITE[4]
             }, 0.1, "easeOutQuart", function()
+                -- Clean up settled tool sprites before returning to map
+                gameState.artifactsShopSettledTools = {}
+
                 -- Return to map
                 gameState.gamePhase = "map"
             end)
@@ -1065,14 +1084,12 @@ function Touch.released(x, y, istouch, touchId)
             if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
                 -- SHOP MODE: Purchase placed tile
                 Touch.purchaseShopPlacedTile()
-            elseif gameState.gamePhase == "artifacts_menu" then
-                -- ARTIFACTS SHOP MODE: Purchase placed tool
-                Touch.purchaseArtifactsShopTool()
             elseif #gameState.placedTiles > 0 then
                 -- PLAYING MODE: Play tiles
                 UI.Audio.playPlayButton()
                 Touch.playPlacedTiles()
             end
+            -- NOTE: artifacts_menu purchase removed - now handled automatically via physics throw
         end
         touchState.playButtonPressed = false
     end
@@ -1256,13 +1273,8 @@ function Touch.released(x, y, istouch, touchId)
         end
     elseif touchState.draggedTool and touchState.draggedFrom == "artifactsShopHand" then
         if Touch.isDragging() then
-            -- Check if dropped in board area (place on artifacts shop board, max 1 tool)
-            if isInBoardArea(x, y) then
-                Touch.placeArtifactsShopToolOnBoard(touchState.draggedTool, touchState.draggedIndex, x, y)
-            else
-                -- Dropped outside board - animate back to hand
-                Touch.animateToolToHand(touchState.draggedTool, touchState.draggedIndex, gameState.offeredTools)
-            end
+            -- Throw tool with physics animation (like combat dice)
+            Touch.throwArtifactsShopTool(touchState.draggedTool, touchState.draggedIndex, x, y)
         else
             -- Just a tap - play punch animation
             local tool = touchState.draggedTool
@@ -1596,6 +1608,49 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
             local tool = touchState.draggedTool
             tool.dragX = x
             tool.dragY = y
+
+            -- Track velocity for throwing (similar to combat tools)
+            if tool.velocityX ~= nil then  -- Only if initialized for velocity tracking
+                local currentTime = love.timer.getTime()
+                local dt = currentTime - (tool.lastTime or currentTime)
+
+                -- Track position history for smoother trajectory calculation
+                if not tool.positionHistory then
+                    tool.positionHistory = {}
+                end
+                table.insert(tool.positionHistory, {x = x, y = y, time = currentTime})
+
+                -- Keep only last 8 samples
+                local maxSamples = 8
+                while #tool.positionHistory > maxSamples do
+                    table.remove(tool.positionHistory, 1)
+                end
+
+                -- Calculate average velocity over entire trajectory
+                local history = tool.positionHistory
+                if #history >= 2 then
+                    local oldest = history[1]
+                    local newest = history[#history]
+                    local totalDt = newest.time - oldest.time
+
+                    if totalDt > 0 then
+                        local totalDx = newest.x - oldest.x
+                        local totalDy = newest.y - oldest.y
+
+                        -- Mobile devices have faster touch sampling, so scale down velocity
+                        local isMobile = love.system.getOS() == "Android" or love.system.getOS() == "iOS"
+                        local velocityScale = isMobile and 1.0 or 1.0
+
+                        tool.velocityX = (totalDx / totalDt) * velocityScale
+                        tool.velocityY = (totalDy / totalDt) * velocityScale
+                    end
+                end
+
+                -- Update tracking
+                tool.lastX = x
+                tool.lastY = y
+                tool.lastTime = currentTime
+            end
 
             -- Set dragging state when we exceed threshold
             if Touch.isDragging() and not tool.isDragging then
@@ -3608,6 +3663,169 @@ function Touch.purchaseArtifactsShopTool()
 
     -- Clear board
     gameState.artifactsShopPlacedTools = {}
+end
+
+-- Throw artifact shop tool with physics (like combat dice)
+function Touch.throwArtifactsShopTool(tool, toolIndex, releaseX, releaseY)
+    if not tool or tool.shopPurchased then
+        return
+    end
+
+    -- Get velocity from drag tracking
+    local velocityX = tool.velocityX or 0
+    local velocityY = tool.velocityY or 0
+    local speed = math.sqrt(velocityX^2 + velocityY^2)
+    local minThrowSpeed = 100  -- Minimum speed to be considered a "throw"
+
+    -- Use lagged position for more impactful throw (sprite "snaps" forward when released)
+    local startX = tool.lagVisualX or tool.visualX or releaseX
+    local startY = tool.lagVisualY or tool.visualY or releaseY
+
+    -- If dragged slowly, show feedback and return to hand
+    if speed < minThrowSpeed then
+        -- Check if release position overlaps invalid areas
+        if UI.Animation.isPositionInvalid then
+            local toolRadius = 20  -- Approximate tool size
+            if UI.Animation.isPositionInvalid(releaseX, releaseY, toolRadius) then
+                -- Invalid slow drag - animate tool back to hand
+                Touch.animateToolToHand(tool, toolIndex, gameState.offeredTools)
+
+                -- Show error feedback
+                UI.Animation.createFloatingText("THROW IT!", releaseX, releaseY - 30, {
+                    color = {0.9, 0.3, 0.3, 1},
+                    fontSize = "medium",
+                    duration = 0.8,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+
+                -- Play cancel sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+
+                return
+            end
+        end
+    end
+
+    -- Remove tool from offeredTools
+    if toolIndex and gameState.offeredTools then
+        table.remove(gameState.offeredTools, toolIndex)
+    elseif gameState.offeredTools then
+        for i, t in ipairs(gameState.offeredTools) do
+            if t == tool then
+                table.remove(gameState.offeredTools, i)
+                break
+            end
+        end
+    end
+
+    -- Create physics animation
+    UI.Animation.createDiePhysics({
+        startX = startX,
+        startY = startY,
+        velocityX = velocityX,
+        velocityY = velocityY,
+        spriteType = tool.spriteType,
+        toolId = tool.toolId,
+        toolIndex = toolIndex,
+        onComplete = function(settledDie)
+            -- When tool settles, trigger purchase automatically
+            Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
+
+            -- Add settled tool sprite to persistent board sprites
+            if not gameState.artifactsShopSettledTools then
+                gameState.artifactsShopSettledTools = {}
+            end
+
+            table.insert(gameState.artifactsShopSettledTools, {
+                x = settledDie.x,
+                y = settledDie.y,
+                rotation = settledDie.rotation,
+                scale = settledDie.scale,
+                spriteType = tool.spriteType,
+                toolId = tool.toolId
+            })
+        end
+    })
+
+    -- Reset drag state
+    Touch.resetToolDragState(tool)
+end
+
+-- Purchase artifact shop tool directly (called after physics animation settles)
+function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
+    if not tool then
+        return
+    end
+
+    local cost = tool.basePrice
+
+    -- Check if player can afford
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Check if player has space
+    local ownedTools = gameState.ownedTools or {}
+    if #ownedTools >= 3 then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+
+    -- Mark tool as purchased
+    tool.shopPurchased = true
+
+    -- Add tool to owned tools
+    if not gameState.ownedTools then
+        gameState.ownedTools = {}
+    end
+    table.insert(gameState.ownedTools, tool.toolId)
+
+    -- Play purchase sound
+    UI.Audio.playPlayButton()
+
+    -- Show purchase confirmation at settled position
+    local toolDef = Tools.getDefinition(tool.toolId)
+    UI.Animation.createFloatingText(toolDef.name .. " ACQUIRED!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
 end
 
 function Touch.rerollArtifactsShopTools()
