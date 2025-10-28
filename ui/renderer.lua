@@ -1733,9 +1733,10 @@ function UI.Renderer.drawCoinText()
     local coinTextWidth = coinFont:getWidth(text)
 
     -- Draw coin breakdown to the right of money counter (vertical list)
-    -- Skip breakdown in shop menu (only show in combat)
+    -- Skip breakdown in shop menu and artifacts menu (only show in combat)
     local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
-    if not isShopMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
+    local isArtifactsMenu = gameState.gamePhase == "artifacts_menu"
+    if not isShopMode and not isArtifactsMenu and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
         local lineHeight = font:getHeight() + UI.Layout.scale(5)
         -- Position breakdown to the right of coin counter text, with spacing
@@ -2515,6 +2516,21 @@ function UI.Renderer.drawArtifactsMenu()
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
+    -- Draw board area (for placing tool sprites)
+    UI.Renderer.drawArtifactsShopPlacedTools()
+
+    -- Draw settled tool sprites (thrown via physics)
+    UI.Renderer.drawArtifactsShopSettledTools()
+
+    -- Draw flying/settling tool physics animations
+    UI.Animation.drawDiePhysics()
+
+    -- Draw cup animations (for selling tools)
+    UI.Animation.drawCupAnimations()
+
+    -- Draw tool stack (bottom-left corner showing owned tools)
+    UI.Renderer.drawToolStack()
+
     -- Draw node title and demon name in top corners (same style as trade/alchemy)
     local rightX = screenWidth - UI.Layout.scale(40)
     local leftX = UI.Layout.scale(40)
@@ -2573,21 +2589,6 @@ function UI.Renderer.drawArtifactsMenu()
     -- Draw coin sprites and text (same as combat/trade)
     UI.Renderer.drawCoinSprites()
     UI.Renderer.drawCoinText()
-
-    -- Draw board area (for placing tool sprites)
-    UI.Renderer.drawArtifactsShopPlacedTools()
-
-    -- Draw settled tool sprites (thrown via physics)
-    UI.Renderer.drawArtifactsShopSettledTools()
-
-    -- Draw flying/settling tool physics animations
-    UI.Animation.drawDiePhysics()
-
-    -- Draw cup animations (for selling tools)
-    UI.Animation.drawCupAnimations()
-
-    -- Draw tool stack (bottom-left corner showing owned tools)
-    UI.Renderer.drawToolStack()
 
     -- Draw offered tool sprites (as draggable hand)
     if gameState.offeredTools and #gameState.offeredTools > 0 then
