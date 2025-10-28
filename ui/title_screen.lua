@@ -431,8 +431,9 @@ function UI.TitleScreen.startNewGame()
     -- Reset the entire game to a fresh state
     resetGameToFresh()
 
-    -- Go to map phase
-    gameState.gamePhase = "map"
+    -- Initialize and go to round intro phase
+    initializeRoundIntro()
+    gameState.gamePhase = "round_intro"
 end
 
 -- Continue saved game
@@ -493,8 +494,9 @@ function UI.TitleScreen.continueGame()
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
 
-    -- Go to map phase (player can choose where to go)
-    gameState.gamePhase = "map"
+    -- Initialize and go to round intro phase (player can choose where to go after)
+    initializeRoundIntro()
+    gameState.gamePhase = "round_intro"
 end
 
 return UI.TitleScreen

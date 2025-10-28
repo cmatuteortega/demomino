@@ -780,12 +780,14 @@ function Touch.released(x, y, istouch, touchId)
                 [3] = UI.Colors.FONT_WHITE[3],
                 [4] = UI.Colors.FONT_WHITE[4]
             }, 0.1, "easeOutQuart", function()
-                -- After white flash, transition to map
+                -- After white flash, transition directly to map (not intro)
                 gameState.currentRound = gameState.currentRound + 1
                 gameState.targetScore = TARGET_SCORE
                 Save.updateBestRound(gameState.currentRound)
                 -- Clear any thrown tool sprites before returning to map
                 UI.Animation.clearAllDiePhysics()
+
+                -- Go directly to map (skip intro - player is mid-run)
                 gameState.gamePhase = "map"
                 Save.saveGame(gameState)
 
@@ -822,7 +824,9 @@ function Touch.released(x, y, istouch, touchId)
             resetGameToFresh()
             -- Clear any thrown tool sprites before returning to map
             UI.Animation.clearAllDiePhysics()
-            gameState.gamePhase = "map"
+            -- Initialize and go to round intro
+            initializeRoundIntro()
+            gameState.gamePhase = "round_intro"
         -- Check for return to title button
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
             -- Delete save when returning to title from lost screen (game is over)

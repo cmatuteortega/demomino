@@ -2248,6 +2248,83 @@ function UI.Renderer.drawMap()
     end
 end
 
+function UI.Renderer.drawRoundIntro()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local anim = gameState.roundIntroAnimation
+
+    -- ALWAYS draw the map fully (all phases - typing, pausing, moving, revealing)
+    -- Use the normal drawMapNodes function to ensure everything is rendered correctly
+    if gameState.currentMap then
+        UI.Renderer.drawMapNodes(gameState.currentMap)
+    end
+
+    -- Overlay dark background that fades out during revealing phase
+    local fadeOpacity = 1.0
+    if anim.phase == "revealing" then
+        -- Fade from 100% to 0% opacity during reveal
+        fadeOpacity = 1.0 - anim.candleGrowth
+    end
+    -- During typing/pausing/moving, keep at 100% opacity
+
+    -- Draw the overlay (even at 0% opacity to ensure it completes the fade)
+    if fadeOpacity > 0 then
+        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], fadeOpacity)
+        love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+    end
+
+    -- Draw the "Night X" text character-by-character with wave animation
+    if anim.currentCharIndex > 0 then
+        local font = UI.Fonts.get("formulaScore")
+        local time = love.timer.getTime()
+        local dayColor = UI.Colors.FONT_RED
+
+        -- Calculate total width of text to center it
+        local totalWidth = 0
+        for i = 1, anim.currentCharIndex do
+            local char = anim.text:sub(i, i)
+            totalWidth = totalWidth + font:getWidth(char)
+        end
+
+        -- Start position - center the text or use animated position
+        local startX = anim.currentX
+        local startY = anim.currentY
+
+        -- During typing and pausing phases, center the text properly (both X and Y)
+        if anim.phase == "typing" or anim.phase == "pausing" then
+            startX = anim.currentX - totalWidth / 2
+            -- Center Y by accounting for font height
+            startY = anim.currentY - font:getHeight() / 2
+        end
+
+        -- Draw each character with wave animation (matching map screen style)
+        local currentX = startX
+        for i = 1, anim.currentCharIndex do
+            local char = anim.text:sub(i, i)
+            local charWidth = font:getWidth(char)
+
+            -- Wave animation: same as map screen (2.5 speed, 0.4 phase offset, 3px amplitude)
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 3
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(4),
+                scale = 1.0,
+                shake = 0,
+                opacity = anim.opacity
+            }
+
+            UI.Fonts.drawAnimatedText(char, currentX, startY + waveOffset, "formulaScore", dayColor, "left", animProps)
+
+            currentX = currentX + charWidth
+        end
+    end
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawNodeConfirmation()
     if not gameState.selectedNode then
         return
@@ -3846,7 +3923,7 @@ function UI.Renderer.drawMapFogOverlay(map)
     -- Collect all lit candle positions for distance checks
     local litCandles = {}
     if map.candles and #map.candles > 0 then
-        for _, candle in ipairs(map.candles) do
+        for i, candle in ipairs(map.candles) do
             if candle.lit then
                 table.insert(litCandles, {
                     x = candle.x - map.cameraX,

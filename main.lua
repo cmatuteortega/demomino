@@ -185,9 +185,25 @@ function love.load()
         },
         titleContinueButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        },
+        -- Round introduction animation system
+        roundIntroAnimation = {
+            phase = "typing",  -- "typing", "pausing", "moving", "revealing", "complete"
+            text = "",  -- Full text to display ("Night X")
+            currentCharIndex = 0,  -- Current character being typed
+            charTimer = 0,  -- Timer for next character
+            charsPerSecond = 8,  -- Typing speed
+            pauseTimer = 0,  -- Timer for pause after typing
+            pauseDuration = 0.8,  -- How long to pause after typing (seconds)
+            currentX = 0,  -- Current text X position
+            currentY = 0,  -- Current text Y position
+            targetX = 0,  -- Final X position (top-left)
+            targetY = 0,  -- Final Y position (top-left)
+            opacity = 1.0,
+            candleGrowth = 0  -- 0-1 for candle light radius growth
         }
     }
-    
+
     UI.Fonts.load()
     UI.Audio.load()
 
@@ -423,6 +439,40 @@ function initializeCombatRound()
 
     -- Keep currentRound, targetScore, currentMap, tileCollection, and ownedTools unchanged
     -- These should persist across combat rounds
+end
+
+function initializeRoundIntro()
+    -- Initialize the round introduction animation state
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Build the text to display
+    local nightText = "Night " .. tostring(gameState.currentDay)
+
+    -- Calculate center position
+    local centerX = screenWidth / 2
+    local centerY = screenHeight / 2
+
+    -- Calculate final position (top-left corner, matching map screen)
+    local finalX = UI.Layout.scale(40)
+    local finalY = UI.Layout.scale(20)
+
+    -- Reset animation state
+    gameState.roundIntroAnimation = {
+        phase = "typing",
+        text = nightText,
+        currentCharIndex = 0,
+        charTimer = 0,
+        charsPerSecond = 8,
+        pauseTimer = 0,
+        pauseDuration = 0.8,
+        currentX = centerX,
+        currentY = centerY,
+        targetX = finalX,
+        targetY = finalY,
+        opacity = 1.0,
+        candleGrowth = 0
+    }
 end
 
 function triggerVictoryPhrase()
@@ -1138,11 +1188,66 @@ function completeScoringSequence()
     end
 end
 
+function updateRoundIntro(dt)
+    local anim = gameState.roundIntroAnimation
+    if not anim then return end
+
+    if anim.phase == "typing" then
+        -- Typewriter effect - reveal characters one by one
+        anim.charTimer = anim.charTimer + dt
+        local timePerChar = 1.0 / anim.charsPerSecond
+
+        if anim.charTimer >= timePerChar then
+            anim.charTimer = anim.charTimer - timePerChar
+            anim.currentCharIndex = anim.currentCharIndex + 1
+
+            -- Play a subtle sound for each character (optional - using tile sound for now)
+            -- UI.Audio.playTilePlaced()
+
+            -- Check if we've typed all characters
+            if anim.currentCharIndex >= #anim.text then
+                anim.currentCharIndex = #anim.text
+                anim.phase = "pausing"
+                anim.pauseTimer = 0
+            end
+        end
+
+    elseif anim.phase == "pausing" then
+        -- Pause after typing completes before moving text
+        anim.pauseTimer = anim.pauseTimer + dt
+
+        if anim.pauseTimer >= anim.pauseDuration then
+            anim.phase = "moving"
+
+            -- Start animation to move text to top-left corner
+            UI.Animation.animateTo(anim, {
+                currentX = anim.targetX,
+                currentY = anim.targetY
+            }, 0.7, "easeOutQuart", function()
+                -- When text reaches final position, start revealing the map
+                anim.phase = "revealing"
+            end)
+        end
+
+    elseif anim.phase == "revealing" then
+        -- Grow the candle light radius to reveal the map
+        anim.candleGrowth = anim.candleGrowth + dt * 2.0  -- 0.5 second duration
+
+        if anim.candleGrowth >= 1.0 then
+            anim.candleGrowth = 1.0
+            anim.phase = "complete"
+
+            -- Transition to map phase
+            gameState.gamePhase = "map"
+        end
+    end
+end
+
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
         local button = gameState.buttonAnimations[buttonName]
         button.pressed = true
-        
+
         UI.Animation.animateTo(button, {scale = 0.9}, 0.1, "easeOutQuart", function()
             UI.Animation.animateTo(button, {scale = 1.1}, 0.15, "easeOutBack", function()
                 UI.Animation.animateTo(button, {scale = 1.0}, 0.2, "easeOutQuart", function()
@@ -1192,6 +1297,12 @@ function love.update(dt)
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
         -- Stop map ambiance on title screen
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.stopMapAmbiance()
+        end
+    elseif gameState.gamePhase == "round_intro" then
+        updateRoundIntro(dt)
+        -- Stop map ambiance during round intro
         if UI.Audio.isMapAmbiancePlaying() then
             UI.Audio.stopMapAmbiance()
         end
@@ -1296,14 +1407,16 @@ function love.draw()
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.draw()
         UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "round_intro" then
+        UI.Renderer.drawRoundIntro()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Animation.drawDiePhysics()  -- Draw flying/settling dice
         UI.Renderer.drawActiveDieSprites()  -- Draw settled dice on board
-        UI.Renderer.drawHand(gameState.hand)
-        UI.Renderer.drawToolButtons()  -- Draw tool buttons
+        UI.Renderer.drawToolButtons()  -- Draw tool buttons (tool stack)
+        UI.Renderer.drawHand(gameState.hand)  -- Draw hand on top of tool stack
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
         UI.Renderer.drawCoinSprites()  -- Draw coin sprites first
