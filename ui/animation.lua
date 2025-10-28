@@ -355,61 +355,66 @@ local function getAvoidanceZones()
     local zones = {}
     local padding = 7  -- Extra space around obstacles (reduced from 20)
 
-    -- Top-left corner: Round counter and challenges (ADAPTIVE to actual text height)
-    local leftX = UI.Layout.scale(40)
-    local leftY = UI.Layout.scale(20)
-    local roundTextHeight = UI.Layout.scale(60)  -- Approximate height of round text + challenges
+    -- Only add gameplay-specific zones if NOT in artifacts menu
+    local isArtifactsMenu = gameState and gameState.gamePhase == "artifacts_menu"
 
-    table.insert(zones, {
-        x = 0,
-        y = 0,
-        width = UI.Layout.scale(280),  -- Width to cover round name
-        height = roundTextHeight + leftY + UI.Layout.scale(20),  -- Adaptive to text
-        padding = padding
-    })
-
-    -- Top-right: Score and formula display (ADAPTIVE to score height)
-    local rightX = UI.Layout.scale(40)
-    local rightY = UI.Layout.scale(20)
-    local scoreHeight = UI.Layout.scale(100)  -- Score + formula height
-
-    table.insert(zones, {
-        x = gameState.screen.width - UI.Layout.scale(250),
-        y = 0,
-        width = UI.Layout.scale(250),
-        height = scoreHeight + rightY + UI.Layout.scale(20),  -- Adaptive to text
-        padding = padding
-    })
-
-    -- Central horizontal strip where tiles are placed (FULL WIDTH)
-    -- This prevents dice from landing in the tile play area
-    local boardArea = UI.Layout.getBoardArea()
-    local centerY = UI.Layout.getBoardCenter()
-    local stripHeight = UI.Layout.scale(140)  -- Height of the tile zone
-    local stripOffsetUp = UI.Layout.scale(30)  -- Move the strip UP from center
-
-    table.insert(zones, {
-        x = 0,
-        y = centerY - stripHeight / 2 - stripOffsetUp,  -- Shifted up
-        width = gameState.screen.width,
-        height = stripHeight,
-        padding = padding
-    })
-
-    -- Second horizontal strip at actual tile position (if tiles exist)
-    -- This follows where tiles are actually placed on the board
-    if gameState.placedTiles and #gameState.placedTiles > 0 then
-        -- Get Y position from first placed tile (they all share same Y)
-        local tileY = gameState.placedTiles[1].y
-        local tileStripHeight = UI.Layout.scale(140)
+    if not isArtifactsMenu then
+        -- Top-left corner: Round counter and challenges (ADAPTIVE to actual text height)
+        local leftX = UI.Layout.scale(40)
+        local leftY = UI.Layout.scale(20)
+        local roundTextHeight = UI.Layout.scale(60)  -- Approximate height of round text + challenges
 
         table.insert(zones, {
             x = 0,
-            y = tileY - tileStripHeight / 2,
-            width = gameState.screen.width,
-            height = tileStripHeight,
+            y = 0,
+            width = UI.Layout.scale(280),  -- Width to cover round name
+            height = roundTextHeight + leftY + UI.Layout.scale(20),  -- Adaptive to text
             padding = padding
         })
+
+        -- Top-right: Score and formula display (ADAPTIVE to score height)
+        local rightX = UI.Layout.scale(40)
+        local rightY = UI.Layout.scale(20)
+        local scoreHeight = UI.Layout.scale(100)  -- Score + formula height
+
+        table.insert(zones, {
+            x = gameState.screen.width - UI.Layout.scale(250),
+            y = 0,
+            width = UI.Layout.scale(250),
+            height = scoreHeight + rightY + UI.Layout.scale(20),  -- Adaptive to text
+            padding = padding
+        })
+
+        -- Central horizontal strip where tiles are placed (FULL WIDTH)
+        -- This prevents dice from landing in the tile play area
+        local boardArea = UI.Layout.getBoardArea()
+        local centerY = UI.Layout.getBoardCenter()
+        local stripHeight = UI.Layout.scale(140)  -- Height of the tile zone
+        local stripOffsetUp = UI.Layout.scale(30)  -- Move the strip UP from center
+
+        table.insert(zones, {
+            x = 0,
+            y = centerY - stripHeight / 2 - stripOffsetUp,  -- Shifted up
+            width = gameState.screen.width,
+            height = stripHeight,
+            padding = padding
+        })
+
+        -- Second horizontal strip at actual tile position (if tiles exist)
+        -- This follows where tiles are actually placed on the board
+        if gameState.placedTiles and #gameState.placedTiles > 0 then
+            -- Get Y position from first placed tile (they all share same Y)
+            local tileY = gameState.placedTiles[1].y
+            local tileStripHeight = UI.Layout.scale(140)
+
+            table.insert(zones, {
+                x = 0,
+                y = tileY - tileStripHeight / 2,
+                width = gameState.screen.width,
+                height = tileStripHeight,
+                padding = padding
+            })
+        end
     end
 
     -- Hand area (bottom section)
@@ -559,7 +564,8 @@ function UI.Animation.createDiePhysics(options)
         elapsed = 0,
         settled = false,
         onComplete = options.onComplete,
-        boardArea = boardArea
+        boardArea = boardArea,
+        settlementStartTime = nil  -- Track when die first reaches low velocity for timeout
     }
 
     table.insert(diePhysicsAnimations, dieAnim)
@@ -649,69 +655,113 @@ function UI.Animation.updateDiePhysics(dt)
 
             -- Check if settled (velocity below threshold)
             if velocityMagnitude < minVelocity then
-                -- First, ensure die is within basic bounds
-                die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
-                die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
+                -- Mark settlement start time on first frame below threshold
+                if not die.settlementStartTime then
+                    die.settlementStartTime = die.elapsed
+                end
 
-                -- Check for overlaps and find safe position
-                local dieRadius = math.max(halfWidth, halfHeight)
-                local adjustedX, adjustedY, wasAdjusted = findNearestSafePosition(die.x, die.y, dieRadius, die.boardArea)
+                -- Calculate time spent trying to settle
+                local settlementDuration = die.elapsed - die.settlementStartTime
+                local settlementTimeout = 0.2 -- Force settlement after 0.5 seconds
 
-                -- If position needed adjustment, animate to safe position
-                if wasAdjusted then
-                    -- Mark as adjusting (not fully settled yet)
-                    die.isAdjusting = true
-                    die.adjustStartX = die.x
-                    die.adjustStartY = die.y
-                    die.adjustTargetX = adjustedX
-                    die.adjustTargetY = adjustedY
-                    die.adjustProgress = 0
-                    die.adjustDuration = 0.2  -- 200ms smooth slide
-                    die.velocityX = 0
-                    die.velocityY = 0
-                else
-                    -- No adjustment needed, settle immediately
+                -- If timeout exceeded, force settlement immediately at current position
+                if settlementDuration >= settlementTimeout then
+                    -- Force settle at current position (ignore overlaps)
+                    die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
+                    die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
+
                     die.settled = true
                     die.velocityX = 0
                     die.velocityY = 0
-                    die.rotation = die.targetRotation  -- Snap to target rotation
+                    die.rotation = die.targetRotation
+                    die.isAdjusting = false  -- Cancel any adjustment
 
-                    -- Trigger completion callback
                     if die.onComplete then
                         die.onComplete(die)
                     end
+                else
+                    -- Normal settlement logic (try to find safe position)
+                    -- First, ensure die is within basic bounds
+                    die.x = math.max(die.boardArea.x + halfWidth, math.min(die.boardArea.x + die.boardArea.width - halfWidth, die.x))
+                    die.y = math.max(die.boardArea.y + halfHeight, math.min(die.boardArea.y + die.boardArea.height - halfHeight, die.y))
 
-                    -- Remove from physics animations
-                    table.remove(diePhysicsAnimations, i)
+                    -- Check for overlaps and find safe position
+                    local dieRadius = math.max(halfWidth, halfHeight)
+                    local adjustedX, adjustedY, wasAdjusted = findNearestSafePosition(die.x, die.y, dieRadius, die.boardArea)
+
+                    -- If position needed adjustment, animate to safe position
+                    if wasAdjusted then
+                        -- Mark as adjusting (not fully settled yet)
+                        die.isAdjusting = true
+                        die.adjustStartX = die.x
+                        die.adjustStartY = die.y
+                        die.adjustTargetX = adjustedX
+                        die.adjustTargetY = adjustedY
+                        die.adjustProgress = 0
+                        die.adjustDuration = 0.2  -- 200ms smooth slide
+                        die.velocityX = 0
+                        die.velocityY = 0
+                    else
+                        -- No adjustment needed, settle immediately
+                        die.settled = true
+                        die.velocityX = 0
+                        die.velocityY = 0
+                        die.rotation = die.targetRotation  -- Snap to target rotation
+
+                        -- Trigger completion callback
+                        if die.onComplete then
+                            die.onComplete(die)
+                        end
+
+                        -- Don't remove from physics animations yet - keep it visible on board
+                        -- It will be removed when it starts animating to hand
+                    end
                 end
             end
 
             -- Handle position adjustment animation
             if die.isAdjusting then
-                die.adjustProgress = die.adjustProgress + dt
+                -- Check timeout during adjustment as well
+                local settlementDuration = die.elapsed - (die.settlementStartTime or die.elapsed)
+                local settlementTimeout = 0.5
 
-                if die.adjustProgress >= die.adjustDuration then
-                    -- Adjustment complete, settle at final position
-                    die.x = die.adjustTargetX
-                    die.y = die.adjustTargetY
+                if settlementDuration >= settlementTimeout then
+                    -- Timeout during adjustment - force settle at current position
                     die.settled = true
                     die.isAdjusting = false
+                    die.velocityX = 0
+                    die.velocityY = 0
                     die.rotation = die.targetRotation
 
-                    -- Trigger completion callback
                     if die.onComplete then
                         die.onComplete(die)
                     end
-
-                    -- Remove from physics animations
-                    table.remove(diePhysicsAnimations, i)
                 else
-                    -- Animate position with smooth easing
-                    local t = die.adjustProgress / die.adjustDuration
-                    local easedT = easeOutQuart(t)  -- Smooth deceleration
-                    die.x = lerp(die.adjustStartX, die.adjustTargetX, easedT)
-                    die.y = lerp(die.adjustStartY, die.adjustTargetY, easedT)
-                    die.rotation = lerp(die.rotation, die.targetRotation, easedT * 0.5)
+                    die.adjustProgress = die.adjustProgress + dt
+
+                    if die.adjustProgress >= die.adjustDuration then
+                        -- Adjustment complete, settle at final position
+                        die.x = die.adjustTargetX
+                        die.y = die.adjustTargetY
+                        die.settled = true
+                        die.isAdjusting = false
+                        die.rotation = die.targetRotation
+
+                        -- Trigger completion callback
+                        if die.onComplete then
+                            die.onComplete(die)
+                        end
+
+                        -- Don't remove from physics animations yet - keep it visible on board
+                        -- It will be removed when it starts animating to hand
+                    else
+                        -- Animate position with smooth easing
+                        local t = die.adjustProgress / die.adjustDuration
+                        local easedT = easeOutQuart(t)  -- Smooth deceleration
+                        die.x = lerp(die.adjustStartX, die.adjustTargetX, easedT)
+                        die.y = lerp(die.adjustStartY, die.adjustTargetY, easedT)
+                        die.rotation = lerp(die.rotation, die.targetRotation, easedT * 0.5)
+                    end
                 end
             end
 
@@ -722,24 +772,34 @@ end
 
 function UI.Animation.drawDiePhysics()
     for _, die in ipairs(diePhysicsAnimations) do
-        local sprite = toolSprites and toolSprites[die.spriteType]
-        if sprite then
-            love.graphics.push()
-            love.graphics.translate(die.x, die.y)
-            love.graphics.rotate(die.rotation)
+        -- Skip drawing if this die is being hidden by cup animation
+        if UI.Animation.isDieHiddenByCup and UI.Animation.isDieHiddenByCup(die) then
+            -- Don't draw - cup is capturing it
+        else
+            local sprite = toolSprites and toolSprites[die.spriteType]
+            if sprite then
+                love.graphics.push()
+                love.graphics.translate(die.x, die.y)
+                love.graphics.rotate(die.rotation)
 
-            -- Draw shadow first (offset and semi-transparent)
-            local shadowOpacity = 0.15
-            local shadowOffset = 5  -- Larger shadow for consistency
-            love.graphics.setColor(0, 0, 0, shadowOpacity)
-            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+                -- Draw shadow first (offset and semi-transparent)
+                local shadowOpacity = 0.15
+                local shadowOffset = 5  -- Larger shadow for consistency
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
 
-            -- Draw die sprite on top
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
-            love.graphics.pop()
+                -- Draw die sprite on top
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+                love.graphics.pop()
+            end
         end
     end
+end
+
+-- Clear all thrown tool/die sprites from the board
+function UI.Animation.clearAllDiePhysics()
+    diePhysicsAnimations = {}
 end
 
 -- Debug: Draw avoidance zones (for manual tweaking)
@@ -801,6 +861,521 @@ function UI.Animation.drawDebugAvoidanceZones()
     love.graphics.print("■ Hand/Tools", legendX, legendY + 80)
     love.graphics.setColor(1, 1, 1, 0.6)
     love.graphics.print("Dashed = Padding", legendX, legendY + 100)
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Cup animation system for selling dice
+local cupAnimations = {}
+
+-- Artifact shop intro animation: cup throws tools onto board
+function UI.Animation.animateCupIntroArtifactShop(tools, onComplete)
+    -- Position cup at demon tile position (same as placed tiles)
+    local centerX, centerY = UI.Layout.getBoardCenter()
+
+    -- Apply offset to cup position (same as cup capture animation)
+    local offsetX = -30
+    if UI and UI.Layout and UI.Layout.scale then
+        offsetX = -UI.Layout.scale(58)
+    end
+    local offsetY = -UI.Layout.scale(45)
+
+    local cupX = centerX + offsetX
+    local cupY = centerY + offsetY
+
+    -- Create cup animation that enters at frame 4 (closed), shakes, then exits throwing tools
+    local cupAnim = {
+        x = cupX,
+        y = cupY,
+        rotation = 0,
+        scale = 1.5,
+        frame = 4,  -- Start at frame 4 (closed cup)
+        phase = "shaking",  -- Start directly at shaking
+        elapsed = 0,
+        shakeDuration = 1,  -- Shake for 1 seconds
+        shakeAmplitude = UI.Layout.scale(15),  -- Shake ±15 pixels
+        shakeRotationAmplitude = math.rad(5),  -- Tilt ±5 degrees
+        startX = cupX,
+        startY = cupY,
+        tools = tools,  -- Store tools to throw
+        thrownTools = {},  -- Track which tools have been thrown
+        onComplete = onComplete,
+        shakeSoundSource = nil  -- Store shake sound source to stop it later
+    }
+
+    -- Play shake cup sound and store the source
+    if UI.Audio and UI.Audio.playShakeCup then
+        cupAnim.shakeSoundSource = UI.Audio.playShakeCup()
+    end
+
+    table.insert(cupAnimations, cupAnim)
+    return cupAnim
+end
+
+-- Animate tools from board positions to hand
+function UI.Animation.animateToolsFromBoardToHand(tools, onComplete)
+    local animationsComplete = 0
+    local totalAnimations = #tools
+
+    -- Remove all physics dice from the diePhysicsAnimations array
+    for i = #diePhysicsAnimations, 1, -1 do
+        local die = diePhysicsAnimations[i]
+        -- Remove any settled dice that match our tools
+        if die.settled then
+            for _, tool in ipairs(tools) do
+                if die.toolId == tool.toolId then
+                    table.remove(diePhysicsAnimations, i)
+                    break
+                end
+            end
+        end
+    end
+
+    for i, tool in ipairs(tools) do
+        -- Calculate target hand position
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #tools)
+
+        -- Set initial position from board (fallback to center if not set)
+        tool.visualX = tool.boardX or targetX
+        tool.visualY = tool.boardY or targetY
+        tool.x = targetX
+        tool.y = targetY
+
+        -- Mark as animating and visible
+        tool.isAnimating = true
+        tool.hiddenForIntro = false  -- Now visible in hand
+
+        -- Animate from board to hand (staggering handled via animation system)
+        UI.Animation.animateTo(tool, {
+            visualX = targetX,
+            visualY = targetY
+        }, 0.4, "easeOutQuart", function()
+            tool.isAnimating = false
+            animationsComplete = animationsComplete + 1
+
+            -- Call onComplete when all tools animated
+            if animationsComplete == totalAnimations and onComplete then
+                print("All tools animated to hand, calling onComplete")
+                onComplete()
+            end
+        end)
+    end
+end
+
+function UI.Animation.animateCupCapture(x, y, dieToHide, onComplete)
+    -- Apply offset to final cup position (30 scaled pixels left, 1px up)
+    local offsetX = -30
+    if UI and UI.Layout and UI.Layout.scale then
+        offsetX = -UI.Layout.scale(58)
+    end
+    local offsetY = -UI.Layout.scale(45)
+
+    -- Calculate target position (where die is, with offset)
+    local targetX = x + offsetX
+    local targetY = y + offsetY
+
+    -- Start position: ALWAYS off-screen top-left
+    -- Use screen dimensions to ensure cup starts outside viewport
+    local screenWidth = gameState and gameState.screen and gameState.screen.width or 800
+    local screenHeight = gameState and gameState.screen and gameState.screen.height or 600
+
+    -- Start from top-left corner, well outside screen bounds
+    -- Position cup at angle so it swoops toward target
+    local startX = -100  -- 100px left of screen edge
+    local startY = -100  -- 100px above screen edge
+
+    -- Adjust start position to maintain ~45 degree angle toward target
+    local dx = targetX - startX
+    local dy = targetY - startY
+
+    -- If target is near screen edge, push start position further out
+    if targetX < screenWidth * 0.3 then
+        startX = targetX - 250  -- Push further left
+    end
+    if targetY < screenHeight * 0.3 then
+        startY = targetY - 250  -- Push further up
+    end
+
+    -- Store a copy of die rendering data so we can draw it even after it's removed from physics
+    local dieRenderData = nil
+    if dieToHide then
+        dieRenderData = {
+            x = dieToHide.x,
+            y = dieToHide.y,
+            rotation = dieToHide.rotation or 0,
+            scale = dieToHide.scale or 0.9,
+            spriteType = dieToHide.spriteType
+        }
+    end
+
+    -- Create cup animation that enters diagonally, closes, and exits upward
+    local cupAnim = {
+        x = startX,  -- Start off-screen top-left
+        y = startY,
+        startX = startX,
+        startY = startY,
+        targetX = targetX,  -- Final position at die
+        targetY = targetY,
+        rotation = 0,
+        scale = 1.5,
+        frame = 1,  -- Current cup frame (1-4)
+        phase = "entering",  -- "entering", "closing", "ascending"
+        elapsed = 0,
+        frameTimer = 0,
+        dieToHide = dieToHide,  -- Reference to die sprite to hide
+        dieRenderData = dieRenderData,  -- Cached die rendering data
+        dieHidden = false,  -- Track if die has been hidden
+        onComplete = onComplete
+    }
+
+    table.insert(cupAnimations, cupAnim)
+end
+
+-- Check if a die sprite should be hidden by cup animation
+function UI.Animation.isDieHiddenByCup(dieSprite)
+    for _, cup in ipairs(cupAnimations) do
+        if cup.dieToHide == dieSprite and cup.dieHidden then
+            return true
+        end
+    end
+    return false
+end
+
+function UI.Animation.updateCupAnimations(dt)
+    for i = #cupAnimations, 1, -1 do
+        local cup = cupAnimations[i]
+        cup.elapsed = cup.elapsed + dt
+
+        -- Handle settlement delay before animating to hand
+        if cup.allToolsSettled and cup.settlementDelay then
+            cup.settlementElapsed = (cup.settlementElapsed or 0) + dt
+            if cup.settlementElapsed >= cup.settlementDelay then
+                print("Settlement delay complete, animating tools to hand")
+                -- Delay complete, animate tools to hand
+                UI.Animation.animateToolsFromBoardToHand(cup.tools, cup.onComplete)
+                cup.allToolsSettled = false
+                cup.settlementDelay = nil
+            end
+        end
+
+        if cup.phase == "shaking" then
+            -- Oscillate left/right with decreasing amplitude
+            local shakeProgress = cup.elapsed / cup.shakeDuration
+            local frequency = 12  -- Hz (rapid shaking)
+            local t = cup.elapsed * frequency * math.pi * 2
+
+            -- Oscillate X position
+            local shakeFactor = 1 - shakeProgress  -- Decrease amplitude over time
+            cup.x = cup.startX + math.sin(t) * cup.shakeAmplitude * shakeFactor
+
+            -- Oscillate rotation (tilt effect on frame 4)
+            cup.rotation = math.sin(t * 1.3) * cup.shakeRotationAmplitude * shakeFactor
+
+            -- Check if shake complete
+            if cup.elapsed >= cup.shakeDuration then
+                -- Stop shake sound
+                if cup.shakeSoundSource then
+                    cup.shakeSoundSource:stop()
+                    cup.shakeSoundSource = nil
+                end
+
+                cup.phase = "reverseAnimation"
+                cup.elapsed = 0
+                cup.x = cup.startX  -- Reset to center
+                cup.rotation = 0  -- Reset rotation
+                cup.frameTimer = 0
+                cup.reverseStartX = cup.startX
+                cup.reverseStartY = cup.startY
+                cup.reverseTargetX = cup.startX - UI.Layout.scale(80)  -- Move left
+                cup.reverseTargetY = cup.startY - UI.Layout.scale(60)  -- Move up
+                cup.reverseDuration = 0.4  -- Duration for reverse + diagonal movement
+            end
+
+        elseif cup.phase == "reverseAnimation" then
+            -- Throw dice at 0.3s into reverse animation
+            if not cup.toolsThrown and cup.elapsed >= 0.3 and cup.tools and #cup.tools > 0 then
+                cup.toolsThrown = true
+
+                -- Define throw directions for each die (in degrees)
+                -- These angles create good separation between dice
+                local throwAngles = {45, 5, 85}  -- 45° down-right, 10° almost horizontal right, 75° down
+                local speedMultipliers = {2, 1, 1}  -- 45° die at 3x speed, others at normal speed
+
+                -- Base throw speed (pixels per second)
+                local baseSpeed = 400
+
+                -- Throw all tools at once from behind cup position
+                for toolIndex, tool in ipairs(cup.tools) do
+                    -- Get throw angle for this die (cycle through angles if more than 3 dice)
+                    local angleIndex = ((toolIndex - 1) % #throwAngles) + 1
+                    local angleDegrees = throwAngles[angleIndex]
+                    local angleRadians = math.rad(angleDegrees)
+                    local speedMultiplier = speedMultipliers[angleIndex]
+
+                    -- Calculate velocity components based on angle
+                    -- Positive X = right, Positive Y = down
+                    local velocityX = math.cos(angleRadians) * baseSpeed * speedMultiplier
+                    local velocityY = math.sin(angleRadians) * baseSpeed * speedMultiplier
+
+                    -- Add slight random variation (±15%) to make it feel natural
+                    velocityX = velocityX * love.math.random(85, 115) / 100
+                    velocityY = velocityY * love.math.random(85, 115) / 100
+
+                    -- Create physics animation for tool
+                    UI.Animation.createDiePhysics({
+                        startX = cup.x,
+                        startY = cup.y,
+                        velocityX = velocityX,
+                        velocityY = velocityY,
+                        spriteType = tool.spriteType,
+                        toolId = tool.toolId,
+                        toolIndex = toolIndex,
+                        onComplete = function(settledDie)
+                            -- Store settled position for later hand animation
+                            tool.boardX = settledDie.x
+                            tool.boardY = settledDie.y
+                            tool.boardRotation = settledDie.rotation
+                            table.insert(cup.thrownTools, tool)
+
+                            print("Tool settled: " .. #cup.thrownTools .. "/" .. #cup.tools)
+
+                            -- If all tools thrown and settled, animate to hand
+                            if #cup.thrownTools == #cup.tools then
+                                print("All tools settled, starting delay before hand animation")
+                                -- Store completion callback with delay
+                                cup.allToolsSettled = true
+                                cup.settlementDelay = 0.5  -- Dice stay on table for 0.5 seconds
+                                cup.settlementElapsed = 0
+                            end
+                        end
+                    })
+                end
+
+                -- Play dice settle sound once (when dice are thrown)
+                if UI.Audio and UI.Audio.playDiceSettle then
+                    UI.Audio.playDiceSettle()
+                end
+            end
+
+            -- Animate through frames 4→3→2→1 while moving diagonally up-left
+            cup.frameTimer = cup.frameTimer + dt
+
+            -- Frame animation at 8 fps (slower for better visibility)
+            if cup.frameTimer >= (1/8) and cup.frame > 1 then
+                cup.frameTimer = 0
+                cup.frame = cup.frame - 1
+            end
+
+            -- Move cup diagonally (left and up) with constant speed
+            local progress = math.min(cup.elapsed / cup.reverseDuration, 1.0)
+            cup.x = cup.reverseStartX + (cup.reverseTargetX - cup.reverseStartX) * progress
+            cup.y = cup.reverseStartY + (cup.reverseTargetY - cup.reverseStartY) * progress
+
+            -- Check if reverse animation complete
+            if progress >= 1.0 then
+                cup.phase = "diagonalExit"
+                cup.elapsed = 0
+                cup.exitStartX = cup.x
+                cup.exitStartY = cup.y
+                cup.exitTargetX = -100  -- Off-screen left
+                cup.exitTargetY = -100  -- Off-screen top
+                cup.exitDuration = 1.0  -- Slower exit (1 second)
+            end
+
+        elseif cup.phase == "diagonalExit" then
+            -- Move cup diagonally off-screen at slower constant speed
+            local progress = math.min(cup.elapsed / cup.exitDuration, 1.0)
+
+            cup.x = cup.exitStartX + (cup.exitTargetX - cup.exitStartX) * progress
+            cup.y = cup.exitStartY + (cup.exitTargetY - cup.exitStartY) * progress
+
+            -- Check if fully off-screen
+            if cup.y < -100 then
+                -- Animation complete (tools will handle their own completion)
+                table.remove(cupAnimations, i)
+            end
+
+        elseif cup.phase == "entering" then
+            -- Diagonal entry from top-left off-screen to die position
+            -- CONSTANT SPEED: 500 pixels/second (independent of distance)
+            local enterSpeed = 500
+
+            -- Calculate total distance on first frame
+            if cup.elapsed == dt then
+                local dx = cup.targetX - cup.startX
+                local dy = cup.targetY - cup.startY
+                cup.totalDistance = math.sqrt(dx * dx + dy * dy)
+                cup.enterDuration = cup.totalDistance / enterSpeed
+            end
+
+            -- Calculate progress based on elapsed time and distance
+            local progress = math.min(cup.elapsed / cup.enterDuration, 1.0)
+
+            -- easeOutQuart for smooth deceleration
+            local easedProgress = 1 - math.pow(1 - progress, 4)
+
+            -- Interpolate position diagonally
+            cup.x = cup.startX + (cup.targetX - cup.startX) * easedProgress
+            cup.y = cup.startY + (cup.targetY - cup.startY) * easedProgress
+
+            -- Check if reached target
+            if progress >= 1.0 then
+                cup.x = cup.targetX
+                cup.y = cup.targetY
+                cup.phase = "closing"
+                cup.frameTimer = 0
+                cup.frame = 1
+                cup.elapsed = 0  -- Reset for next phase
+            end
+
+        elseif cup.phase == "closing" then
+            -- Animate through frames 1→4 at 10 fps (slower, more visible)
+            cup.frameTimer = cup.frameTimer + dt
+
+            if cup.frameTimer >= (1/10) then
+                cup.frameTimer = 0
+                cup.frame = cup.frame + 1
+
+                -- Delete die sprite when cup reaches frame 4 (fully closed)
+                if cup.frame == 4 and not cup.dieHidden then
+                    cup.dieHidden = true
+
+                    -- Remove die from diePhysicsAnimations array
+                    if cup.dieToHide then
+                        for j = #diePhysicsAnimations, 1, -1 do
+                            if diePhysicsAnimations[j] == cup.dieToHide then
+                                table.remove(diePhysicsAnimations, j)
+                                break
+                            end
+                        end
+                    end
+
+                    -- Remove die from artifactsShopSettledTools array
+                    -- Check both direct match AND physicsDie reference (for purchased tools)
+                    if cup.dieToHide and gameState.artifactsShopSettledTools then
+                        for j = #gameState.artifactsShopSettledTools, 1, -1 do
+                            local settledTool = gameState.artifactsShopSettledTools[j]
+                            -- Match either the object itself OR its physicsDie reference
+                            if settledTool == cup.dieToHide or settledTool.physicsDie == cup.dieToHide then
+                                table.remove(gameState.artifactsShopSettledTools, j)
+                                break
+                            end
+                        end
+                    end
+
+                    -- Play cup closing sound (setting on table)
+                    if UI.Audio and UI.Audio.playCupFrame4 then
+                        UI.Audio.playCupFrame4()
+                    end
+                end
+
+                -- After frame 4, start ascending
+                if cup.frame > 4 then
+                    cup.phase = "ascending"
+                    cup.slidingSoundPlayed = false  -- Track if sliding sound has played
+                end
+            end
+
+        elseif cup.phase == "ascending" then
+            -- Play sliding sound once when ascending starts
+            if not cup.slidingSoundPlayed then
+                cup.slidingSoundPlayed = true
+                if UI.Audio and UI.Audio.playCupSliding then
+                    cup.slidingSoundSource = UI.Audio.playCupSliding()  -- Store reference to fade later
+                end
+            end
+
+            -- Exit straight up off top of screen (slower for better visibility)
+            -- Speed: 400 pixels/second with slight acceleration
+            local ascendSpeed = 400 + (cup.elapsed * 150)  -- Accelerates as it goes up
+            cup.y = cup.y - ascendSpeed * dt
+
+            -- Fade out sliding sound as cup approaches top of screen
+            local screenTop = -100  -- Exit 100px above screen
+            local fadeStartY = 50  -- Start fading when cup is 50px from top of screen (y < 50)
+            if cup.y < fadeStartY and cup.slidingSoundSource then
+                -- Calculate fade progress (1.0 at fadeStartY, 0.0 at screenTop)
+                local fadeProgress = (cup.y - screenTop) / (fadeStartY - screenTop)
+                fadeProgress = math.max(0, math.min(1, fadeProgress))  -- Clamp 0-1
+
+                -- Apply volume fade (full volume → 0)
+                local baseVolume = 1.0  -- Base SFX volume
+                cup.slidingSoundSource:setVolume(baseVolume * fadeProgress)
+            end
+
+            -- Check if fully off-screen at top
+            if cup.y < screenTop then
+                -- Stop sliding sound completely
+                if cup.slidingSoundSource then
+                    cup.slidingSoundSource:stop()
+                    cup.slidingSoundSource = nil
+                end
+
+                -- Note: Die already removed from both arrays at frame 4 (when cup closed)
+
+                -- Animation complete
+                if cup.onComplete then
+                    cup.onComplete()
+                end
+                table.remove(cupAnimations, i)
+            end
+        end
+    end
+end
+
+function UI.Animation.drawCupAnimations()
+    if not cupSprites or #cupSprites == 0 then
+        return
+    end
+
+    for _, cup in ipairs(cupAnimations) do
+        -- Draw the cached die sprite if it exists and hasn't been hidden yet
+        if cup.dieRenderData and not cup.dieHidden then
+            local dieSprite = toolSprites and toolSprites[cup.dieRenderData.spriteType]
+            if dieSprite then
+                love.graphics.push()
+                love.graphics.translate(cup.dieRenderData.x, cup.dieRenderData.y)
+                love.graphics.rotate(cup.dieRenderData.rotation)
+
+                -- Draw die shadow
+                local shadowOpacity = 0.15
+                local shadowOffset = 5
+                love.graphics.setColor(0, 0, 0, shadowOpacity)
+                love.graphics.draw(dieSprite, shadowOffset, shadowOffset, 0, cup.dieRenderData.scale, cup.dieRenderData.scale,
+                    dieSprite:getWidth() / 2, dieSprite:getHeight() / 2)
+
+                -- Draw die sprite
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(dieSprite, 0, 0, 0, cup.dieRenderData.scale, cup.dieRenderData.scale,
+                    dieSprite:getWidth() / 2, dieSprite:getHeight() / 2)
+
+                love.graphics.pop()
+            end
+        end
+
+        -- Draw cup sprite
+        local frameIndex = math.min(math.max(1, math.floor(cup.frame)), 4)
+        local sprite = cupSprites[frameIndex]
+
+        if sprite then
+            love.graphics.push()
+            love.graphics.translate(cup.x, cup.y)
+            love.graphics.rotate(cup.rotation)
+
+            -- Draw shadow first (offset and semi-transparent, matching die shadows)
+            local shadowOpacity = 0.15
+            local shadowOffset = 5
+            love.graphics.setColor(0, 0, 0, shadowOpacity)
+            love.graphics.draw(sprite, shadowOffset, shadowOffset, 0, cup.scale, cup.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            -- Draw cup sprite on top
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, 0, 0, 0, cup.scale, cup.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
+
+            love.graphics.pop()
+        end
+    end
 
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)

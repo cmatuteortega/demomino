@@ -113,7 +113,7 @@ function Touch.update(dt)
         tile.visualY = UI.Animation.smoothStep(tile.visualY, tile.dragY, dragSpeed, dt)
     end
 
-    -- Update dragged tool visual position with lag effect
+    -- Update dragged tool visual position with lag effect (combat tools)
     if gameState.draggedTool then
         local tool = gameState.draggedTool
         local dragSpeed = 10 -- Higher = less lag, lower = more lag
@@ -125,6 +125,26 @@ function Touch.update(dt)
         end
 
         -- Update lagged visual position to smoothly follow actual position
+        tool.lagVisualX = UI.Animation.smoothStep(tool.lagVisualX, tool.visualX, dragSpeed, dt)
+        tool.lagVisualY = UI.Animation.smoothStep(tool.lagVisualY, tool.visualY, dragSpeed, dt)
+    end
+
+    -- Update dragged tool visual position with lag effect (artifacts shop tools)
+    if touchState.draggedTool and touchState.draggedTool.isDragging then
+        local tool = touchState.draggedTool
+        local dragSpeed = 10 -- Higher = less lag, lower = more lag
+
+        -- Initialize lag position on first frame if needed
+        if not tool.lagVisualX then
+            tool.lagVisualX = tool.visualX
+            tool.lagVisualY = tool.visualY
+        end
+
+        -- Update visual position to smoothly follow drag position
+        tool.visualX = UI.Animation.smoothStep(tool.visualX, tool.dragX, dragSpeed, dt)
+        tool.visualY = UI.Animation.smoothStep(tool.visualY, tool.dragY, dragSpeed, dt)
+
+        -- Update lagged visual position for throw effect
         tool.lagVisualX = UI.Animation.smoothStep(tool.lagVisualX, tool.visualX, dragSpeed, dt)
         tool.lagVisualY = UI.Animation.smoothStep(tool.lagVisualY, tool.visualY, dragSpeed, dt)
     end
@@ -140,6 +160,11 @@ function Touch.pressed(x, y, istouch, touchId)
     touchState.touchId = touchId
     touchState.draggedTile = nil
     touchState.draggedFrom = nil
+
+    -- Block interactions during artifact shop intro animation
+    if gameState.artifactsShopIntroPlaying then
+        return
+    end
 
     -- Handle settings menu interactions (takes priority when open)
     if gameState.settingsMenuOpen then
@@ -326,7 +351,11 @@ function Touch.pressed(x, y, istouch, touchId)
     if isPointInRect(x, y, playButtonBounds) then
         -- Check if in shop mode or playing mode
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
-            -- Shop mode: Allow button press if tile is placed OR to show feedback
+            -- Tile shop mode: Allow button press if tile is placed OR to show feedback
+            animateButtonPress("playButton")
+            touchState.playButtonPressed = true
+        elseif gameState.gamePhase == "artifacts_menu" then
+            -- Artifacts shop mode: Allow button press for purchasing tools
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
         elseif #gameState.placedTiles > 0 then
@@ -341,7 +370,11 @@ function Touch.pressed(x, y, istouch, touchId)
     if isPointInRect(x, y, discardButtonBounds) then
         -- Shop mode or playing mode
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
-            -- Shop mode: Always allow (for reroll)
+            -- Tile shop mode: Allow reroll
+            animateButtonPress("discardButton")
+            touchState.discardButtonPressed = true
+        elseif gameState.gamePhase == "artifacts_menu" then
+            -- Artifacts shop mode: Allow reroll
             animateButtonPress("discardButton")
             touchState.discardButtonPressed = true
         else
@@ -474,6 +507,82 @@ function Touch.pressed(x, y, istouch, touchId)
                     tile.dragY = y
                     tile.visualX = tile.x
                     tile.visualY = tile.y
+                    return
+                end
+            end
+        end
+    end
+
+    -- Handle artifacts shop tool sprites (drag-to-purchase)
+    if gameState.gamePhase == "artifacts_menu" and gameState.offeredTools then
+        local tool, index = getToolAt(gameState.offeredTools, x, y)
+        if tool then
+            -- Check if tool was already purchased
+            if tool.shopPurchased then
+                UI.Animation.createFloatingText("ALREADY PURCHASED",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED,
+                    fontSize = "medium",
+                    duration = 1.0,
+                    riseDistance = 30,
+                    startScale = 0.8,
+                    endScale = 1.2,
+                    easing = "easeOutQuart"
+                })
+                return
+            end
+
+            -- Check if player has space for more tools
+            local ownedTools = gameState.ownedTools or {}
+            if #ownedTools >= 3 then
+                UI.Animation.createFloatingText("MAX 3 TOOLS",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED,
+                    fontSize = "medium",
+                    duration = 1.0,
+                    riseDistance = 30,
+                    startScale = 0.8,
+                    endScale = 1.2,
+                    easing = "easeOutQuart"
+                })
+                return
+            end
+
+            touchState.draggedTool = tool
+            touchState.draggedFrom = "artifactsShopHand"
+            touchState.draggedIndex = index
+
+            -- Initialize drag state with velocity tracking
+            tool.isDragging = false
+            tool.dragX = x
+            tool.dragY = y
+            tool.visualX = tool.x
+            tool.visualY = tool.y
+            tool.velocityX = 0
+            tool.velocityY = 0
+            tool.lastX = x
+            tool.lastY = y
+            tool.lastTime = love.timer.getTime()
+            tool.positionHistory = {{x = x, y = y, time = love.timer.getTime()}}
+            return
+        end
+    end
+
+    -- Handle artifacts shop board tools (placed tools)
+    if gameState.gamePhase == "artifacts_menu" and gameState.artifactsShopPlacedTools then
+        if isInBoardArea(x, y) then
+            -- Check if clicking on placed tool
+            for _, tool in ipairs(gameState.artifactsShopPlacedTools) do
+                if isToolContainsPoint(tool, x, y) then
+                    touchState.draggedTool = tool
+                    touchState.draggedFrom = "artifactsShopBoard"
+                    tool.isDragging = false
+                    tool.dragX = x
+                    tool.dragY = y
+                    tool.visualX = tool.x
+                    tool.visualY = tool.y
                     return
                 end
             end
@@ -628,6 +737,8 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsFromTitle = false
             -- Reset the entire game to a fresh state
             resetGameToFresh()
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
@@ -636,6 +747,8 @@ function Touch.released(x, y, istouch, touchId)
             gameState.settingsFromTitle = false
             -- Auto-save current progress before returning to title
             Save.saveGame(gameState)
+            -- Clear any thrown tool sprites before returning to title
+            UI.Animation.clearAllDiePhysics()
             -- Reset title tiles for re-animation
             gameState.titleTilesInitialized = false
             gameState.titleTiles = {}
@@ -671,6 +784,8 @@ function Touch.released(x, y, istouch, touchId)
                 gameState.currentRound = gameState.currentRound + 1
                 gameState.targetScore = TARGET_SCORE
                 Save.updateBestRound(gameState.currentRound)
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
                 gameState.gamePhase = "map"
                 Save.saveGame(gameState)
 
@@ -705,11 +820,15 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.lostRestartButton and isPointInRect(x, y, gameState.lostRestartButton) then
             -- Reset the entire game to a fresh state
             resetGameToFresh()
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.lostReturnToTitleButton and isPointInRect(x, y, gameState.lostReturnToTitleButton) then
             -- Delete save when returning to title from lost screen (game is over)
             Save.deleteSave()
+            -- Clear any thrown tool sprites before returning to title
+            UI.Animation.clearAllDiePhysics()
             -- Reset title tiles for re-animation
             gameState.titleTilesInitialized = false
             gameState.titleTiles = {}
@@ -813,6 +932,8 @@ function Touch.released(x, y, istouch, touchId)
                     else
                         -- Clicked empty area - cancel selection and return to map
                         gameState.selectedNode = nil
+                        -- Clear any thrown tool sprites
+                        UI.Animation.clearAllDiePhysics()
                         gameState.gamePhase = "map"
 
                         -- Clear path preview animation
@@ -875,6 +996,8 @@ function Touch.released(x, y, istouch, touchId)
                     [3] = UI.Colors.FONT_WHITE[3],
                     [4] = UI.Colors.FONT_WHITE[4]
                 }, 0.1, "easeOutQuart", function()
+                    -- Clear any thrown tool sprites before returning to map
+                    UI.Animation.clearAllDiePhysics()
                     -- Return to map
                     gameState.gamePhase = "map"
                 end)
@@ -906,6 +1029,8 @@ function Touch.released(x, y, istouch, touchId)
                 [3] = UI.Colors.FONT_WHITE[3],
                 [4] = UI.Colors.FONT_WHITE[4]
             }, 0.1, "easeOutQuart", function()
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
                 -- Return to map
                 gameState.gamePhase = "map"
             end)
@@ -934,6 +1059,11 @@ function Touch.released(x, y, istouch, touchId)
                 [3] = UI.Colors.FONT_WHITE[3],
                 [4] = UI.Colors.FONT_WHITE[4]
             }, 0.1, "easeOutQuart", function()
+                -- Clean up settled tool sprites before returning to map
+                gameState.artifactsShopSettledTools = {}
+                -- Clear any thrown tool sprites before returning to map
+                UI.Animation.clearAllDiePhysics()
+
                 -- Return to map
                 gameState.gamePhase = "map"
             end)
@@ -960,12 +1090,12 @@ function Touch.released(x, y, istouch, touchId)
             end
         end
 
-        touchState.isPressed = false
-        touchState.touchId = nil
-        return
+        -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "contracts_menu" then
         -- Handle menu screen interactions - only Return to Map button for now
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
+            -- Clear any thrown tool sprites before returning to map
+            UI.Animation.clearAllDiePhysics()
             gameState.gamePhase = "map"
         end
         touchState.isPressed = false
@@ -984,16 +1114,20 @@ function Touch.released(x, y, istouch, touchId)
                 UI.Audio.playPlayButton()
                 Touch.playPlacedTiles()
             end
+            -- NOTE: artifacts_menu purchase removed - now handled automatically via physics throw
         end
         touchState.playButtonPressed = false
     end
 
-    -- Handle discard button release (for playing phase AND shop mode)
+    -- Handle discard button release (for playing phase AND shop modes)
     if touchState.discardButtonPressed then
         if getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds()) then
             if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
-                -- SHOP MODE: Reroll tiles
+                -- TILE SHOP MODE: Reroll tiles
                 Touch.rerollShopTiles()
+            elseif gameState.gamePhase == "artifacts_menu" then
+                -- ARTIFACTS SHOP MODE: Reroll tools
+                Touch.rerollArtifactsShopTools()
             else
                 -- PLAYING MODE: Discard tiles
                 local discarded = Touch.discardSelectedTiles()
@@ -1054,8 +1188,14 @@ function Touch.released(x, y, istouch, touchId)
         if Touch.isDragging() then
             -- Check if dropped over board area
             if isInBoardArea(x, y) then
-                -- Start physics animation instead of instant use
-                Touch.startDiePhysicsAnimation(gameState.draggedTool, x, y)
+                -- Different behavior based on game phase
+                if gameState.gamePhase == "artifacts_menu" then
+                    -- In artifacts shop: Sell the tool for 1 coin
+                    Touch.throwToolToSell(gameState.draggedTool, x, y)
+                else
+                    -- In combat: Use the tool effect
+                    Touch.startDiePhysicsAnimation(gameState.draggedTool, x, y)
+                end
             else
                 -- Dropped outside board - animate back to stack position
                 Touch.animateToolBackToStack(gameState.draggedTool.toolIndex)
@@ -1161,6 +1301,42 @@ function Touch.released(x, y, istouch, touchId)
         else
             -- Dragged - animate back to board position
             Touch.animateTileToPosition(touchState.draggedTile, touchState.draggedTile.x, touchState.draggedTile.y)
+        end
+    elseif touchState.draggedTool and touchState.draggedFrom == "artifactsShopHand" then
+        if Touch.isDragging() then
+            -- Throw tool with physics animation (like combat dice)
+            Touch.throwArtifactsShopTool(touchState.draggedTool, touchState.draggedIndex, x, y)
+        else
+            -- Just a tap - play punch animation
+            local tool = touchState.draggedTool
+
+            UI.Animation.animateTo(tool, {
+                selectScale = 1.15
+            }, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(tool, {
+                    selectScale = 1.0
+                }, 0.15, "easeOutBack")
+            end)
+            Touch.resetToolDragState(touchState.draggedTool)
+        end
+    elseif touchState.draggedTool and touchState.draggedFrom == "artifactsShopBoard" then
+        if not Touch.isDragging() then
+            -- Tap on artifacts shop board tool - check for double-tap to return to hand
+            local currentTime = love.timer.getTime()
+
+            if touchState.lastTappedArtifactsShopBoardTool == touchState.draggedTool and
+               currentTime - touchState.lastTapTime < touchState.doubleTapWindow then
+                -- DOUBLE TAP: Return to artifacts shop hand
+                Touch.returnArtifactsShopToolToHand(touchState.draggedTool)
+                touchState.lastTappedArtifactsShopBoardTool = nil
+            else
+                -- First tap - track for potential double-tap
+                touchState.lastTappedArtifactsShopBoardTool = touchState.draggedTool
+                touchState.lastTapTime = currentTime
+            end
+        else
+            -- Dragged - animate back to board position
+            Touch.animateToolToPosition(touchState.draggedTool, touchState.draggedTool.x, touchState.draggedTool.y)
         end
     elseif touchState.draggedTile and touchState.draggedFrom == "board" then
         if not Touch.isDragging() then
@@ -1298,6 +1474,7 @@ function Touch.released(x, y, istouch, touchId)
     touchState.isPressed = false
     touchState.touchId = nil
     touchState.draggedTile = nil
+    touchState.draggedTool = nil
     touchState.draggedFrom = nil
     touchState.draggedIndex = nil
     touchState.isDraggingMap = false
@@ -1454,6 +1631,73 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                     -- Not hovering over hand
                     touchState.hoverInsertIndex = nil
                 end
+            end
+        end
+
+        -- Update drag position for dragged tool (artifacts shop)
+        if touchState.draggedTool then
+            local tool = touchState.draggedTool
+            tool.dragX = x
+            tool.dragY = y
+
+            -- Track velocity for throwing (similar to combat tools)
+            if tool.velocityX ~= nil then  -- Only if initialized for velocity tracking
+                local currentTime = love.timer.getTime()
+                local dt = currentTime - (tool.lastTime or currentTime)
+
+                -- Track position history for smoother trajectory calculation
+                if not tool.positionHistory then
+                    tool.positionHistory = {}
+                end
+                table.insert(tool.positionHistory, {x = x, y = y, time = currentTime})
+
+                -- Keep only last 8 samples
+                local maxSamples = 8
+                while #tool.positionHistory > maxSamples do
+                    table.remove(tool.positionHistory, 1)
+                end
+
+                -- Calculate average velocity over entire trajectory
+                local history = tool.positionHistory
+                if #history >= 2 then
+                    local oldest = history[1]
+                    local newest = history[#history]
+                    local totalDt = newest.time - oldest.time
+
+                    if totalDt > 0 then
+                        local totalDx = newest.x - oldest.x
+                        local totalDy = newest.y - oldest.y
+
+                        -- Mobile devices have faster touch sampling, so scale down velocity
+                        local isMobile = love.system.getOS() == "Android" or love.system.getOS() == "iOS"
+                        local velocityScale = isMobile and 1.0 or 1.0
+
+                        tool.velocityX = (totalDx / totalDt) * velocityScale
+                        tool.velocityY = (totalDy / totalDt) * velocityScale
+                    end
+                end
+
+                -- Update tracking
+                tool.lastX = x
+                tool.lastY = y
+                tool.lastTime = currentTime
+            end
+
+            -- Set dragging state when we exceed threshold
+            if Touch.isDragging() and not tool.isDragging then
+                tool.isDragging = true
+                tool.dragScale = 1.08 -- Slightly bigger when dragging
+                tool.dragOpacity = 0.95 -- Slightly transparent
+
+                -- Update visual position for smooth drag
+                tool.visualX = x
+                tool.visualY = y
+            end
+
+            -- Update visual position during drag
+            if tool.isDragging then
+                tool.visualX = x
+                tool.visualY = y
             end
         end
     end
@@ -2129,6 +2373,8 @@ function Touch.enterSelectedNode()
     if not success then
         -- If move failed, return to map
         gameState.selectedNode = nil
+        -- Clear any thrown tool sprites
+        UI.Animation.clearAllDiePhysics()
         gameState.gamePhase = "map"
         return
     end
@@ -2209,13 +2455,72 @@ function Touch.enterSelectedNode()
 
         gameState.gamePhase = "tiles_menu"
     elseif nodeType == "artifacts" then
-        -- Generate 3 random tool offers when entering artifacts menu
-        gameState.offeredTools = Tools.generateRandomToolOffers(3)
+        -- Generate 3 random tool offers when entering artifacts menu (as sprite objects)
+        local toolIds = Tools.generateRandomToolOffers(3)
+        gameState.offeredTools = {}
+
+        -- Convert tool IDs to sprite objects (similar to tile shop hand)
+        for i, toolId in ipairs(toolIds) do
+            local spriteType = getToolSpriteType(toolId)
+            local toolDef = Tools.getDefinition(toolId)
+
+            -- Calculate initial position at hand
+            local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolIds)
+
+            local toolSprite = {
+                toolId = toolId,
+                spriteType = spriteType,
+                basePrice = toolDef.cost,
+                shopPurchased = false,
+                isDragging = false,
+                isAnimating = false,
+                selectScale = 1.0,
+                selectOffset = 0,
+                idleFloatOffset = 0,
+                idleRotation = 0,
+                idleShadowOffset = 0,
+                idlePhase = (i - 1) * 0.8,  -- Phase offset for variety
+                dragScale = 1.0,
+                dragOpacity = 1.0,
+                id = toolId .. "_" .. i,  -- Unique ID
+                x = targetX,
+                y = targetY,
+                visualX = targetX,
+                visualY = targetY,
+                hiddenForIntro = true  -- Hidden until cup animation throws them
+            }
+
+            table.insert(gameState.offeredTools, toolSprite)
+        end
+
+        -- Initialize shop state (similar to tile shop)
+        gameState.artifactsShopPlacedTools = {}  -- Board for placing tools (max 1)
+        gameState.shopRerollCost = 1  -- Cost to reroll tool offers
+
+        -- Initialize button animations
+        gameState.buttonAnimations = {
+            playButton = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+
+        -- Block interactions during intro animation
+        gameState.artifactsShopIntroPlaying = true
+
+        -- Start cup intro animation (cup throws tools onto board, then to hand)
+        if gameState.offeredTools then
+            UI.Animation.animateCupIntroArtifactShop(gameState.offeredTools, function()
+                -- Animation complete, enable interactions
+                gameState.artifactsShopIntroPlaying = false
+            end)
+        end
+
         gameState.gamePhase = "artifacts_menu"
     elseif nodeType == "contracts" then
         gameState.gamePhase = "contracts_menu"
     else
         -- Unknown node type, return to map
+        -- Clear any thrown tool sprites
+        UI.Animation.clearAllDiePhysics()
         gameState.gamePhase = "map"
     end
     
@@ -2796,6 +3101,11 @@ function Touch.startDiePhysicsAnimation(draggedTool, releaseX, releaseY)
             })
         end
     })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
 end
 
 -- Collapse the tool tower (animate back to stacked state)
@@ -3232,6 +3542,801 @@ function Touch.animateTileToHand(tile, tileIndex, hand)
         tile.isDragging = false
         Touch.resetTileDragState(tile)
     end)
+end
+
+-- ========== ARTIFACTS SHOP TOOL FUNCTIONS ==========
+
+function Touch.placeArtifactsShopToolOnBoard(tool, toolIndex, dragX, dragY)
+    if not tool or tool.shopPurchased then
+        return
+    end
+
+    -- Only allow 1 tool on board at a time (replacing existing)
+    if gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools >= 1 then
+        -- Return existing tool to hand first
+        local existingTool = gameState.artifactsShopPlacedTools[1]
+        Touch.returnArtifactsShopToolToHand(existingTool)
+    end
+
+    if not gameState.artifactsShopPlacedTools then
+        gameState.artifactsShopPlacedTools = {}
+    end
+
+    -- Remove tool from offeredTools (by index if provided, otherwise search)
+    if toolIndex and gameState.offeredTools then
+        table.remove(gameState.offeredTools, toolIndex)
+    elseif gameState.offeredTools then
+        for i, t in ipairs(gameState.offeredTools) do
+            if t == tool then
+                table.remove(gameState.offeredTools, i)
+                break
+            end
+        end
+    end
+
+    -- Calculate center position of board
+    local boardArea = UI.Layout.getBoardArea()
+    local centerX = boardArea.x + boardArea.width / 2
+    local centerY = boardArea.y + boardArea.height / 2
+
+    -- Set tool position to center
+    tool.x = centerX
+    tool.y = centerY
+
+    -- Animate tool to center
+    tool.isAnimating = true
+    UI.Animation.animateTo(tool, {
+        visualX = centerX,
+        visualY = centerY,
+        dragScale = 1.0,
+        dragOpacity = 1.0
+    }, 0.3, "easeOutQuart", function()
+        tool.isDragging = false
+        tool.isAnimating = false
+        Touch.resetToolDragState(tool)
+    end)
+
+    table.insert(gameState.artifactsShopPlacedTools, tool)
+
+    -- Play placement sound
+    UI.Audio.playTilePlaced()
+end
+
+function Touch.returnArtifactsShopToolToHand(tool)
+    if not tool or not gameState.artifactsShopPlacedTools then
+        return
+    end
+
+    -- Find and remove tool from board
+    for i, placedTool in ipairs(gameState.artifactsShopPlacedTools) do
+        if placedTool == tool then
+            table.remove(gameState.artifactsShopPlacedTools, i)
+            break
+        end
+    end
+
+    -- Add tool back to hand
+    table.insert(gameState.offeredTools, tool)
+
+    -- Recalculate positions
+    for i, t in ipairs(gameState.offeredTools) do
+        local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
+        t.x = x
+        t.y = y
+    end
+
+    -- Animate tool back to hand
+    local targetIndex = #gameState.offeredTools
+    local targetX, targetY = UI.Layout.getHandPosition(targetIndex - 1, #gameState.offeredTools)
+    Touch.animateToolToPosition(tool, targetX, targetY)
+
+    -- Play discard sound
+    UI.Audio.playDiscardButton()
+end
+
+function Touch.purchaseArtifactsShopTool()
+    if not gameState.artifactsShopPlacedTools or #gameState.artifactsShopPlacedTools == 0 then
+        return
+    end
+
+    local tool = gameState.artifactsShopPlacedTools[1]
+    local cost = tool.basePrice
+
+    -- Check if player can afford
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Check if player has space
+    local ownedTools = gameState.ownedTools or {}
+    if #ownedTools >= 3 then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+
+    -- Mark tool as purchased
+    tool.shopPurchased = true
+
+    -- Add tool to owned tools
+    if not gameState.ownedTools then
+        gameState.ownedTools = {}
+    end
+    table.insert(gameState.ownedTools, tool.toolId)
+
+    -- Play purchase sound
+    UI.Audio.playPlayButton()
+
+    -- Show purchase confirmation
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2 - UI.Layout.scale(100)
+
+    local toolDef = Tools.getDefinition(tool.toolId)
+    UI.Animation.createFloatingText(toolDef.name .. " ACQUIRED!", centerX, centerY, {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+
+    -- Clear board
+    gameState.artifactsShopPlacedTools = {}
+end
+
+-- Throw artifact shop tool with physics (like combat dice)
+function Touch.throwArtifactsShopTool(tool, toolIndex, releaseX, releaseY)
+    if not tool or tool.shopPurchased then
+        return
+    end
+
+    -- Get velocity from drag tracking
+    local velocityX = tool.velocityX or 0
+    local velocityY = tool.velocityY or 0
+    local speed = math.sqrt(velocityX^2 + velocityY^2)
+    local minThrowSpeed = 100  -- Minimum speed to be considered a "throw"
+
+    -- Use lagged position for more impactful throw (sprite "snaps" forward when released)
+    local startX = tool.lagVisualX or tool.visualX or releaseX
+    local startY = tool.lagVisualY or tool.visualY or releaseY
+
+    -- If dragged slowly, show feedback and return to hand
+    if speed < minThrowSpeed then
+        -- Check if release position overlaps invalid areas
+        if UI.Animation.isPositionInvalid then
+            local toolRadius = 20  -- Approximate tool size
+            if UI.Animation.isPositionInvalid(releaseX, releaseY, toolRadius) then
+                -- Invalid slow drag - animate tool back to hand
+                Touch.animateToolToHand(tool, toolIndex, gameState.offeredTools)
+
+                -- Show error feedback
+                UI.Animation.createFloatingText("THROW IT!", releaseX, releaseY - 30, {
+                    color = {0.9, 0.3, 0.3, 1},
+                    fontSize = "medium",
+                    duration = 0.8,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+
+                -- Play cancel sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+
+                return
+            end
+        end
+    end
+
+    -- Remove tool from offeredTools
+    if toolIndex and gameState.offeredTools then
+        table.remove(gameState.offeredTools, toolIndex)
+    elseif gameState.offeredTools then
+        for i, t in ipairs(gameState.offeredTools) do
+            if t == tool then
+                table.remove(gameState.offeredTools, i)
+                break
+            end
+        end
+    end
+
+    -- Create physics animation
+    UI.Animation.createDiePhysics({
+        startX = startX,
+        startY = startY,
+        velocityX = velocityX,
+        velocityY = velocityY,
+        spriteType = tool.spriteType,
+        toolId = tool.toolId,
+        toolIndex = toolIndex,
+        onComplete = function(settledDie)
+            -- Add settled tool sprite to persistent board sprites FIRST
+            if not gameState.artifactsShopSettledTools then
+                gameState.artifactsShopSettledTools = {}
+            end
+
+            local settledToolSprite = {
+                x = settledDie.x,
+                y = settledDie.y,
+                rotation = settledDie.rotation,
+                scale = settledDie.scale,
+                spriteType = tool.spriteType,
+                toolId = tool.toolId,
+                physicsDie = settledDie  -- Store reference to physics die for cup animation
+            }
+            table.insert(gameState.artifactsShopSettledTools, settledToolSprite)
+
+            -- When tool settles, trigger purchase automatically (pass the sprite, not physics die)
+            Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
+        end
+    })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
+
+    -- Reset drag state
+    Touch.resetToolDragState(tool)
+end
+
+-- Purchase artifact shop tool directly (called after physics animation settles)
+-- settledToolSprite: the sprite object in artifactsShopSettledTools (NOT the physics die)
+function Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
+    if not tool then
+        return
+    end
+
+    local cost = tool.basePrice
+
+    -- Check if player can afford
+    if gameState.coins < cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Check if player has space
+    local ownedTools = gameState.ownedTools or {}
+    if #ownedTools >= 3 then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+
+    -- Mark tool as purchased
+    tool.shopPurchased = true
+
+    -- Add tool to owned tools
+    if not gameState.ownedTools then
+        gameState.ownedTools = {}
+    end
+    table.insert(gameState.ownedTools, tool.toolId)
+
+    -- Animate the new tool appearing in the stack with a "pop in" effect
+    local newToolIndex = #gameState.ownedTools
+    local spriteType = getToolSpriteType(tool.toolId)
+    if spriteType then
+        -- Initialize animated positions
+        if not gameState.toolSpritePositions then
+            gameState.toolSpritePositions = {}
+        end
+
+        -- Get target position in stack
+        local stackIndex = newToolIndex - 1  -- 0-based
+        local targetX, targetY, spriteScale = UI.Layout.getToolSpriteInStackPosition(stackIndex, spriteType)
+
+        -- Start from settled die position (where it landed on board)
+        gameState.toolSpritePositions[newToolIndex] = {
+            visualX = settledToolSprite.x,
+            visualY = settledToolSprite.y,
+            scale = settledToolSprite.scale or 0.9
+        }
+
+        -- Animate to stack position with bounce
+        UI.Animation.animateTo(gameState.toolSpritePositions[newToolIndex], {
+            visualX = targetX,
+            visualY = targetY,
+            scale = spriteScale
+        }, 0.5, "easeOutBounce", function()
+            -- Clear animated position when done
+            if gameState.toolSpritePositions then
+                gameState.toolSpritePositions[newToolIndex] = nil
+            end
+
+            -- After tool reaches stack, animate cup to pick up the physics die from board
+            -- Pass the physics die object so it gets properly removed from diePhysicsAnimations
+            UI.Animation.animateCupCapture(settledToolSprite.x, settledToolSprite.y, settledToolSprite.physicsDie, function()
+                -- Cup animation complete (sprite already removed at frame 4)
+            end)
+        end)
+    end
+
+    -- Play purchase sound
+    UI.Audio.playPlayButton()
+
+    -- Show purchase confirmation at settled position
+    local toolDef = Tools.getDefinition(tool.toolId)
+    UI.Animation.createFloatingText(toolDef.name .. " ACQUIRED!", settledToolSprite.x, settledToolSprite.y - UI.Layout.scale(30), {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
+-- Throw tool from stack to sell it in artifacts shop (returns 1 coin)
+function Touch.throwToolToSell(draggedTool, releaseX, releaseY)
+    if not draggedTool then
+        return
+    end
+
+    -- Get velocity from drag tracking
+    local velocityX = draggedTool.velocityX or 0
+    local velocityY = draggedTool.velocityY or 0
+    local speed = math.sqrt(velocityX^2 + velocityY^2)
+    local minThrowSpeed = 100  -- Minimum speed to be considered a "throw"
+
+    -- Use lagged position for more impactful throw
+    local startX = draggedTool.lagVisualX or draggedTool.visualX or releaseX
+    local startY = draggedTool.lagVisualY or draggedTool.visualY or releaseY
+
+    -- If dragged slowly, show feedback and return to stack
+    if speed < minThrowSpeed then
+        -- Check if release position overlaps invalid areas
+        if UI.Animation.isPositionInvalid then
+            local toolRadius = 20
+            if UI.Animation.isPositionInvalid(releaseX, releaseY, toolRadius) then
+                -- Invalid slow drag - animate tool back to stack
+                Touch.animateToolBackToStack(draggedTool.toolIndex)
+
+                -- Show error feedback
+                UI.Animation.createFloatingText("THROW IT!", releaseX, releaseY - 30, {
+                    color = {0.9, 0.3, 0.3, 1},
+                    fontSize = "medium",
+                    duration = 0.8,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+
+                -- Play cancel sound
+                if UI.Audio and UI.Audio.playButtonDefault then
+                    UI.Audio.playButtonDefault()
+                end
+
+                return
+            end
+        end
+    end
+
+    -- Create physics animation for selling
+    UI.Animation.createDiePhysics({
+        startX = startX,
+        startY = startY,
+        velocityX = velocityX,
+        velocityY = velocityY,
+        spriteType = draggedTool.spriteType,
+        toolId = draggedTool.toolId,
+        toolIndex = draggedTool.toolIndex,
+        onComplete = function(settledDie)
+            -- When tool settles, sell it for 1 coin
+            Touch.sellToolFromInventory(draggedTool.toolId, draggedTool.toolIndex, settledDie)
+        end
+    })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
+end
+
+-- Sell a tool from inventory (called after physics animation settles)
+function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
+    if not toolId or not toolIndex then
+        return
+    end
+
+    -- Remove tool from owned tools
+    local ownedTools = gameState.ownedTools or {}
+    if toolIndex <= #ownedTools and ownedTools[toolIndex] == toolId then
+        table.remove(ownedTools, toolIndex)
+    else
+        -- Fallback: search for tool
+        for i, id in ipairs(ownedTools) do
+            if id == toolId then
+                table.remove(ownedTools, i)
+                toolIndex = i
+                break
+            end
+        end
+    end
+
+    local sellValue = 1
+
+    -- Pass the settled die physics object directly to cup animation
+    -- The die will be kept in the physics array and rendered until cup hides it
+    local dieToHide = settledDie
+
+    -- Trigger cup animation to capture the die
+    UI.Animation.animateCupCapture(settledDie.x, settledDie.y, dieToHide, function()
+        -- Called when cup animation completes (after ascending off-screen)
+        -- Note: Die is already removed from artifactsShopSettledTools by the cup animation
+        -- to prevent it from reappearing after the cup disappears
+
+        -- Add 1 coin with falling animation
+        updateCoins(gameState.coins + sellValue, {hasBonus = false})
+
+        -- Create falling coin at settled position
+        if not gameState.fallingCoins then
+            gameState.fallingCoins = {}
+        end
+
+        table.insert(gameState.fallingCoins, {
+            x = settledDie.x,
+            y = settledDie.y,
+            targetX = gameState.screen.width - UI.Layout.scale(40),
+            targetY = UI.Layout.scale(20),
+            progress = 0,
+            duration = 0.8,
+            value = sellValue
+        })
+
+        -- Play sell sound
+        if UI.Audio and UI.Audio.playTilePlaced then
+            UI.Audio.playTilePlaced()
+        end
+
+        -- Show sell confirmation at settled position
+        UI.Animation.createFloatingText("SOLD FOR " .. sellValue .. "$!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
+            color = {1, 0.9, 0.3, 1},  -- Gold color
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 60,
+            startScale = 0.5,
+            endScale = 1.3,
+            bounce = true,
+            easing = "easeOutBack"
+        })
+    end)
+
+    -- Animate remaining tools falling down with gravity
+    Touch.animateToolGravity(toolIndex)
+end
+
+function Touch.rerollArtifactsShopTools()
+    local rerollCost = gameState.shopRerollCost or 1
+
+    -- Check if player can afford
+    if gameState.coins < rerollCost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - rerollCost, {hasBonus = false})
+
+    -- Play discard sound
+    UI.Audio.playDiscardButton()
+
+    -- Return placed tool to hand first (if any)
+    if gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools > 0 then
+        local placedTool = gameState.artifactsShopPlacedTools[1]
+        table.insert(gameState.offeredTools, placedTool)
+        gameState.artifactsShopPlacedTools = {}
+    end
+
+    -- Generate 3 new tool offers
+    local toolIds = Tools.generateRandomToolOffers(3)
+    gameState.offeredTools = {}
+
+    for i, toolId in ipairs(toolIds) do
+        local spriteType = getToolSpriteType(toolId)
+        local toolDef = Tools.getDefinition(toolId)
+
+        -- Calculate initial position at hand
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolIds)
+
+        local toolSprite = {
+            toolId = toolId,
+            spriteType = spriteType,
+            basePrice = toolDef.cost,
+            shopPurchased = false,
+            isDragging = false,
+            isAnimating = false,
+            selectScale = 1.0,
+            selectOffset = 0,
+            idleFloatOffset = 0,
+            idleRotation = 0,
+            idleShadowOffset = 0,
+            idlePhase = (i - 1) * 0.8,
+            dragScale = 1.0,
+            dragOpacity = 1.0,
+            id = toolId .. "_" .. i,
+            x = targetX,
+            y = targetY,
+            visualX = targetX,
+            visualY = targetY
+        }
+
+        table.insert(gameState.offeredTools, toolSprite)
+    end
+
+    -- Animate new tools drawing from right
+    animateToolSpritesDraw(gameState.offeredTools, 0)
+end
+
+function Touch.animateToolToHand(tool, toolIndex, hand)
+    if not tool or not hand then
+        return
+    end
+
+    local targetX, targetY = UI.Layout.getHandPosition(toolIndex - 1, #hand)
+
+    UI.Animation.animateTo(tool, {
+        visualX = targetX,
+        visualY = targetY,
+        dragScale = 1.0,
+        dragOpacity = 1.0
+    }, 0.3, "easeOutQuart", function()
+        tool.isDragging = false
+        Touch.resetToolDragState(tool)
+    end)
+end
+
+function Touch.animateToolToPosition(tool, targetX, targetY)
+    if not tool then
+        return
+    end
+
+    tool.isAnimating = true
+    UI.Animation.animateTo(tool, {
+        visualX = targetX,
+        visualY = targetY,
+        dragScale = 1.0,
+        dragOpacity = 1.0
+    }, 0.3, "easeOutQuart", function()
+        tool.isDragging = false
+        tool.isAnimating = false
+        Touch.resetToolDragState(tool)
+    end)
+end
+
+function Touch.resetToolDragState(tool)
+    if not tool then
+        return
+    end
+
+    tool.isDragging = false
+    tool.dragScale = 1.0
+    tool.dragOpacity = 1.0
+end
+
+-- ========== END ARTIFACTS SHOP TOOL FUNCTIONS ==========
+
+-- Animate tool sprites drawing from right (similar to Hand.animateTilesDraw)
+function animateToolSpritesDraw(toolSprites, startDelay)
+    startDelay = startDelay or 0
+
+    -- Get off-screen right position
+    local offScreenX = gameState.screen.width + UI.Layout.scale(200)
+
+    for i, tool in ipairs(toolSprites) do
+        -- Calculate final position at hand
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolSprites)
+
+        -- Set visual position off-screen FIRST
+        tool.visualX = offScreenX
+        tool.visualY = targetY
+
+        -- Mark as animating
+        tool.isDrawing = true
+        tool.isAnimating = true
+
+        -- Set logical position
+        tool.x = targetX
+        tool.y = targetY
+
+        -- Calculate staggered delay
+        local toolDelay = startDelay + (i - 1) * 0.08
+
+        -- Animate from right to final position with delay
+        local animStart = love.timer.getTime() + toolDelay
+        tool.drawAnimStart = animStart
+        tool.drawAnimDuration = 0.4
+        tool.drawStartX = offScreenX
+        tool.drawTargetX = targetX
+    end
+end
+
+-- Update tool sprite draw animations (called from love.update)
+function updateToolSpriteDrawAnimations(toolSprites, dt)
+    local currentTime = love.timer.getTime()
+
+    for i, tool in ipairs(toolSprites) do
+        if tool.isDrawing and tool.drawAnimStart then
+            local elapsed = currentTime - tool.drawAnimStart
+
+            if elapsed >= 0 then
+                local progress = math.min(elapsed / tool.drawAnimDuration, 1.0)
+
+                -- Use easeOutQuart for smooth deceleration
+                local easedProgress = 1 - math.pow(1 - progress, 4)
+
+                -- Update visual position
+                tool.visualX = tool.drawStartX + (tool.drawTargetX - tool.drawStartX) * easedProgress
+
+                if progress >= 1.0 then
+                    -- Animation complete
+                    tool.isDrawing = false
+                    tool.isAnimating = false
+                    tool.drawAnimStart = nil
+                    tool.drawAnimDuration = nil
+                    tool.drawStartX = nil
+                    tool.drawTargetX = nil
+                    tool.visualX = tool.x
+
+                    -- Play placement sound when tool arrives
+                    if UI.Audio and UI.Audio.playTilePlaced then
+                        UI.Audio.playTilePlaced()
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Update tool sprite idle animations (called from love.update)
+function updateToolSpriteIdleAnimations(toolSprites, dt)
+    local time = love.timer.getTime()
+
+    for i, tool in ipairs(toolSprites) do
+        -- Only apply idle animations if tool is not being dragged or purchased
+        if not tool.isDragging and not tool.shopPurchased and not tool.isDrawing then
+            -- Floating animation - 3px range, 2.5 second cycle with unique phase offset
+            local floatPhase = time * 2.5 + tool.idlePhase
+            tool.idleFloatOffset = math.sin(floatPhase) * 3
+
+            -- Rotation animation - 1.5 degree range, 4 second cycle
+            local rotationPhase = time * 1.57 + tool.idlePhase * 1.3
+            tool.idleRotation = math.sin(rotationPhase) * 0.026
+
+            -- Shadow offset follows main motion
+            tool.idleShadowOffset = tool.idleFloatOffset * 0.3
+        else
+            -- Reset idle animations when tool is interacted with
+            tool.idleFloatOffset = 0
+            tool.idleRotation = 0
+            tool.idleShadowOffset = 0
+        end
+    end
+end
+
+-- Get tool sprite at position (similar to Hand.getTileAt)
+function getToolAt(toolSprites, x, y)
+    if not toolSprites or not toolSprites then
+        return nil, nil
+    end
+
+    for i, tool in ipairs(toolSprites) do
+        if isToolContainsPoint(tool, x, y) then
+            return tool, i
+        end
+    end
+    return nil, nil
+end
+
+-- Check if point is inside tool sprite bounds
+function isToolContainsPoint(tool, x, y)
+    if not tool or not tool.visualX or not tool.visualY then
+        return false
+    end
+
+    if not toolSprites or not tool.spriteType then
+        return false
+    end
+
+    local sprite = toolSprites[tool.spriteType]
+    if not sprite then
+        return false
+    end
+
+    -- Calculate sprite bounds (same as rendering)
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+    spriteScale = spriteScale * (tool.dragScale or 1.0) * (tool.selectScale or 1.0)
+
+    local width = sprite:getWidth() * spriteScale
+    local height = sprite:getHeight() * spriteScale
+
+    local toolX = tool.visualX
+    local toolY = tool.visualY
+
+    -- Apply idle float offset
+    if tool.idleFloatOffset then
+        toolY = toolY + tool.idleFloatOffset
+    end
+
+    -- Check if point is within bounds (centered sprite)
+    local halfWidth = width / 2
+    local halfHeight = height / 2
+
+    return x >= toolX - halfWidth and x <= toolX + halfWidth and
+           y >= toolY - halfHeight and y <= toolY + halfHeight
+end
+
+-- DEBUG: Expose touchState for debugging
+Touch.getTouchState = function()
+    return touchState
 end
 
 return Touch

@@ -43,6 +43,7 @@ function love.load()
     loadCoinSprite()
     loadCandleSprites()
     loadToolSprites()
+    loadCupSprites()
     
     gameState = {
         screen = {
@@ -1177,6 +1178,7 @@ function love.update(dt)
     UI.Animation.update(dt)
     UI.Animation.updateShadowFlicker(dt)
     UI.Animation.updateDiePhysics(dt)
+    UI.Animation.updateCupAnimations(dt)
     UI.Renderer.updateEyeBlinks(dt)
     updateFallingCoins(dt)
     updateCoinBreakdownAnimation(dt)
@@ -1232,6 +1234,24 @@ function love.update(dt)
                     Hand.updateDiscardAnimations(gameState.offeredTiles, dt)  -- Discard animation (tiles falling down)
                     Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
                 end
+            end
+        elseif gameState.gamePhase == "artifacts_menu" then
+            -- Update tool sprite animations (similar to tile shop)
+            if gameState.offeredTools then
+                -- Update positions for all tool sprites
+                for i, tool in ipairs(gameState.offeredTools) do
+                    local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
+                    if not tool.isDragging and not tool.isAnimating then
+                        tool.visualX = x
+                        tool.visualY = y
+                    end
+                    tool.x = x
+                    tool.y = y
+                end
+
+                -- Animate draw, idle animations
+                updateToolSpriteDrawAnimations(gameState.offeredTools, dt)
+                updateToolSpriteIdleAnimations(gameState.offeredTools, dt)
             end
         end
     elseif gameState.gamePhase == "map" then
@@ -1969,6 +1989,19 @@ function loadToolSprites()
     for spriteType, filename in pairs(toolSpriteMap) do
         if love.filesystem.getInfo(filename) then
             toolSprites[spriteType] = love.graphics.newImage(filename)
+        end
+    end
+end
+
+function loadCupSprites()
+    -- Global table to store cup animation frames
+    cupSprites = {}
+
+    -- Load 4 cup frames
+    for i = 1, 4 do
+        local filename = "sprites/dice/cup_" .. i .. ".png"
+        if love.filesystem.getInfo(filename) then
+            cupSprites[i] = love.graphics.newImage(filename)
         end
     end
 end
