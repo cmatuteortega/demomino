@@ -2253,6 +2253,10 @@ function UI.Renderer.drawRoundIntro()
     local screenHeight = gameState.screen.height
     local anim = gameState.roundIntroAnimation
 
+    -- Draw background color first (matching drawMap() to prevent brightness step)
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
     -- ALWAYS draw the map fully (all phases - typing, pausing, moving, revealing)
     -- Use the normal drawMapNodes function to ensure everything is rendered correctly
     if gameState.currentMap then
