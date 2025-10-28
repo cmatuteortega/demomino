@@ -355,61 +355,66 @@ local function getAvoidanceZones()
     local zones = {}
     local padding = 7  -- Extra space around obstacles (reduced from 20)
 
-    -- Top-left corner: Round counter and challenges (ADAPTIVE to actual text height)
-    local leftX = UI.Layout.scale(40)
-    local leftY = UI.Layout.scale(20)
-    local roundTextHeight = UI.Layout.scale(60)  -- Approximate height of round text + challenges
+    -- Only add gameplay-specific zones if NOT in artifacts menu
+    local isArtifactsMenu = gameState and gameState.gamePhase == "artifacts_menu"
 
-    table.insert(zones, {
-        x = 0,
-        y = 0,
-        width = UI.Layout.scale(280),  -- Width to cover round name
-        height = roundTextHeight + leftY + UI.Layout.scale(20),  -- Adaptive to text
-        padding = padding
-    })
-
-    -- Top-right: Score and formula display (ADAPTIVE to score height)
-    local rightX = UI.Layout.scale(40)
-    local rightY = UI.Layout.scale(20)
-    local scoreHeight = UI.Layout.scale(100)  -- Score + formula height
-
-    table.insert(zones, {
-        x = gameState.screen.width - UI.Layout.scale(250),
-        y = 0,
-        width = UI.Layout.scale(250),
-        height = scoreHeight + rightY + UI.Layout.scale(20),  -- Adaptive to text
-        padding = padding
-    })
-
-    -- Central horizontal strip where tiles are placed (FULL WIDTH)
-    -- This prevents dice from landing in the tile play area
-    local boardArea = UI.Layout.getBoardArea()
-    local centerY = UI.Layout.getBoardCenter()
-    local stripHeight = UI.Layout.scale(140)  -- Height of the tile zone
-    local stripOffsetUp = UI.Layout.scale(30)  -- Move the strip UP from center
-
-    table.insert(zones, {
-        x = 0,
-        y = centerY - stripHeight / 2 - stripOffsetUp,  -- Shifted up
-        width = gameState.screen.width,
-        height = stripHeight,
-        padding = padding
-    })
-
-    -- Second horizontal strip at actual tile position (if tiles exist)
-    -- This follows where tiles are actually placed on the board
-    if gameState.placedTiles and #gameState.placedTiles > 0 then
-        -- Get Y position from first placed tile (they all share same Y)
-        local tileY = gameState.placedTiles[1].y
-        local tileStripHeight = UI.Layout.scale(140)
+    if not isArtifactsMenu then
+        -- Top-left corner: Round counter and challenges (ADAPTIVE to actual text height)
+        local leftX = UI.Layout.scale(40)
+        local leftY = UI.Layout.scale(20)
+        local roundTextHeight = UI.Layout.scale(60)  -- Approximate height of round text + challenges
 
         table.insert(zones, {
             x = 0,
-            y = tileY - tileStripHeight / 2,
-            width = gameState.screen.width,
-            height = tileStripHeight,
+            y = 0,
+            width = UI.Layout.scale(280),  -- Width to cover round name
+            height = roundTextHeight + leftY + UI.Layout.scale(20),  -- Adaptive to text
             padding = padding
         })
+
+        -- Top-right: Score and formula display (ADAPTIVE to score height)
+        local rightX = UI.Layout.scale(40)
+        local rightY = UI.Layout.scale(20)
+        local scoreHeight = UI.Layout.scale(100)  -- Score + formula height
+
+        table.insert(zones, {
+            x = gameState.screen.width - UI.Layout.scale(250),
+            y = 0,
+            width = UI.Layout.scale(250),
+            height = scoreHeight + rightY + UI.Layout.scale(20),  -- Adaptive to text
+            padding = padding
+        })
+
+        -- Central horizontal strip where tiles are placed (FULL WIDTH)
+        -- This prevents dice from landing in the tile play area
+        local boardArea = UI.Layout.getBoardArea()
+        local centerY = UI.Layout.getBoardCenter()
+        local stripHeight = UI.Layout.scale(140)  -- Height of the tile zone
+        local stripOffsetUp = UI.Layout.scale(30)  -- Move the strip UP from center
+
+        table.insert(zones, {
+            x = 0,
+            y = centerY - stripHeight / 2 - stripOffsetUp,  -- Shifted up
+            width = gameState.screen.width,
+            height = stripHeight,
+            padding = padding
+        })
+
+        -- Second horizontal strip at actual tile position (if tiles exist)
+        -- This follows where tiles are actually placed on the board
+        if gameState.placedTiles and #gameState.placedTiles > 0 then
+            -- Get Y position from first placed tile (they all share same Y)
+            local tileY = gameState.placedTiles[1].y
+            local tileStripHeight = UI.Layout.scale(140)
+
+            table.insert(zones, {
+                x = 0,
+                y = tileY - tileStripHeight / 2,
+                width = gameState.screen.width,
+                height = tileStripHeight,
+                padding = padding
+            })
+        end
     end
 
     -- Hand area (bottom section)
@@ -888,7 +893,7 @@ function UI.Animation.animateCupIntroArtifactShop(tools, onComplete)
         frame = 4,  -- Start at frame 4 (closed cup)
         phase = "shaking",  -- Start directly at shaking
         elapsed = 0,
-        shakeDuration = 0.5,  -- Shake for 0.5 seconds
+        shakeDuration = 1,  -- Shake for 1 seconds
         shakeAmplitude = UI.Layout.scale(15),  -- Shake ±15 pixels
         shakeRotationAmplitude = math.rad(5),  -- Tilt ±5 degrees
         startX = cupX,
@@ -1094,8 +1099,8 @@ function UI.Animation.updateCupAnimations(dt)
 
                 -- Define throw directions for each die (in degrees)
                 -- These angles create good separation between dice
-                local throwAngles = {45, 10, 75}  -- 45° down-right, 10° almost horizontal right, 75° down
-                local speedMultipliers = {2.5, 1, 1}  -- 45° die at 3x speed, others at normal speed
+                local throwAngles = {45, 5, 85}  -- 45° down-right, 10° almost horizontal right, 75° down
+                local speedMultipliers = {2, 1, 1}  -- 45° die at 3x speed, others at normal speed
 
                 -- Base throw speed (pixels per second)
                 local baseSpeed = 400
@@ -1232,9 +1237,30 @@ function UI.Animation.updateCupAnimations(dt)
                 cup.frameTimer = 0
                 cup.frame = cup.frame + 1
 
-                -- Hide die sprite when cup reaches frame 4 (fully closed)
+                -- Delete die sprite when cup reaches frame 4 (fully closed)
                 if cup.frame == 4 and not cup.dieHidden then
                     cup.dieHidden = true
+
+                    -- Remove die from diePhysicsAnimations array
+                    if cup.dieToHide then
+                        for j = #diePhysicsAnimations, 1, -1 do
+                            if diePhysicsAnimations[j] == cup.dieToHide then
+                                table.remove(diePhysicsAnimations, j)
+                                break
+                            end
+                        end
+                    end
+
+                    -- Remove die from artifactsShopSettledTools array
+                    if cup.dieToHide and gameState.artifactsShopSettledTools then
+                        for j = #gameState.artifactsShopSettledTools, 1, -1 do
+                            if gameState.artifactsShopSettledTools[j] == cup.dieToHide then
+                                table.remove(gameState.artifactsShopSettledTools, j)
+                                break
+                            end
+                        end
+                    end
+
                     -- Play cup closing sound (setting on table)
                     if UI.Audio and UI.Audio.playCupFrame4 then
                         UI.Audio.playCupFrame4()
@@ -1282,6 +1308,8 @@ function UI.Animation.updateCupAnimations(dt)
                     cup.slidingSoundSource:stop()
                     cup.slidingSoundSource = nil
                 end
+
+                -- Note: Die already removed from both arrays at frame 4 (when cup closed)
 
                 -- Animation complete
                 if cup.onComplete then

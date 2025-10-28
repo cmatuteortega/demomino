@@ -932,6 +932,8 @@ function Touch.released(x, y, istouch, touchId)
                     else
                         -- Clicked empty area - cancel selection and return to map
                         gameState.selectedNode = nil
+                        -- Clear any thrown tool sprites
+                        UI.Animation.clearAllDiePhysics()
                         gameState.gamePhase = "map"
 
                         -- Clear path preview animation
@@ -2371,6 +2373,8 @@ function Touch.enterSelectedNode()
     if not success then
         -- If move failed, return to map
         gameState.selectedNode = nil
+        -- Clear any thrown tool sprites
+        UI.Animation.clearAllDiePhysics()
         gameState.gamePhase = "map"
         return
     end
@@ -2515,6 +2519,8 @@ function Touch.enterSelectedNode()
         gameState.gamePhase = "contracts_menu"
     else
         -- Unknown node type, return to map
+        -- Clear any thrown tool sprites
+        UI.Animation.clearAllDiePhysics()
         gameState.gamePhase = "map"
     end
     
@@ -3989,15 +3995,8 @@ function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
     -- Trigger cup animation to capture the die
     UI.Animation.animateCupCapture(settledDie.x, settledDie.y, dieToHide, function()
         -- Called when cup animation completes (after ascending off-screen)
-        -- Remove the die sprite from settled tools now that it's been sold
-        if dieToHide and gameState.artifactsShopSettledTools then
-            for i, settledTool in ipairs(gameState.artifactsShopSettledTools) do
-                if settledTool == dieToHide then
-                    table.remove(gameState.artifactsShopSettledTools, i)
-                    break
-                end
-            end
-        end
+        -- Note: Die is already removed from artifactsShopSettledTools by the cup animation
+        -- to prevent it from reappearing after the cup disappears
 
         -- Add 1 coin with falling animation
         updateCoins(gameState.coins + sellValue, {hasBonus = false})
