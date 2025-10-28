@@ -1252,9 +1252,12 @@ function UI.Animation.updateCupAnimations(dt)
                     end
 
                     -- Remove die from artifactsShopSettledTools array
+                    -- Check both direct match AND physicsDie reference (for purchased tools)
                     if cup.dieToHide and gameState.artifactsShopSettledTools then
                         for j = #gameState.artifactsShopSettledTools, 1, -1 do
-                            if gameState.artifactsShopSettledTools[j] == cup.dieToHide then
+                            local settledTool = gameState.artifactsShopSettledTools[j]
+                            -- Match either the object itself OR its physicsDie reference
+                            if settledTool == cup.dieToHide or settledTool.physicsDie == cup.dieToHide then
                                 table.remove(gameState.artifactsShopSettledTools, j)
                                 break
                             end

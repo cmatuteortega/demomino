@@ -3101,6 +3101,11 @@ function Touch.startDiePhysicsAnimation(draggedTool, releaseX, releaseY)
             })
         end
     })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
 end
 
 -- Collapse the tool tower (animate back to stacked state)
@@ -3775,31 +3780,39 @@ function Touch.throwArtifactsShopTool(tool, toolIndex, releaseX, releaseY)
         toolId = tool.toolId,
         toolIndex = toolIndex,
         onComplete = function(settledDie)
-            -- When tool settles, trigger purchase automatically
-            Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
-
-            -- Add settled tool sprite to persistent board sprites
+            -- Add settled tool sprite to persistent board sprites FIRST
             if not gameState.artifactsShopSettledTools then
                 gameState.artifactsShopSettledTools = {}
             end
 
-            table.insert(gameState.artifactsShopSettledTools, {
+            local settledToolSprite = {
                 x = settledDie.x,
                 y = settledDie.y,
                 rotation = settledDie.rotation,
                 scale = settledDie.scale,
                 spriteType = tool.spriteType,
-                toolId = tool.toolId
-            })
+                toolId = tool.toolId,
+                physicsDie = settledDie  -- Store reference to physics die for cup animation
+            }
+            table.insert(gameState.artifactsShopSettledTools, settledToolSprite)
+
+            -- When tool settles, trigger purchase automatically (pass the sprite, not physics die)
+            Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
         end
     })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
 
     -- Reset drag state
     Touch.resetToolDragState(tool)
 end
 
 -- Purchase artifact shop tool directly (called after physics animation settles)
-function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
+-- settledToolSprite: the sprite object in artifactsShopSettledTools (NOT the physics die)
+function Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
     if not tool then
         return
     end
@@ -3868,9 +3881,9 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
 
         -- Start from settled die position (where it landed on board)
         gameState.toolSpritePositions[newToolIndex] = {
-            visualX = settledDie.x,
-            visualY = settledDie.y,
-            scale = settledDie.scale or 0.9
+            visualX = settledToolSprite.x,
+            visualY = settledToolSprite.y,
+            scale = settledToolSprite.scale or 0.9
         }
 
         -- Animate to stack position with bounce
@@ -3883,6 +3896,12 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
             if gameState.toolSpritePositions then
                 gameState.toolSpritePositions[newToolIndex] = nil
             end
+
+            -- After tool reaches stack, animate cup to pick up the physics die from board
+            -- Pass the physics die object so it gets properly removed from diePhysicsAnimations
+            UI.Animation.animateCupCapture(settledToolSprite.x, settledToolSprite.y, settledToolSprite.physicsDie, function()
+                -- Cup animation complete (sprite already removed at frame 4)
+            end)
         end)
     end
 
@@ -3891,7 +3910,7 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledDie)
 
     -- Show purchase confirmation at settled position
     local toolDef = Tools.getDefinition(tool.toolId)
-    UI.Animation.createFloatingText(toolDef.name .. " ACQUIRED!", settledDie.x, settledDie.y - UI.Layout.scale(30), {
+    UI.Animation.createFloatingText(toolDef.name .. " ACQUIRED!", settledToolSprite.x, settledToolSprite.y - UI.Layout.scale(30), {
         color = {0.2, 0.9, 0.3, 1},
         fontSize = "large",
         duration = 1.5,
@@ -3963,6 +3982,11 @@ function Touch.throwToolToSell(draggedTool, releaseX, releaseY)
             Touch.sellToolFromInventory(draggedTool.toolId, draggedTool.toolIndex, settledDie)
         end
     })
+
+    -- Play dice settle sound when tool is thrown
+    if UI.Audio and UI.Audio.playDiceSettle then
+        UI.Audio.playDiceSettle()
+    end
 end
 
 -- Sell a tool from inventory (called after physics animation settles)
