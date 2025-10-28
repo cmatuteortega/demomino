@@ -449,13 +449,24 @@ function initializeRoundIntro()
     -- Build the text to display
     local nightText = "Night " .. tostring(gameState.currentDay)
 
-    -- Calculate center position
+    -- Calculate center position for text
     local centerX = screenWidth / 2
     local centerY = screenHeight / 2
 
     -- Calculate final position (top-left corner, matching map screen)
     local finalX = UI.Layout.scale(40)
     local finalY = UI.Layout.scale(20)
+
+    -- Find the current node's screen position for circular reveal center
+    local revealCenterX = centerX
+    local revealCenterY = centerY
+    if gameState.currentMap and gameState.currentMap.currentNode then
+        local currentNode = gameState.currentMap.currentNode
+        -- Node positions are calculated with camera offset in drawMapNodes
+        -- For now, use screen center as fallback; will be updated when map is drawn
+        revealCenterX = currentNode.x or centerX
+        revealCenterY = currentNode.y or centerY
+    end
 
     -- Reset animation state
     gameState.roundIntroAnimation = {
@@ -471,7 +482,11 @@ function initializeRoundIntro()
         targetX = finalX,
         targetY = finalY,
         opacity = 1.0,
-        candleGrowth = 0
+        candleGrowth = 0,
+        -- Circular reveal properties
+        revealCenterX = revealCenterX,
+        revealCenterY = revealCenterY,
+        revealRadius = 0  -- Grows from 0 to full screen diagonal
     }
 end
 
@@ -1230,10 +1245,20 @@ function updateRoundIntro(dt)
         end
 
     elseif anim.phase == "revealing" then
-        -- Grow the candle light radius to reveal the map
-        anim.candleGrowth = anim.candleGrowth + dt * 2.0  -- 0.5 second duration
+        -- Calculate max radius needed (screen diagonal to ensure full coverage)
+        local screenWidth = gameState.screen.width
+        local screenHeight = gameState.screen.height
+        local maxRadius = math.sqrt(screenWidth * screenWidth + screenHeight * screenHeight)
 
-        if anim.candleGrowth >= 1.0 then
+        -- Grow the reveal circle radius from 0 to maxRadius
+        local revealSpeed = maxRadius * 1.5  -- Grow at 1.5x screen diagonal per second (fast reveal)
+        anim.revealRadius = anim.revealRadius + dt * revealSpeed
+
+        -- Also update candleGrowth for compatibility (0 to 1)
+        anim.candleGrowth = math.min(1.0, anim.revealRadius / maxRadius)
+
+        if anim.revealRadius >= maxRadius then
+            anim.revealRadius = maxRadius
             anim.candleGrowth = 1.0
             anim.phase = "complete"
 

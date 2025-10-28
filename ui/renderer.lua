@@ -2263,18 +2263,33 @@ function UI.Renderer.drawRoundIntro()
         UI.Renderer.drawMapNodes(gameState.currentMap)
     end
 
-    -- Overlay dark background that fades out during revealing phase
-    local fadeOpacity = 1.0
-    if anim.phase == "revealing" then
-        -- Fade from 100% to 0% opacity during reveal
-        fadeOpacity = 1.0 - anim.candleGrowth
-    end
-    -- During typing/pausing/moving, keep at 100% opacity
-
-    -- Draw the overlay (even at 0% opacity to ensure it completes the fade)
-    if fadeOpacity > 0 then
-        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], fadeOpacity)
+    -- Overlay dark background with circular reveal during revealing phase
+    if anim.phase == "typing" or anim.phase == "pausing" or anim.phase == "moving" then
+        -- Full black overlay during early phases
+        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1.0)
         love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+    elseif anim.phase == "revealing" then
+        -- Circular reveal: draw black overlay with a hole cut out
+        -- Update reveal center to current node's screen position (accounting for camera)
+        if gameState.currentMap and gameState.currentMap.currentNode then
+            local node = gameState.currentMap.currentNode
+            anim.revealCenterX = node.x - (gameState.currentMap.cameraX or 0)
+            anim.revealCenterY = node.y
+        end
+
+        -- Use stencil to cut out a growing circle
+        local function stencilCircle()
+            love.graphics.circle("fill", anim.revealCenterX, anim.revealCenterY, anim.revealRadius)
+        end
+
+        -- Draw the black overlay everywhere EXCEPT inside the circle
+        love.graphics.stencil(stencilCircle, "replace", 1)
+        love.graphics.setStencilTest("equal", 0)  -- Draw where stencil is 0 (outside circle)
+
+        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1.0)
+        love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+        love.graphics.setStencilTest()  -- Disable stencil test
     end
 
     -- Draw the "Night X" text character-by-character with wave animation
