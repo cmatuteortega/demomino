@@ -19,6 +19,7 @@ local cupSlidingSounds = {}
 local shakeCupSound = nil
 local diceSettleSounds = {}
 local typewriterSounds = {}
+local typewriterMaxDuration = 0  -- Longest typewriter sound duration in seconds
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -197,11 +198,23 @@ function UI.Audio.load()
         "sounds/ui/typewriter5.mp3"
     }
 
+    typewriterMaxDuration = 0
     for i, path in ipairs(typewriterPaths) do
         if love.filesystem.getInfo(path) then
             local sound = love.audio.newSource(path, "static")
-            sound:setVolume(sfxVolume * 0.4)  -- Quieter than normal UI sounds
-            table.insert(typewriterSounds, sound)
+            local duration = sound:getDuration()
+
+            -- Only use sounds that are reasonably short (< 1 second)
+            -- Longer sounds are probably not suitable for per-character typing
+            if duration <= 1.0 then
+                sound:setVolume(sfxVolume * 0.4)  -- Quieter than normal UI sounds
+                table.insert(typewriterSounds, sound)
+
+                -- Track the longest sound duration
+                if duration > typewriterMaxDuration then
+                    typewriterMaxDuration = duration
+                end
+            end
         end
     end
 end
@@ -594,10 +607,12 @@ function UI.Audio.isMapAmbiancePlaying()
     return mapAmbianceState.isPlaying
 end
 
-function UI.Audio.playTypewriter()
+function UI.Audio.playTypewriter(volumeMultiplier)
     if not gameState or not gameState.sfxEnabled then
         return
     end
+
+    volumeMultiplier = volumeMultiplier or 1.0  -- Default to full volume
 
     if #typewriterSounds > 0 then
         -- Pick a random typewriter sound variant
@@ -605,8 +620,14 @@ function UI.Audio.playTypewriter()
         local sound = typewriterSounds[randomIndex]
 
         -- Clone the sound so multiple can play simultaneously
-        sound:clone():play()
+        local clonedSound = sound:clone()
+        clonedSound:setVolume(sound:getVolume() * volumeMultiplier)
+        clonedSound:play()
     end
+end
+
+function UI.Audio.getTypewriterMaxDuration()
+    return typewriterMaxDuration
 end
 
 return UI.Audio

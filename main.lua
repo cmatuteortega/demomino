@@ -202,6 +202,19 @@ function love.load()
             targetY = 0,  -- Final Y position (top-left)
             opacity = 1.0,
             candleGrowth = 0  -- 0-1 for candle light radius growth
+        },
+        -- Dialogue system (demon "talk" at combat screens)
+        dialogueAnimation = {
+            phase = "idle",  -- "delaying", "typing", "waiting", "idle"
+            text = "",  -- Current dialogue text (full unwrapped text)
+            lines = {},  -- Wrapped text lines for display
+            currentCharIndex = 0,  -- Current character being typed
+            charTimer = 0,  -- Timer for next character
+            charsPerSecond = 8,  -- Typing speed (calculated based on typewriter sound duration)
+            showPrompt = false,  -- Show " ~" prompt when typing completes
+            isActive = false,  -- Whether dialogue is currently active
+            delayTimer = 0,  -- Timer for initial delay before showing dialogue
+            delayDuration = 3.0  -- Wait 3 seconds before showing dialogue
         }
     }
 
@@ -473,6 +486,101 @@ function initializeRoundIntro()
         targetY = finalY,
         opacity = 1.0,
         candleGrowth = 0
+    }
+end
+
+-- Demon dialogue phrases (add more here!)
+local demonDialoguePhrases = {
+    "El pUto Boxi",
+    "Drag tiles from hand to the board.",
+    "You can return tiles from board to hand by double tapping them!",
+    "You are really really bad."
+    -- ADD MORE PHRASES HERE
+    -- Example: "Welcome to your doom...",
+    -- Example: "Let's see what you're made of.",
+}
+
+function getRandomDialoguePhrase()
+    -- Select a random phrase from the dialogue phrases table
+    local randomIndex = love.math.random(1, #demonDialoguePhrases)
+    return demonDialoguePhrases[randomIndex]
+end
+
+function wrapDialogueText(text, maxWidth, font)
+    -- Break text into lines that fit within maxWidth
+    local lines = {}
+    local words = {}
+
+    -- Split text into words
+    for word in text:gmatch("%S+") do
+        table.insert(words, word)
+    end
+
+    local currentLine = ""
+    for i, word in ipairs(words) do
+        local testLine = currentLine == "" and word or (currentLine .. " " .. word)
+        local lineWidth = font:getWidth(testLine)
+
+        if lineWidth > maxWidth then
+            -- Line is too long, start a new line
+            if currentLine ~= "" then
+                table.insert(lines, currentLine)
+                currentLine = word
+            else
+                -- Single word is too long, just add it anyway
+                table.insert(lines, word)
+                currentLine = ""
+            end
+        else
+            currentLine = testLine
+        end
+    end
+
+    -- Add the last line
+    if currentLine ~= "" then
+        table.insert(lines, currentLine)
+    end
+
+    return lines
+end
+
+function initializeDialogue(text)
+    -- Initialize dialogue animation with typewriter effect
+    -- If no text provided, select a random phrase
+    if not text then
+        text = getRandomDialoguePhrase()
+    end
+
+    -- Calculate typing speed based on typewriter sound duration
+    local typewriterDuration = UI.Audio.getTypewriterMaxDuration()
+    local charsPerSecond = 15  -- Default fallback (faster!)
+
+    if typewriterDuration > 0 then
+        -- Cap duration at 0.5 seconds to prevent extremely slow typing
+        local cappedDuration = math.min(typewriterDuration, 0.5)
+        -- Use the sound duration as minimum time per character, but make it faster
+        charsPerSecond = 1.0 / (cappedDuration * 0.5)  -- Reduced multiplier for faster typing
+        -- Clamp to reasonable bounds (increased minimum for faster typing)
+        charsPerSecond = math.max(10, math.min(30, charsPerSecond))
+    end
+
+    -- Wrap text to fit within middle third of screen
+    local screenWidth = gameState.screen.width
+    local maxWidth = screenWidth / 3  -- Middle third of screen
+    local font = UI.Fonts.get("large")
+    local wrappedLines = wrapDialogueText(text, maxWidth, font)
+
+    gameState.dialogueAnimation = {
+        phase = "delaying",  -- Start with delay phase
+        text = text,
+        lines = wrappedLines,
+        currentCharIndex = 0,
+        charTimer = 0,
+        charsPerSecond = charsPerSecond,
+        showPrompt = false,
+        isActive = true,
+        delayTimer = 0,
+        delayDuration = 2.0  -- Wait 3 seconds before showing dialogue
     }
 end
 
@@ -1245,6 +1353,40 @@ function updateRoundIntro(dt)
     end
 end
 
+function updateDialogue(dt)
+    local dialogue = gameState.dialogueAnimation
+    if not dialogue or not dialogue.isActive then return end
+
+    if dialogue.phase == "delaying" then
+        -- Wait for delay duration before starting to type
+        dialogue.delayTimer = dialogue.delayTimer + dt
+        if dialogue.delayTimer >= dialogue.delayDuration then
+            dialogue.phase = "typing"
+        end
+    elseif dialogue.phase == "typing" then
+        -- Typewriter effect - reveal characters one by one
+        dialogue.charTimer = dialogue.charTimer + dt
+        local timePerChar = 1.0 / dialogue.charsPerSecond
+
+        -- Only reveal ONE character per frame to prevent sound spam during lag
+        if dialogue.charTimer >= timePerChar then
+            dialogue.charTimer = 0  -- Reset timer to ensure one char per frame
+            dialogue.currentCharIndex = dialogue.currentCharIndex + 1
+
+            -- Play a random typewriter sound for each character (20% quieter)
+            UI.Audio.playTypewriter(0.8)
+
+            -- Check if we've typed all characters
+            if dialogue.currentCharIndex >= #dialogue.text then
+                dialogue.currentCharIndex = #dialogue.text
+                dialogue.phase = "waiting"
+                dialogue.showPrompt = true  -- Show " ~" prompt
+            end
+        end
+    end
+    -- "waiting" phase does nothing - player must click to advance
+end
+
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
         local button = gameState.buttonAnimations[buttonName]
@@ -1320,6 +1462,7 @@ function love.update(dt)
         end
 
         if gameState.gamePhase == "playing" then
+            updateDialogue(dt)  -- Update dialogue animation
             Hand.update(dt)
             Board.update(dt)
             updateScoringSequence(dt)
@@ -1424,6 +1567,7 @@ function love.draw()
         UI.Renderer.drawCoinSprites()  -- Draw coin sprites first
         UI.Renderer.drawCoinText()  -- Draw coin text on top
         UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
+        UI.Renderer.drawDialogue()  -- Draw demon dialogue at top
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)

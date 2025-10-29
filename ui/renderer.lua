@@ -2409,6 +2409,87 @@ function UI.Renderer.drawRoundIntro()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function UI.Renderer.drawDialogue()
+    local dialogue = gameState.dialogueAnimation
+    if not dialogue or not dialogue.isActive or dialogue.currentCharIndex == 0 then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Use "large" font with white color
+    local font = UI.Fonts.get("large")
+    local textColor = UI.Colors.FONT_WHITE
+    local time = love.timer.getTime()
+
+    -- Build the display text (characters typed so far)
+    local displayText = dialogue.text:sub(1, dialogue.currentCharIndex)
+
+    -- Add prompt if typing is complete
+    local promptText = ""
+    if dialogue.showPrompt then
+        promptText = " ~"
+    end
+
+    -- Split display text into lines as it was wrapped
+    local charIndex = 0
+    local lineHeight = font:getHeight() + UI.Layout.scale(5)  -- Add spacing between lines
+    local startY = UI.Layout.scale(20) + 20
+
+    -- Draw each line
+    for lineNum, lineText in ipairs(dialogue.lines) do
+        -- Calculate how many characters from this line to display
+        local lineLength = #lineText
+        local charsToShow = math.min(lineLength, dialogue.currentCharIndex - charIndex)
+
+        if charsToShow > 0 then
+            local lineDisplayText = lineText:sub(1, charsToShow)
+
+            -- Add prompt to last line if complete
+            if lineNum == #dialogue.lines and dialogue.showPrompt and charsToShow == lineLength then
+                lineDisplayText = lineDisplayText .. promptText
+            end
+
+            -- Calculate line width for centering
+            local lineWidth = font:getWidth(lineDisplayText)
+            local lineStartX = screenWidth / 2 - lineWidth / 2
+            local lineY = startY + (lineNum - 1) * lineHeight
+
+            -- Draw each character in the line with wave animation
+            local currentX = lineStartX
+            for i = 1, #lineDisplayText do
+                local char = lineDisplayText:sub(i, i)
+                local charWidth = font:getWidth(char)
+
+                -- Wave animation (gentler than Night X)
+                local globalCharIndex = charIndex + i
+                local phase = time * 1.5 + (globalCharIndex - 1) * 0.1
+                local waveOffset = math.sin(phase) * 1
+
+                local animProps = {
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(4),
+                    scale = 1.0,
+                    shake = 0
+                }
+
+                UI.Fonts.drawAnimatedText(char, currentX, lineY + waveOffset, "large", textColor, "left", animProps)
+
+                currentX = currentX + charWidth
+            end
+        end
+
+        charIndex = charIndex + lineLength + 1  -- +1 for space between words
+        if charIndex > dialogue.currentCharIndex then
+            break
+        end
+    end
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawNodeConfirmation()
     if not gameState.selectedNode then
         return

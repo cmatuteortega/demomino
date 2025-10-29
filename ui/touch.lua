@@ -623,6 +623,21 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
+    -- Handle dialogue click (only in upper third of screen)
+    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
+        local screenHeight = gameState.screen.height
+        local upperThirdHeight = screenHeight / 3
+
+        -- Only register click if in upper third of screen
+        if y <= upperThirdHeight then
+            -- Advance to next dialogue (random phrase)
+            initializeDialogue()  -- No text = random selection
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+    end
+
     -- Handle title screen interactions
     if gameState.gamePhase == "title_screen" then
         -- If settings menu is open on title screen, handle that first
@@ -2405,6 +2420,9 @@ function Touch.enterSelectedNode()
 
         -- Reset tap tracking when entering playing phase
         touchState.lastTappedBoardTile = nil
+
+        -- Initialize dialogue for demon "talk" (random phrase)
+        initializeDialogue()  -- No text = random selection
 
         -- All combat nodes (including boss) start combat round
         gameState.gamePhase = "playing"
