@@ -1198,12 +1198,13 @@ function updateRoundIntro(dt)
         anim.charTimer = anim.charTimer + dt
         local timePerChar = 1.0 / anim.charsPerSecond
 
+        -- Only reveal ONE character per frame to prevent sound spam during lag
         if anim.charTimer >= timePerChar then
-            anim.charTimer = anim.charTimer - timePerChar
+            anim.charTimer = 0  -- Reset timer (not subtract) to ensure one char per frame
             anim.currentCharIndex = anim.currentCharIndex + 1
 
-            -- Play a subtle sound for each character (optional - using tile sound for now)
-            -- UI.Audio.playTilePlaced()
+            -- Play a random typewriter sound for each character
+            UI.Audio.playTypewriter()
 
             -- Check if we've typed all characters
             if anim.currentCharIndex >= #anim.text then

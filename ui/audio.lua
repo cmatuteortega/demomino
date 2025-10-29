@@ -18,6 +18,7 @@ local cupFrame4Sound = nil
 local cupSlidingSounds = {}
 local shakeCupSound = nil
 local diceSettleSounds = {}
+local typewriterSounds = {}
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -185,6 +186,23 @@ function UI.Audio.load()
         local sound = love.audio.newSource(diceSettlePath, "static")
         sound:setVolume(sfxVolume)
         table.insert(diceSettleSounds, sound)
+    end
+
+    -- Load typewriter sounds (for intro animation)
+    local typewriterPaths = {
+        "sounds/ui/typewriter1.mp3",
+        "sounds/ui/typewriter2.mp3",
+        "sounds/ui/typewriter3.mp3",
+        "sounds/ui/typewriter4.mp3",
+        "sounds/ui/typewriter5.mp3"
+    }
+
+    for i, path in ipairs(typewriterPaths) do
+        if love.filesystem.getInfo(path) then
+            local sound = love.audio.newSource(path, "static")
+            sound:setVolume(sfxVolume * 0.4)  -- Quieter than normal UI sounds
+            table.insert(typewriterSounds, sound)
+        end
     end
 end
 
@@ -574,6 +592,21 @@ end
 
 function UI.Audio.isMapAmbiancePlaying()
     return mapAmbianceState.isPlaying
+end
+
+function UI.Audio.playTypewriter()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if #typewriterSounds > 0 then
+        -- Pick a random typewriter sound variant
+        local randomIndex = love.math.random(1, #typewriterSounds)
+        local sound = typewriterSounds[randomIndex]
+
+        -- Clone the sound so multiple can play simultaneously
+        sound:clone():play()
+    end
 end
 
 return UI.Audio
