@@ -624,12 +624,17 @@ function Touch.released(x, y, istouch, touchId)
     end
 
     -- Handle dialogue click (only in upper third of screen) - DISMISS dialogue
+    -- Only if NOT dragging tiles or tools
     if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
 
-        -- Only register click if in upper third of screen
-        if y <= upperThirdHeight then
+        -- Check if player is dragging anything
+        local isDraggingTile = touchState.draggedTile ~= nil
+        local isDraggingTool = touchState.draggedTool ~= nil
+
+        -- Only register click if in upper third of screen AND not dragging
+        if y <= upperThirdHeight and not isDraggingTile and not isDraggingTool then
             -- Dismiss dialogue and reset idle timer
             gameState.dialogueAnimation.isActive = false
             gameState.dialogueAnimation.phase = "idle"
