@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 100  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -214,7 +214,9 @@ function love.load()
             showPrompt = false,  -- Show " ~" prompt when typing completes
             isActive = false,  -- Whether dialogue is currently active
             delayTimer = 0,  -- Timer for initial delay before showing dialogue
-            delayDuration = 3.0  -- Wait 3 seconds before showing dialogue
+            delayDuration = 3.0,  -- Wait 3 seconds before showing dialogue
+            idleTimer = 0,  -- Timer for triggering witty remarks
+            idleTriggerTime = 5.0  -- Trigger witty remark after 5 seconds of no dialogue
         }
     }
 
@@ -489,21 +491,63 @@ function initializeRoundIntro()
     }
 end
 
--- Demon dialogue phrases (add more here!)
-local demonDialoguePhrases = {
-    "El pUto Boxi",
-    "Drag tiles from hand to the board.",
-    "You can return tiles from board to hand by double tapping them!",
-    "You are really really bad."
-    -- ADD MORE PHRASES HERE
-    -- Example: "Welcome to your doom...",
-    -- Example: "Let's see what you're made of.",
+-- Demon dialogue phrases (three categories with different triggers)
+
+-- Witty remarks - trigger randomly after 5 seconds of no dialogue
+local demonDialogueWittyRemarks = {
+    "Careful, I cheat beautifully.",
+    "Strategy? How terribly mortal.",
+    "Your suffering pairs well with wine.",
+    "I play for screams, not scores.",
+    "Blocked again? How tragic.",
+    "Confidence is such a fragile thing.",
+    "Mind the tiles, they bite.",
+    "That move reeked of desperation.",
+    "Oh, I love a slow collapse.",
+    "Pride looks good on the doomed.",
+    "Luck favors the wicked, darling.",
+    "Your defeat will age nicely.",
+    "The table’s on fire... again.",
+    "Was that a tactic or a prayer?",
+    "I fold reality better than cards.",
+    "My patience burns faster than yours.",
+    "Winning’s overrated; torment isn’t.",
+    "Imps, fetch me their dignity.",
+    "You play like hope still lives.",
+    "Lovely try... now, burn slower."
 }
 
-function getRandomDialoguePhrase()
-    -- Select a random phrase from the dialogue phrases table
-    local randomIndex = love.math.random(1, #demonDialoguePhrases)
-    return demonDialoguePhrases[randomIndex]
+-- Player scores - trigger after finishing scoring a hand
+local demonDialoguePlayerScores = {
+    "Good one",
+    -- Example: "Pathetic score.",
+    -- Example: "Is that all?",
+}
+
+-- Player wins round - trigger when player WINS the round (demon loses)
+local demonDialoguePlayerWins = {
+    "EL PUTO BOXI",
+    -- Example: "You got lucky this time.",
+    -- Example: "Enjoy it while it lasts.",
+}
+
+
+function getRandomDialoguePhrase(category)
+    -- Select a random phrase from specified category
+    local phrases = demonDialogueWittyRemarks  -- Default to witty remarks
+
+    if category == "score" then
+        phrases = demonDialoguePlayerScores
+    elseif category == "win" then
+        phrases = demonDialoguePlayerWins
+    end
+
+    if #phrases == 0 then
+        return nil  -- No phrases in this category
+    end
+
+    local randomIndex = love.math.random(1, #phrases)
+    return phrases[randomIndex]
 end
 
 function wrapDialogueText(text, maxWidth, font)
@@ -544,11 +588,16 @@ function wrapDialogueText(text, maxWidth, font)
     return lines
 end
 
-function initializeDialogue(text)
+function initializeDialogue(text, category)
     -- Initialize dialogue animation with typewriter effect
-    -- If no text provided, select a random phrase
+    -- If no text provided, select a random phrase from category
     if not text then
-        text = getRandomDialoguePhrase()
+        text = getRandomDialoguePhrase(category)
+    end
+
+    -- If still no text (empty category), don't show dialogue
+    if not text then
+        return
     end
 
     -- Calculate typing speed based on typewriter sound duration
@@ -580,7 +629,9 @@ function initializeDialogue(text)
         showPrompt = false,
         isActive = true,
         delayTimer = 0,
-        delayDuration = 2.0  -- Wait 3 seconds before showing dialogue
+        delayDuration = 2.0,  -- Wait 2 seconds before showing dialogue
+        idleTimer = 0,  -- Reset idle timer when new dialogue starts
+        idleTriggerTime = 5.0  -- Trigger witty remark after 5 seconds
     }
 end
 
@@ -1239,10 +1290,13 @@ function completeScoringSequence()
     
     -- Update the actual game score
     updateScore(gameState.score + score, {hasBonus = hasBonus})
-    
+
     -- Clear scoring sequence state
     gameState.scoringSequence = nil
-    
+
+    -- Trigger score dialogue after scoring completes
+    initializeDialogue(nil, "score")
+
     -- Continue with normal game flow (refill hand, etc.)
     gameState.handsPlayed = gameState.handsPlayed + 1
 
@@ -1355,7 +1409,20 @@ end
 
 function updateDialogue(dt)
     local dialogue = gameState.dialogueAnimation
-    if not dialogue or not dialogue.isActive then return end
+
+    -- If no active dialogue, increment idle timer for witty remarks
+    if not dialogue.isActive and gameState.gamePhase == "playing" then
+        dialogue.idleTimer = dialogue.idleTimer + dt
+
+        -- Trigger witty remark after idle time
+        if dialogue.idleTimer >= dialogue.idleTriggerTime then
+            initializeDialogue(nil, "witty")  -- Random witty remark
+            dialogue.idleTimer = 0  -- Reset idle timer
+        end
+        return
+    end
+
+    if not dialogue.isActive then return end
 
     if dialogue.phase == "delaying" then
         -- Wait for delay duration before starting to type
@@ -1384,7 +1451,7 @@ function updateDialogue(dt)
             end
         end
     end
-    -- "waiting" phase does nothing - player must click to advance
+    -- "waiting" phase does nothing - player can click to dismiss
 end
 
 function animateButtonPress(buttonName)
@@ -1455,6 +1522,7 @@ function love.update(dt)
         updateScoreCountdown(dt)
         updateScoreIdleAnimation(dt)
         updateVictoryBellSequence(dt)
+        updateDialogue(dt)  -- Update dialogue animation (in both playing and won phases)
 
         -- Stop map ambiance during combat
         if UI.Audio.isMapAmbiancePlaying() then
@@ -1462,7 +1530,6 @@ function love.update(dt)
         end
 
         if gameState.gamePhase == "playing" then
-            updateDialogue(dt)  -- Update dialogue animation
             Hand.update(dt)
             Board.update(dt)
             updateScoringSequence(dt)

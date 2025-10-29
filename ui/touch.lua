@@ -623,15 +623,17 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
-    -- Handle dialogue click (only in upper third of screen)
+    -- Handle dialogue click (only in upper third of screen) - DISMISS dialogue
     if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
 
         -- Only register click if in upper third of screen
         if y <= upperThirdHeight then
-            -- Advance to next dialogue (random phrase)
-            initializeDialogue()  -- No text = random selection
+            -- Dismiss dialogue and reset idle timer
+            gameState.dialogueAnimation.isActive = false
+            gameState.dialogueAnimation.phase = "idle"
+            gameState.dialogueAnimation.idleTimer = 0
             touchState.isPressed = false
             touchState.touchId = nil
             return
@@ -2158,6 +2160,9 @@ function Touch.checkGameEnd()
         Hand.animateAllHandDiscard(gameState.hand, function()
             gameState.gamePhase = "won"
 
+            -- Trigger win dialogue (demon loses)
+            initializeDialogue(nil, "win")
+
             -- If this was a boss round, generate a completely new map
             if gameState.isBossRound then
                 gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
@@ -2421,8 +2426,10 @@ function Touch.enterSelectedNode()
         -- Reset tap tracking when entering playing phase
         touchState.lastTappedBoardTile = nil
 
-        -- Initialize dialogue for demon "talk" (random phrase)
-        initializeDialogue()  -- No text = random selection
+        -- Reset dialogue idle timer (witty remark will trigger after 5 seconds)
+        if gameState.dialogueAnimation then
+            gameState.dialogueAnimation.idleTimer = 0
+        end
 
         -- All combat nodes (including boss) start combat round
         gameState.gamePhase = "playing"
