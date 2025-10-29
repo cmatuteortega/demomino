@@ -1281,7 +1281,7 @@ end
 
 function UI.Renderer.drawScore(score)
     -- Left side: Round counter and challenges
-    local leftX = UI.Layout.scale(40)  -- Margin for mobile devices
+    local leftX = UI.Layout.scale(60)  -- Increased margin to align with challenge counters
     local leftY = UI.Layout.scale(20)
 
     -- Convert round number to Roman numerals
@@ -1302,7 +1302,7 @@ function UI.Renderer.drawScore(score)
         return result
     end
 
-    -- Draw round counter with demon name and wave animation per character
+    -- Draw round counter with demon icon and name
     local roundText = toRoman(gameState.currentRound) .. "."
     local demonName = gameState.currentDemonName or ""
     local fullText = demonName ~= "" and (roundText .. " " .. demonName) or roundText
@@ -1311,6 +1311,51 @@ function UI.Renderer.drawScore(score)
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
     local currentX = leftX
+
+    -- Draw demon icon first (if available)
+    if demonIconSprites and demonName ~= "" then
+        local iconSprite = nil
+
+        -- Select appropriate icon sprite
+        if demonName == "IMP" then
+            -- Random imp variant
+            if demonIconSprites.impVariants and #demonIconSprites.impVariants > 0 then
+                local impIndex = ((gameState.currentRound - 1) % #demonIconSprites.impVariants) + 1
+                iconSprite = demonIconSprites.impVariants[impIndex]
+            end
+        else
+            -- Use exact demon name match
+            iconSprite = demonIconSprites[demonName]
+        end
+
+        -- Fallback to NOT_FOUND if sprite not found
+        if not iconSprite then
+            iconSprite = demonIconSprites.NOT_FOUND
+        end
+
+        -- Draw the icon sprite with shadow and wave animation
+        if iconSprite then
+            -- Match font height exactly
+            local fontHeight = font:getHeight()
+            local iconScale = fontHeight / iconSprite:getHeight()
+            local iconWidth = iconSprite:getWidth() * iconScale
+
+            -- Wave animation for icon (matches first character's animation)
+            local phase = time * 2.5
+            local waveOffset = math.sin(phase) * 3
+
+            -- Draw shadow first
+            local shadowOffset = UI.Layout.scale(4)
+            love.graphics.setColor(0, 0, 0, 0.5)
+            love.graphics.draw(iconSprite, currentX + shadowOffset, leftY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+
+            -- Draw icon
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(iconSprite, currentX, leftY + waveOffset, 0, iconScale, iconScale)
+
+            currentX = currentX + iconWidth + UI.Layout.scale(8)  -- Add spacing after icon
+        end
+    end
 
     -- Draw each character with wave animation (left-aligned)
     for i = 1, #fullText do
@@ -2506,7 +2551,7 @@ function UI.Renderer.drawTilesMenu()
 
         -- Draw node title and demon name in top corners
         local rightX = screenWidth - UI.Layout.scale(40)
-        local leftX = UI.Layout.scale(40)
+        local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
         local topY = UI.Layout.scale(20)
         local time = love.timer.getTime()
         local font = UI.Fonts.get("formulaScore")
@@ -2538,11 +2583,38 @@ function UI.Renderer.drawTilesMenu()
             currentX = currentX + charWidth
         end
 
-        -- Left side: MAMMON demon name
+        -- Left side: MAMMON demon icon and name
         local demonName = "MAMMON"
         local demonColor = UI.Colors.FONT_RED
 
         currentX = leftX
+
+        -- Draw demon icon first (if available)
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+
+            -- Match font height exactly
+            local fontHeight = font:getHeight()
+            local iconScale = fontHeight / iconSprite:getHeight()
+            local iconWidth = iconSprite:getWidth() * iconScale
+
+            -- Wave animation for icon (matches first character's animation)
+            local phase = time * 2.5
+            local waveOffset = math.sin(phase) * 3
+
+            -- Draw shadow first
+            local shadowOffset = UI.Layout.scale(4)
+            love.graphics.setColor(0, 0, 0, 0.5)
+            love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+
+            -- Draw icon
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+
+            currentX = currentX + iconWidth + UI.Layout.scale(8)
+        end
+
+        -- Draw demon name
         for i = 1, #demonName do
             local char = demonName:sub(i, i)
             local charWidth = font:getWidth(char)
@@ -2614,7 +2686,7 @@ function UI.Renderer.drawArtifactsMenu()
 
     -- Draw node title and demon name in top corners (same style as trade/alchemy)
     local rightX = screenWidth - UI.Layout.scale(40)
-    local leftX = UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
     local topY = UI.Layout.scale(20)
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
@@ -2646,11 +2718,38 @@ function UI.Renderer.drawArtifactsMenu()
         currentX = currentX + charWidth
     end
 
-    -- Left side: ABRAXAS demon name
-    local demonName = "ABRAXAS"
+    -- Left side: PAIMON demon icon and name
+    local demonName = "PAIMON"
     local demonColor = UI.Colors.FONT_RED
 
     currentX = leftX
+
+    -- Draw demon icon first (if available)
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite = demonIconSprites[demonName]
+
+        -- Match font height exactly
+        local fontHeight = font:getHeight()
+        local iconScale = fontHeight / iconSprite:getHeight()
+        local iconWidth = iconSprite:getWidth() * iconScale
+
+        -- Wave animation for icon (matches first character's animation)
+        local phase = time * 2.5
+        local waveOffset = math.sin(phase) * 3
+
+        -- Draw shadow first
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+
+        -- Draw icon
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    -- Draw demon name
     for i = 1, #demonName do
         local char = demonName:sub(i, i)
         local charWidth = font:getWidth(char)
@@ -4069,7 +4168,7 @@ function UI.Renderer.drawFusionMode()
 
     -- Draw node title and demon name in top corners
     local rightX = screenWidth - UI.Layout.scale(40)
-    local leftX = UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
     local topY = UI.Layout.scale(20)
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
@@ -4101,11 +4200,38 @@ function UI.Renderer.drawFusionMode()
         currentX = currentX + charWidth
     end
 
-    -- Left side: LILITH demon name
+    -- Left side: LILITH demon icon and name
     local demonName = "LILITH"
     local demonColor = UI.Colors.FONT_RED
 
     currentX = leftX
+
+    -- Draw demon icon first (if available)
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite = demonIconSprites[demonName]
+
+        -- Match font height exactly
+        local fontHeight = font:getHeight()
+        local iconScale = fontHeight / iconSprite:getHeight()
+        local iconWidth = iconSprite:getWidth() * iconScale
+
+        -- Wave animation for icon (matches first character's animation)
+        local phase = time * 2.5
+        local waveOffset = math.sin(phase) * 3
+
+        -- Draw shadow first
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+
+        -- Draw icon
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    -- Draw demon name
     for i = 1, #demonName do
         local char = demonName:sub(i, i)
         local charWidth = font:getWidth(char)

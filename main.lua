@@ -41,6 +41,7 @@ function love.load()
     loadTitleScreenSprites()
     loadNodeSprites()
     loadCoinSprite()
+    loadDemonIconSprites()
     loadCandleSprites()
     loadToolSprites()
     loadCupSprites()
@@ -2053,6 +2054,51 @@ function loadCoinSprite()
     local coinFilename = "sprites/currency/coin.png"
     if love.filesystem.getInfo(coinFilename) then
         coinSprite = love.graphics.newImage(coinFilename)
+    end
+end
+
+function loadDemonIconSprites()
+    demonIconSprites = {}
+
+    -- List of all demon icon names to load
+    local demonNames = {
+        -- Boss demons
+        "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN",
+        -- Shop demons
+        "MAMMON", "PAIMON", "LILITH", "STOLAS",
+        -- Other demons (for completeness)
+        "ASTAROTH", "PAZUZU",
+        -- Fallback
+        "NOT_FOUND"
+    }
+
+    -- Load named demon icons
+    for _, name in ipairs(demonNames) do
+        local filename = "sprites/demon_icon/" .. name .. ".png"
+        if love.filesystem.getInfo(filename) then
+            demonIconSprites[name] = love.graphics.newImage(filename)
+            demonIconSprites[name]:setFilter("nearest", "nearest")
+        end
+    end
+
+    -- Load imp variants (imp1.png through imp7.png)
+    demonIconSprites.impVariants = {}
+    for i = 1, 7 do
+        local filename = "sprites/demon_icon/imp" .. i .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            sprite:setFilter("nearest", "nearest")
+            table.insert(demonIconSprites.impVariants, sprite)
+        end
+    end
+
+    -- Load fallback sprite if not already loaded
+    if not demonIconSprites.NOT_FOUND then
+        local fallbackFilename = "sprites/demon_icon/NOT_FOUND.png"
+        if love.filesystem.getInfo(fallbackFilename) then
+            demonIconSprites.NOT_FOUND = love.graphics.newImage(fallbackFilename)
+            demonIconSprites.NOT_FOUND:setFilter("nearest", "nearest")
+        end
     end
 end
 

@@ -2,8 +2,7 @@ Map = {}
 
 -- Demon name lists for combat encounters
 Map.REGULAR_DEMON_NAMES = {
-    "PAZUZU", "ASTAROTH", "MALPHAS", "AAMON", "BAEL", "SAMAEL",
-    "MOLOCH", "ABIGOR", "ASTARTE", "GAAP", "ANDRAS", "BARBATOS", "STOLAS"
+    "IMP"
 }
 
 Map.BOSS_DEMON_NAMES = {
@@ -208,6 +207,18 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "boss" then
                 -- Assign boss demon name
                 node.demonName = Map.selectDemonName(map.usedDemonNames, true)
+            elseif node.nodeType == "trade" then
+                -- TRADE node - always MAMMON
+                node.demonName = "MAMMON"
+            elseif node.nodeType == "alchemy" then
+                -- ALCHEMY node - always PAIMON
+                node.demonName = "PAIMON"
+            elseif node.nodeType == "artifacts" then
+                -- ARTIFACTS node - always LILITH
+                node.demonName = "LILITH"
+            elseif node.nodeType == "contracts" then
+                -- CONTRACTS node - always STOLAS
+                node.demonName = "STOLAS"
             end
         end
     end
