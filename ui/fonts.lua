@@ -13,6 +13,7 @@ function UI.Fonts.load()
         small = math.max(12 * baseScale, 8),
         medium = math.max(16 * baseScale, 12),
         large = math.max(24 * baseScale, 18),
+        larger = math.max(24 * baseScale, 25),
         title = math.max(40 * baseScale, 30),  -- Increased from 32 for round counter
         score = math.max(20 * baseScale, 16),
         bigScore = math.max(96 * baseScale, 72),  -- Increased from 64 for score display

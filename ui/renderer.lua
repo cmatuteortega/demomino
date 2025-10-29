@@ -1302,12 +1302,10 @@ function UI.Renderer.drawScore(score)
         return result
     end
 
-    -- Draw round counter with demon icon and name
-    local roundText = toRoman(gameState.currentRound) .. "."
+    -- Draw demon icon and name (without round counter)
     local demonName = gameState.currentDemonName or ""
-    local fullText = demonName ~= "" and (roundText .. " " .. demonName) or roundText
 
-    local roundColor = UI.Colors.FONT_WHITE
+    local roundColor = UI.Colors.FONT_RED
     local time = love.timer.getTime()
     local font = UI.Fonts.get("formulaScore")
     local currentX = leftX
@@ -1335,10 +1333,11 @@ function UI.Renderer.drawScore(score)
 
         -- Draw the icon sprite with shadow and wave animation
         if iconSprite then
-            -- Match font height exactly
+            -- Match font height exactly, then scale up by 1.3x
             local fontHeight = font:getHeight()
-            local iconScale = fontHeight / iconSprite:getHeight()
+            local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
             local iconWidth = iconSprite:getWidth() * iconScale
+            local iconHeight = iconSprite:getHeight() * iconScale
 
             -- Wave animation for icon (matches first character's animation)
             local phase = time * 2.5
@@ -1357,9 +1356,9 @@ function UI.Renderer.drawScore(score)
         end
     end
 
-    -- Draw each character with wave animation (left-aligned)
-    for i = 1, #fullText do
-        local char = fullText:sub(i, i)
+    -- Draw demon name with wave animation (left-aligned)
+    for i = 1, #demonName do
+        local char = demonName:sub(i, i)
         local charWidth = font:getWidth(char)
 
         -- Wave animation: same as score digits
@@ -1381,9 +1380,11 @@ function UI.Renderer.drawScore(score)
     -- Draw challenge counters below round counter
     local bigScoreFont = UI.Fonts.get("bigScore")
     local formulaScoreFont = UI.Fonts.get("formulaScore")
-    local roundHeight = formulaScoreFont:getHeight()
+
+    -- Calculate icon height to properly position counters below it
+    local iconHeight = formulaScoreFont:getHeight() * 1.3  -- Icon is 1.3x font height
     local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
-    local currentCounterY = leftY + roundHeight - 20  -- Start position below round
+    local currentCounterY = leftY + iconHeight + UI.Layout.scale(5)  -- Position below icon with spacing
 
     -- Floating animation: same wave effect as score digits
     local floatPhase = time * 2.5
@@ -1429,12 +1430,46 @@ function UI.Renderer.drawScore(score)
         })
     end
 
-    -- Right side: Score display and formula
+    -- Right side: Round counter, score display and formula
     local rightX = gameState.screen.width - UI.Layout.scale(40)
     local rightY = UI.Layout.scale(20)
 
+    -- Draw "ROUND X" above target score with wave animation per character
+    local roundCounterText = "ROUND " .. toRoman(gameState.currentRound)
+    local roundCounterFont = UI.Fonts.get("larger")  -- Smaller font for round counter
+    local roundCounterColor = UI.Colors.FONT_RED
+
+    -- Calculate total width to right-align from rightX
+    local roundCounterTotalWidth = 0
+    for i = 1, #roundCounterText do
+        local char = roundCounterText:sub(i, i)
+        roundCounterTotalWidth = roundCounterTotalWidth + roundCounterFont:getWidth(char)
+    end
+
+    -- Draw round counter with wave animation per character (right-aligned)
+    currentX = rightX - roundCounterTotalWidth  - UI.Layout.scale(10)
+    local roundCounterY = rightY
+    for i = 1, #roundCounterText do
+        local char = roundCounterText:sub(i, i)
+        local charWidth = roundCounterFont:getWidth(char)
+
+        -- Wave animation: same style as other text
+        local phase = time * 1.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 1.5
+
+        UI.Fonts.drawAnimatedText(char, currentX, roundCounterY + waveOffset, "larger", roundCounterColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        })
+
+        currentX = currentX + charWidth
+    end
+
     -- Draw countdown score (666 - current score) with wave animation per digit
-    local scoreY = rightY
+    -- Moved down to accommodate round counter
+    local scoreY = rightY + roundCounterFont:getHeight() + UI.Layout.scale(0)
 
     -- Use animated countdown value instead of instant calculation
     local displayScore = gameState.displayedRemainingScore or math.max(0, gameState.targetScore - score)
@@ -2593,9 +2628,9 @@ function UI.Renderer.drawTilesMenu()
         if demonIconSprites and demonIconSprites[demonName] then
             local iconSprite = demonIconSprites[demonName]
 
-            -- Match font height exactly
+            -- Match font height exactly, then scale up by 1.3x
             local fontHeight = font:getHeight()
-            local iconScale = fontHeight / iconSprite:getHeight()
+            local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
             local iconWidth = iconSprite:getWidth() * iconScale
 
             -- Wave animation for icon (matches first character's animation)
@@ -2728,9 +2763,9 @@ function UI.Renderer.drawArtifactsMenu()
     if demonIconSprites and demonIconSprites[demonName] then
         local iconSprite = demonIconSprites[demonName]
 
-        -- Match font height exactly
+        -- Match font height exactly, then scale up by 1.3x
         local fontHeight = font:getHeight()
-        local iconScale = fontHeight / iconSprite:getHeight()
+        local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
         local iconWidth = iconSprite:getWidth() * iconScale
 
         -- Wave animation for icon (matches first character's animation)
@@ -4210,9 +4245,9 @@ function UI.Renderer.drawFusionMode()
     if demonIconSprites and demonIconSprites[demonName] then
         local iconSprite = demonIconSprites[demonName]
 
-        -- Match font height exactly
+        -- Match font height exactly, then scale up by 1.3x
         local fontHeight = font:getHeight()
-        local iconScale = fontHeight / iconSprite:getHeight()
+        local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
         local iconWidth = iconSprite:getWidth() * iconScale
 
         -- Wave animation for icon (matches first character's animation)
