@@ -3132,8 +3132,8 @@ function Touch.startDiePhysicsAnimation(draggedTool, releaseX, releaseY)
     })
 
     -- Play dice settle sound when tool is thrown
-    if UI.Audio and UI.Audio.playDiceSettle then
-        UI.Audio.playDiceSettle()
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
     end
 end
 
@@ -3831,8 +3831,8 @@ function Touch.throwArtifactsShopTool(tool, toolIndex, releaseX, releaseY)
     })
 
     -- Play dice settle sound when tool is thrown
-    if UI.Audio and UI.Audio.playDiceSettle then
-        UI.Audio.playDiceSettle()
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
     end
 
     -- Reset drag state
@@ -4013,8 +4013,8 @@ function Touch.throwToolToSell(draggedTool, releaseX, releaseY)
     })
 
     -- Play dice settle sound when tool is thrown
-    if UI.Audio and UI.Audio.playDiceSettle then
-        UI.Audio.playDiceSettle()
+    if UI.Audio and UI.Audio.playTilePlaced then
+        UI.Audio.playTilePlaced()
     end
 end
 
