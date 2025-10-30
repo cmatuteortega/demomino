@@ -495,40 +495,47 @@ end
 
 -- Witty remarks - trigger randomly after 5 seconds of no dialogue
 local demonDialogueWittyRemarks = {
-    "Careful, I cheat beautifully.",
-    "Strategy? How terribly mortal.",
-    "Your suffering pairs well with wine.",
-    "I play for screams, not scores.",
-    "Blocked again? How tragic.",
-    "Confidence is such a fragile thing.",
-    "Mind the tiles, they bite.",
-    "That move reeked of desperation.",
-    "Oh, I love a slow collapse.",
-    "Pride looks good on the doomed.",
-    "Luck favors the wicked, darling.",
-    "Your defeat will age nicely.",
-    "The table’s on fire... again.",
-    "Was that a tactic or a prayer?",
-    "I fold reality better than cards.",
-    "My patience burns faster than yours.",
-    "Winning’s overrated; torment isn’t.",
-    "Imps, fetch me their dignity.",
-    "You play like hope still lives.",
-    "Lovely try... now, burn slower."
+    "Dominoes? How mortal",
+    "Careful, I bite",
+    "Try harder, sinner",
+    "The tiles hunger",
+    "You reek of hope",
+    "Confidence burns fast",
+    "Lovely collapse, darling",
+    "Pray harder next time",
+    "Chaos suits you",
+    "Winning is overrated anyway",
 }
 
 -- Player scores - trigger after finishing scoring a hand
 local demonDialoguePlayerScores = {
     "Good one",
+    "Oh, you scored?",
+    "Beginners luck, clearly...",
+    "A fluke, nothing more",
+    "Enjoy it, mortal",
+    "I blinked, that is all",
+    "Skill? Do not flatter yourself",
+    "I let you have that",
+    "Proud of that?",
+    "Pathetic, yet impressive",
+    "Fine, take your point"
     -- Example: "Pathetic score.",
     -- Example: "Is that all?",
 }
 
 -- Player wins round - trigger when player WINS the round (demon loses)
 local demonDialoguePlayerWins = {
-    "EL PUTO BOXI",
-    -- Example: "You got lucky this time.",
-    -- Example: "Enjoy it while it lasts.",
+    "Impossible...",
+    "The tiles lie...",
+    "I was distracted...",
+    "Luck, not talent...",
+    "This board is cursed...",
+    "You cheated, surely...",
+    "A momentary lapse...",
+    "Enjoy it while it lasts...",
+    "Even Hell stumbles...",
+    "Fuck...",
 }
 
 
