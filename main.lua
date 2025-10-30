@@ -654,7 +654,9 @@ function triggerVictoryPhrase()
         "BAD TO THE BONE",
         "DOMINATRIX",
         "DO RE MI NO",
-        "DOMINATING!"
+        "DOMINATING!",
+        "EL DIAABLO",
+        "EL HUEESO"
     }
 
     -- Select random phrase
