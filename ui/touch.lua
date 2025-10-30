@@ -635,6 +635,9 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Only register click if in upper third of screen AND not dragging
         if y <= upperThirdHeight and not isDraggingTile and not isDraggingTool then
+            -- Play dismiss sound
+            UI.Audio.playDismissDialogue()
+
             -- Dismiss dialogue and reset idle timer
             gameState.dialogueAnimation.isActive = false
             gameState.dialogueAnimation.phase = "idle"
@@ -808,6 +811,13 @@ function Touch.released(x, y, istouch, touchId)
                 Save.updateBestRound(gameState.currentRound)
                 -- Clear any thrown tool sprites before returning to map
                 UI.Animation.clearAllDiePhysics()
+
+                -- Dismiss any active dialogue when leaving won screen
+                if gameState.dialogueAnimation then
+                    gameState.dialogueAnimation.isActive = false
+                    gameState.dialogueAnimation.phase = "idle"
+                    gameState.dialogueAnimation.winDialogueShown = false  -- Reset for next win
+                end
 
                 -- Go directly to map (skip intro - player is mid-run)
                 gameState.gamePhase = "map"
@@ -2164,9 +2174,6 @@ function Touch.checkGameEnd()
         -- Animate hand tiles discarding before showing victory screen
         Hand.animateAllHandDiscard(gameState.hand, function()
             gameState.gamePhase = "won"
-
-            -- Trigger win dialogue (demon loses)
-            initializeDialogue(nil, "win")
 
             -- If this was a boss round, generate a completely new map
             if gameState.isBossRound then

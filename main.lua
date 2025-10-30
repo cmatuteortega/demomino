@@ -216,7 +216,8 @@ function love.load()
             delayTimer = 0,  -- Timer for initial delay before showing dialogue
             delayDuration = 3.0,  -- Wait 3 seconds before showing dialogue
             idleTimer = 0,  -- Timer for triggering witty remarks
-            idleTriggerTime = 5.0  -- Trigger witty remark after 5 seconds of no dialogue
+            idleTriggerTime = 5.0,  -- Trigger witty remark after 5 seconds of no dialogue
+            winDialogueShown = false  -- Track if we've shown win dialogue this round
         }
     }
 
@@ -1419,7 +1420,14 @@ end
 function updateDialogue(dt)
     local dialogue = gameState.dialogueAnimation
 
-    -- If no active dialogue, increment idle timer for witty remarks
+    -- Trigger win dialogue once when entering won phase
+    if gameState.gamePhase == "won" and not dialogue.winDialogueShown and not dialogue.isActive then
+        initializeDialogue(nil, "win")
+        dialogue.winDialogueShown = true
+        return
+    end
+
+    -- If no active dialogue, increment idle timer for witty remarks (playing phase only)
     if not dialogue.isActive and gameState.gamePhase == "playing" then
         dialogue.idleTimer = dialogue.idleTimer + dt
 

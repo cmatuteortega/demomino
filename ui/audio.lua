@@ -20,6 +20,7 @@ local shakeCupSound = nil
 local diceSettleSounds = {}
 local typewriterSounds = {}
 local typewriterMaxDuration = 0  -- Longest typewriter sound duration in seconds
+local dismissDialogueSound = nil
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -216,6 +217,13 @@ function UI.Audio.load()
                 end
             end
         end
+    end
+
+    -- Load dismiss dialogue sound
+    local dismissDialoguePath = "sounds/ui/dismiss_dialogue.mp3"
+    if love.filesystem.getInfo(dismissDialoguePath) then
+        dismissDialogueSound = love.audio.newSource(dismissDialoguePath, "static")
+        dismissDialogueSound:setVolume(sfxVolume)
     end
 end
 
@@ -628,6 +636,17 @@ end
 
 function UI.Audio.getTypewriterMaxDuration()
     return typewriterMaxDuration
+end
+
+function UI.Audio.playDismissDialogue()
+    if not gameState or not gameState.sfxEnabled then
+        return
+    end
+
+    if dismissDialogueSound then
+        dismissDialogueSound:stop()
+        dismissDialogueSound:play()
+    end
 end
 
 return UI.Audio
