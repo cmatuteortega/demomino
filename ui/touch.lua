@@ -166,6 +166,18 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle dialogue press (only in upper third of screen when dialogue is waiting)
+    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
+        local screenHeight = gameState.screen.height
+        local upperThirdHeight = screenHeight / 3
+
+        -- Check if press is in upper third
+        if y <= upperThirdHeight then
+            gameState.dialogueAnimation.isPressed = true
+            return
+        end
+    end
+
     -- Handle settings menu interactions (takes priority when open)
     if gameState.settingsMenuOpen then
         return
@@ -623,8 +635,8 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
-    -- Handle dialogue click (only in upper third of screen) - DISMISS dialogue
-    -- Only if NOT dragging tiles or tools
+    -- Handle dialogue release (only in upper third of screen) - DISMISS dialogue
+    -- Only if NOT dragging tiles or tools AND dialogue was pressed
     if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
@@ -633,8 +645,8 @@ function Touch.released(x, y, istouch, touchId)
         local isDraggingTile = touchState.draggedTile ~= nil
         local isDraggingTool = touchState.draggedTool ~= nil
 
-        -- Only register click if in upper third of screen AND not dragging
-        if y <= upperThirdHeight and not isDraggingTile and not isDraggingTool then
+        -- Only dismiss if released in upper third AND dialogue was pressed AND not dragging
+        if y <= upperThirdHeight and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
             -- Play dismiss sound
             UI.Audio.playDismissDialogue()
 
@@ -642,10 +654,14 @@ function Touch.released(x, y, istouch, touchId)
             gameState.dialogueAnimation.isActive = false
             gameState.dialogueAnimation.phase = "idle"
             gameState.dialogueAnimation.idleTimer = 0
+            gameState.dialogueAnimation.isPressed = false
             touchState.isPressed = false
             touchState.touchId = nil
             return
         end
+
+        -- Reset pressed state if released outside dialogue area or while dragging
+        gameState.dialogueAnimation.isPressed = false
     end
 
     -- Handle title screen interactions

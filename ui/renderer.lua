@@ -2418,18 +2418,18 @@ function UI.Renderer.drawDialogue()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
-    -- Use "large" font with white color
+    -- Use "large" font with color based on press state
     local font = UI.Fonts.get("large")
-    local textColor = UI.Colors.FONT_WHITE
+    local textColor = dialogue.isPressed and UI.Colors.FONT_PINK or UI.Colors.FONT_WHITE
     local time = love.timer.getTime()
 
     -- Build the display text (characters typed so far)
     local displayText = dialogue.text:sub(1, dialogue.currentCharIndex)
 
-    -- Add prompt if typing is complete
+    -- Add prompt if typing is complete (changes based on press state)
     local promptText = ""
     if dialogue.showPrompt then
-        promptText = " ~"
+        promptText = dialogue.isPressed and " *" or " ~"
     end
 
     -- Split display text into lines as it was wrapped

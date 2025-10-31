@@ -217,7 +217,8 @@ function love.load()
             delayDuration = 3.0,  -- Wait 3 seconds before showing dialogue
             idleTimer = 0,  -- Timer for triggering witty remarks
             idleTriggerTime = 5.0,  -- Trigger witty remark after 5 seconds of no dialogue
-            winDialogueShown = false  -- Track if we've shown win dialogue this round
+            winDialogueShown = false,  -- Track if we've shown win dialogue this round
+            isPressed = false  -- Track if dialogue is being pressed
         }
     }
 
@@ -511,6 +512,7 @@ local demonDialogueWittyRemarks = {
 -- Player scores - trigger after finishing scoring a hand
 local demonDialoguePlayerScores = {
     "Good one",
+    "Beltros guapo",
     "Oh, you scored?",
     "Beginners luck, clearly...",
     "A fluke, nothing more",
