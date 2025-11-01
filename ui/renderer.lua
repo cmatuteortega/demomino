@@ -2143,120 +2143,145 @@ function UI.Renderer.drawSettingsMenu()
 
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
+    local fromTitle = gameState.settingsFromTitle or false
 
-    -- Semi-transparent overlay
-    love.graphics.setColor(0, 0, 0, 0.7)
+    -- Draw pure black background (matching intro dialogue)
+    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1)
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Menu panel (taller if not from title screen)
-    local panelWidth = UI.Layout.scale(300)
-    local fromTitle = gameState.settingsFromTitle or false
-    local panelHeight = fromTitle and UI.Layout.scale(220) or UI.Layout.scale(340)
-    local panelX = (screenWidth - panelWidth) / 2
-    local panelY = (screenHeight - panelHeight) / 2
+    -- Draw IMPLOYEE icon centered, positioned at 35% from top (matching intro dialogue)
+    if demonIconSprites and demonIconSprites["IMPLOYEE"] then
+        local sprite = demonIconSprites["IMPLOYEE"]
 
-    -- Panel background
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(10))
+        -- Match combat demon icon scaling: based on formulaScore font height * 1.3x
+        local font = UI.Fonts.get("formulaScore")
+        local fontHeight = font:getHeight()
+        local iconScale = (fontHeight / sprite:getHeight()) * 1.3
+        local iconWidth = sprite:getWidth() * iconScale
+        local iconHeight = sprite:getHeight() * iconScale
 
-    -- Panel border
-    UI.Colors.setOutline()
-    love.graphics.setLineWidth(UI.Layout.scale(3))
-    love.graphics.rectangle("line", panelX, panelY, panelWidth, panelHeight, UI.Layout.scale(10))
+        -- Center horizontally, position at 35% from top
+        local iconX = screenWidth / 2 - iconWidth / 2
+        local iconY = screenHeight * 0.35 - iconHeight / 2
 
-    -- Title
-    local titleColor = UI.Colors.FONT_PINK
-    UI.Fonts.drawText("SETTINGS", panelX + panelWidth / 2, panelY + UI.Layout.scale(30), "large", titleColor, "center")
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(sprite, iconX, iconY, 0, iconScale, iconScale)
+    end
 
-    -- Music toggle option
-    local musicY = panelY + UI.Layout.scale(70)
-    local musicText = gameState.musicEnabled and "Music: ON" or "Music: OFF"
-    local musicColor = gameState.musicEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(musicText, panelX + panelWidth / 2, musicY, "medium", musicColor, "center")
+    -- Options positioned below icon (starting at ~52% from top - reduced gap)
+    local font = UI.Fonts.get("large")
+    local optionStartY = screenHeight * 0.49
+    local optionSpacing = UI.Layout.scale(45)
+    local currentY = optionStartY
 
-    -- Store music toggle button bounds
-    local optionHeight = UI.Layout.scale(30)
-    gameState.settingsMusicToggleBounds = {
-        x = panelX,
-        y = musicY - optionHeight / 2,
-        width = panelWidth,
-        height = optionHeight
-    }
-
-    -- SFX toggle option
-    local sfxY = panelY + UI.Layout.scale(110)
-    local sfxText = gameState.sfxEnabled and "SFX: ON" or "SFX: OFF"
+    -- Option 1: FX toggle
+    local sfxText = gameState.sfxEnabled and "FX: ON" or "FX: OFF"
     local sfxColor = gameState.sfxEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(sfxText, panelX + panelWidth / 2, sfxY, "medium", sfxColor, "center")
+    local sfxWidth = font:getWidth(sfxText)
+    local sfxX = screenWidth / 2 - sfxWidth / 2
+    UI.Fonts.drawText(sfxText, screenWidth / 2, currentY, "large", sfxColor, "center")
 
-    -- Store SFX toggle button bounds
+    -- Store SFX toggle bounds
+    local optionHeight = font:getHeight() + UI.Layout.scale(10)
     gameState.settingsSFXToggleBounds = {
-        x = panelX,
-        y = sfxY - optionHeight / 2,
-        width = panelWidth,
+        x = sfxX - UI.Layout.scale(10),
+        y = currentY - optionHeight / 2,
+        width = sfxWidth + UI.Layout.scale(20),
         height = optionHeight
     }
+    currentY = currentY + optionSpacing
 
-    -- Only show game-related buttons if not from title screen
+    -- Option 2: Music toggle
+    local musicText = gameState.musicEnabled and "MUSIC: ON" or "MUSIC: OFF"
+    local musicColor = gameState.musicEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local musicWidth = font:getWidth(musicText)
+    local musicX = screenWidth / 2 - musicWidth / 2
+    UI.Fonts.drawText(musicText, screenWidth / 2, currentY, "large", musicColor, "center")
+
+    -- Store music toggle bounds
+    gameState.settingsMusicToggleBounds = {
+        x = musicX - UI.Layout.scale(10),
+        y = currentY - optionHeight / 2,
+        width = musicWidth + UI.Layout.scale(20),
+        height = optionHeight
+    }
+    currentY = currentY + optionSpacing
+
+    -- Option 3: Return to Title (only if not from title screen)
     if not fromTitle then
-        -- Restart Run button
-        local restartY = panelY + UI.Layout.scale(170)
-        local buttonWidth = UI.Layout.scale(150)
-        local buttonHeight = UI.Layout.scale(40)
-        local buttonX = panelX + (panelWidth - buttonWidth) / 2
+        local returnText = "RETURN TO TITLE"
+        local returnWidth = font:getWidth(returnText)
+        local returnX = screenWidth / 2 - returnWidth / 2
+        UI.Fonts.drawText(returnText, screenWidth / 2, currentY, "large", UI.Colors.FONT_PINK, "center")
 
-        UI.Colors.setBackground()
-        love.graphics.rectangle("fill", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+        -- Store return to title bounds
+        gameState.settingsReturnToTitleBounds = {
+            x = returnX - UI.Layout.scale(10),
+            y = currentY - optionHeight / 2,
+            width = returnWidth + UI.Layout.scale(20),
+            height = optionHeight
+        }
+        currentY = currentY + optionSpacing
 
-        UI.Colors.setOutline()
-        love.graphics.rectangle("line", buttonX, restartY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-        UI.Fonts.drawText("RESTART RUN", buttonX + buttonWidth / 2, restartY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center")
-
-        -- Store restart button bounds
-        gameState.settingsRestartBounds = {x = buttonX, y = restartY, width = buttonWidth, height = buttonHeight}
-
-        -- Return to Title button
-        local returnY = panelY + UI.Layout.scale(225)
-        buttonX = panelX + (panelWidth - buttonWidth) / 2
-
-        UI.Colors.setBackground()
-        love.graphics.rectangle("fill", buttonX, returnY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-        UI.Colors.setOutline()
-        love.graphics.rectangle("line", buttonX, returnY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-        UI.Fonts.drawText("RETURN TO TITLE", buttonX + buttonWidth / 2, returnY + buttonHeight / 2, "button", UI.Colors.FONT_PINK, "center")
-
-        -- Store return to title button bounds
-        gameState.settingsReturnToTitleBounds = {x = buttonX, y = returnY, width = buttonWidth, height = buttonHeight}
+        -- Clear restart bounds (no longer used)
+        gameState.settingsRestartBounds = nil
     else
-        -- Clear button bounds when from title
+        -- Clear both bounds when from title
         gameState.settingsRestartBounds = nil
         gameState.settingsReturnToTitleBounds = nil
     end
 
-    -- Close button (X in top right)
-    local closeSize = UI.Layout.scale(30)
-    local closeX = panelX + panelWidth - closeSize - UI.Layout.scale(10)
-    local closeY = panelY + UI.Layout.scale(10)
+    -- Draw skip button (>>) in bottom-right corner (half size) - exit settings
+    local time = love.timer.getTime()
+    local horizontalMargin = UI.Layout.scale(60)
+    local verticalMargin = UI.Layout.scale(60)
+    local skipFont = UI.Fonts.get("bigScore")
+    local skipText = ">>"
+    local skipColor = gameState.settingsCloseButtonAnimation.color or UI.Colors.FONT_PINK
+    local skipScale = 0.5  -- Half size
 
-    love.graphics.setColor(UI.Colors.BACKGROUND[1], UI.Colors.BACKGROUND[2], UI.Colors.BACKGROUND[3], 0.8)
-    love.graphics.rectangle("fill", closeX, closeY, closeSize, closeSize, UI.Layout.scale(5))
+    -- Calculate total width of text for positioning (scaled)
+    local skipTotalWidth = 0
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        skipTotalWidth = skipTotalWidth + (skipFont:getWidth(char) * skipScale)
+    end
 
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", closeX, closeY, closeSize, closeSize, UI.Layout.scale(5))
+    -- Position in bottom-right corner
+    local skipTextX = screenWidth - skipTotalWidth - horizontalMargin
+    local skipTextY = screenHeight - (skipFont:getHeight() * skipScale) - verticalMargin
 
-    -- Draw X
-    love.graphics.setLineWidth(UI.Layout.scale(2))
-    love.graphics.line(closeX + closeSize * 0.25, closeY + closeSize * 0.25,
-                       closeX + closeSize * 0.75, closeY + closeSize * 0.75)
-    love.graphics.line(closeX + closeSize * 0.75, closeY + closeSize * 0.25,
-                       closeX + closeSize * 0.25, closeY + closeSize * 0.75)
+    -- Draw each character with wave animation
+    local skipCurrentX = skipTextX
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        local charWidth = skipFont:getWidth(char) * skipScale
 
-    -- Store close button bounds
-    gameState.settingsCloseBounds = {x = closeX, y = closeY, width = closeSize, height = closeSize}
+        -- Wave animation (scaled wave offset)
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5  -- Smaller wave for smaller text
 
+        local skipAnimProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(2),  -- Smaller shadow
+            scale = skipScale  -- Half size
+        }
+
+        UI.Fonts.drawAnimatedText(char, skipCurrentX, skipTextY + waveOffset, "bigScore", skipColor, "left", skipAnimProps)
+
+        skipCurrentX = skipCurrentX + charWidth
+    end
+
+    -- Store text bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(15)  -- Slightly smaller padding
+    gameState.settingsCloseBounds = {
+        x = skipTextX - padding,
+        y = skipTextY - padding,
+        width = skipTotalWidth + padding * 2,
+        height = (skipFont:getHeight() * skipScale) + padding * 2
+    }
+
+    -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end
 

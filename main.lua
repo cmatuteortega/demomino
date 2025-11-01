@@ -153,6 +153,9 @@ function love.load()
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
         sfxEnabled = true,  -- Track sound effects state
+        settingsCloseButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
         -- Tools/Artifacts system
         ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform

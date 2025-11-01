@@ -212,8 +212,23 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
 
-    -- Handle settings menu interactions (takes priority when open)
+    -- Handle settings menu >> button press (animate pink→red) - takes priority when menu is open
     if gameState.settingsMenuOpen then
+        if gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+            -- Play tap sound
+            UI.Audio.playButtonTap()
+
+            -- Change color from pink to red on press
+            UI.Animation.animateTo(gameState.settingsCloseButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+
+            -- Mark that we pressed the close button
+            touchState.settingsCloseButtonPressed = true
+        end
         return
     end
 
@@ -229,6 +244,8 @@ function Touch.pressed(x, y, istouch, touchId)
             if isPointInRect(x, y, gameState.settingsButtonBounds) then
                 UI.Audio.playButtonDefault()
                 gameState.settingsMenuOpen = true
+                -- Initialize close button animation to pink when opening menu
+                gameState.settingsCloseButtonAnimation.color = {0.941, 0.576, 0.608, 1}
                 return
             end
         end
@@ -932,13 +949,33 @@ function Touch.released(x, y, istouch, touchId)
             gameState.titleTiles = {}
             -- Return to title screen
             gameState.gamePhase = "title_screen"
-        -- Check for close button
-        elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
-            UI.Audio.playButtonDefault()
-            gameState.settingsMenuOpen = false
-            gameState.settingsFromTitle = false
+        -- Check for close button (X)
+        elseif touchState.settingsCloseButtonPressed and gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
+            -- Play release sound
+            UI.Audio.playButtonRelease()
+
+            -- Animate to white with a callback to transition after the flash
+            UI.Animation.animateTo(gameState.settingsCloseButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.15, "easeOutQuart", function()
+                -- Close the menu and reset color
+                gameState.settingsMenuOpen = false
+                gameState.settingsFromTitle = false
+                -- Reset button color to pink for next time
+                gameState.settingsCloseButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
+            end)
         end
 
+        -- Reset button press state
+        touchState.settingsCloseButtonPressed = false
         touchState.isPressed = false
         touchState.touchId = nil
         return
@@ -1057,7 +1094,7 @@ function Touch.released(x, y, istouch, touchId)
                 end
             end
         end
-        
+
         -- Clean up map drag state
         touchState.isDraggingMap = false
         if gameState.currentMap then
