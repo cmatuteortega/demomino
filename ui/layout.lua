@@ -201,12 +201,12 @@ end
 
 function UI.Layout.getSettingsButtonPosition()
     local buttonSize = UI.Layout.scale(40)
-    local margin = UI.Layout.scale(40)  -- Increased margin from screen border
+    local leftMargin = UI.Layout.scale(60)  -- Same margin as demon icons in top-left corner
     local handArea = UI.Layout.getHandArea()
     local buttonHeight = UI.Layout.getButtonSize()
 
-    local x = margin
-    local y = handArea.y + handArea.height + UI.Layout.scale(10)  -- Same vertical position as play/discard/sort buttons
+    local x = leftMargin
+    local y = handArea.y + handArea.height + UI.Layout.scale(15)  -- Same vertical position as play/discard/sort buttons (bottom)
 
     return x, y, buttonSize
 end
@@ -217,12 +217,12 @@ function UI.Layout.getCoinDisplayPosition()
 
     -- Position for coin counter text (aligned with tile counter at bottom, to the right of settings button)
     local bottomY = gameState.screen.height - margin  -- Same Y as tile counter
-    local textX = settingsX + settingsSize + UI.Layout.scale(20) + UI.Layout.scale(25)  -- 30px left adjustment
-    local textY = bottomY - UI.Layout.scale(23)  -- 10px up adjustment
+    local textX = settingsX
+    local textY = bottomY - UI.Layout.scale(80)  -- 10px up adjustment
 
     -- Position for coin stack (original position, independent of text position)
-    local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(70)  -- 10px to the right
-    local stackY = settingsY - UI.Layout.scale(80)  -- 20px higher
+    local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(20)  -- 10px to the right
+    local stackY = settingsY - UI.Layout.scale(90)  -- 20px higher
 
     return textX, textY, stackX, stackY
 end

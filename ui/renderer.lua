@@ -1998,34 +1998,29 @@ end
 function UI.Renderer.drawSettingsButton()
     local x, y, size = UI.Layout.getSettingsButtonPosition()
 
-    -- Button background
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", x, y, size, size, 5)
+    -- Draw IMPLOYEE.png sprite scaled to button size (1.2x bigger)
+    if settingsButtonSprite then
+        local centerX = x + size / 2
+        local centerY = y + size / 2
 
-    -- Button outline
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", x, y, size, size, 5)
+        -- Calculate scale to fit sprite to button size, then multiply by 1.2
+        local spriteWidth = settingsButtonSprite:getWidth()
+        local spriteHeight = settingsButtonSprite:getHeight()
+        local scale = (size / math.max(spriteWidth, spriteHeight)) * 1.2
 
-    -- Draw gear icon (simple representation)
-    local centerX = x + size / 2
-    local centerY = y + size / 2
-    local iconSize = size * 0.4
-
-    love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4])
-
-    -- Draw simple gear shape with circle and lines
-    love.graphics.circle("line", centerX, centerY, iconSize / 2, 6)
-    local lineLength = iconSize * 0.7
-    for i = 0, 3 do
-        local angle = (i / 4) * math.pi * 2
-        local x1 = centerX + math.cos(angle) * (iconSize / 3)
-        local y1 = centerY + math.sin(angle) * (iconSize / 3)
-        local x2 = centerX + math.cos(angle) * lineLength / 2
-        local y2 = centerY + math.sin(angle) * lineLength / 2
-        love.graphics.line(x1, y1, x2, y2)
+        -- Draw sprite centered on button position
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(
+            settingsButtonSprite,
+            centerX,
+            centerY,
+            0,  -- rotation
+            scale,
+            scale,
+            spriteWidth / 2,  -- origin X (center)
+            spriteHeight / 2  -- origin Y (center)
+        )
     end
-
-    love.graphics.setColor(1, 1, 1, 1)
 
     -- Store button bounds for touch handling
     gameState.settingsButtonBounds = {x = x, y = y, width = size, height = size}
@@ -2297,7 +2292,7 @@ function UI.Renderer.drawMap()
     end
 
     -- DAY counter in top-left (drawn AFTER fog overlay so it's on top)
-    local leftX = UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(60)
     local leftY = UI.Layout.scale(20)
 
     -- Draw NIGHT counter with wave animation per character
@@ -2574,6 +2569,55 @@ function UI.Renderer.drawIntroDialogue()
 
         currentX = currentX + charWidth
     end
+
+    -- Draw skip button (>>) in bottom-right corner (half size)
+    local horizontalMargin = UI.Layout.scale(60)
+    local verticalMargin = UI.Layout.scale(60)
+    local skipFont = UI.Fonts.get("bigScore")
+    local skipText = ">>"
+    local skipColor = gameState.introSkipButtonAnimation.color or UI.Colors.FONT_PINK
+    local skipScale = 0.5  -- Half size
+
+    -- Calculate total width of text for positioning (scaled)
+    local skipTotalWidth = 0
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        skipTotalWidth = skipTotalWidth + (skipFont:getWidth(char) * skipScale)
+    end
+
+    -- Position in bottom-right corner
+    local skipTextX = screenWidth - skipTotalWidth - horizontalMargin
+    local skipTextY = screenHeight - (skipFont:getHeight() * skipScale) - verticalMargin
+
+    -- Draw each character with wave animation
+    local skipCurrentX = skipTextX
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        local charWidth = skipFont:getWidth(char) * skipScale
+
+        -- Wave animation (scaled wave offset)
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5  -- Smaller wave for smaller text
+
+        local skipAnimProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(2),  -- Smaller shadow
+            scale = skipScale  -- Half size
+        }
+
+        UI.Fonts.drawAnimatedText(char, skipCurrentX, skipTextY + waveOffset, "bigScore", skipColor, "left", skipAnimProps)
+
+        skipCurrentX = skipCurrentX + charWidth
+    end
+
+    -- Store text bounds for touch handling (add padding for easier clicking)
+    local padding = UI.Layout.scale(15)  -- Slightly smaller padding
+    gameState.introSkipButtonBounds = {
+        x = skipTextX - padding,
+        y = skipTextY - padding,
+        width = skipTotalWidth + padding * 2,
+        height = (skipFont:getHeight() * skipScale) + padding * 2
+    }
 
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)

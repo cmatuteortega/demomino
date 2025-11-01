@@ -166,6 +166,24 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle intro dialogue skip button press (takes priority over dialogue press)
+    if gameState.gamePhase == "intro_dialogue" and gameState.introSkipButtonBounds and isPointInRect(x, y, gameState.introSkipButtonBounds) then
+        -- Play tap sound
+        UI.Audio.playButtonTap()
+
+        -- Change color from pink to red on press
+        UI.Animation.animateTo(gameState.introSkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_RED[1],
+            [2] = UI.Colors.FONT_RED[2],
+            [3] = UI.Colors.FONT_RED[3],
+            [4] = UI.Colors.FONT_RED[4]
+        }, 0.3, "easeOutQuart")
+
+        -- Mark that we pressed the button
+        touchState.introSkipButtonPressed = true
+        return
+    end
+
     -- Handle intro dialogue press (anywhere on screen - speeds up typing or waits to advance)
     if gameState.gamePhase == "intro_dialogue" and gameState.introDialogueAnimation then
         gameState.introDialogueAnimation.isPressed = true
@@ -641,6 +659,45 @@ end
 function Touch.released(x, y, istouch, touchId)
     if not touchState.isPressed then
         return
+    end
+
+    -- Handle intro dialogue skip button release
+    if gameState.gamePhase == "intro_dialogue" and touchState.introSkipButtonPressed and gameState.introSkipButtonBounds and isPointInRect(x, y, gameState.introSkipButtonBounds) then
+        -- Play release sound
+        UI.Audio.playButtonRelease()
+
+        -- Animate to white with a callback to skip to round intro
+        UI.Animation.animateTo(gameState.introSkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_WHITE[1],
+            [2] = UI.Colors.FONT_WHITE[2],
+            [3] = UI.Colors.FONT_WHITE[3],
+            [4] = UI.Colors.FONT_WHITE[4]
+        }, 0.1, "easeOutQuart", function()
+            -- Skip all dialogues and go directly to round intro
+            initializeRoundIntro()
+            gameState.gamePhase = "round_intro"
+            -- Reset color to pink for next time
+            gameState.introSkipButtonAnimation.color = {
+                UI.Colors.FONT_PINK[1],
+                UI.Colors.FONT_PINK[2],
+                UI.Colors.FONT_PINK[3],
+                UI.Colors.FONT_PINK[4]
+            }
+        end)
+
+        touchState.introSkipButtonPressed = false
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    elseif touchState.introSkipButtonPressed then
+        -- Released outside button - reset color back to pink
+        UI.Animation.animateTo(gameState.introSkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_PINK[1],
+            [2] = UI.Colors.FONT_PINK[2],
+            [3] = UI.Colors.FONT_PINK[3],
+            [4] = UI.Colors.FONT_PINK[4]
+        }, 0.3, "easeOutQuart")
+        touchState.introSkipButtonPressed = false
     end
 
     -- Handle intro dialogue release

@@ -231,6 +231,11 @@ function love.load()
             showPrompt = false,  -- Show " ~" prompt when typing completes
             isPressed = false  -- Track if dialogue is being pressed
         },
+        -- Intro dialogue skip button
+        introSkipButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        introSkipButtonBounds = nil,  -- Clickable area bounds
         fromNewGame = false  -- Flag to track if we came from NEW GAME button
     }
 
@@ -484,7 +489,7 @@ function initializeRoundIntro()
     local centerY = screenHeight / 2
 
     -- Calculate final position (top-left corner, matching map screen)
-    local finalX = UI.Layout.scale(40)
+    local finalX = UI.Layout.scale(60)
     local finalY = UI.Layout.scale(20)
 
     -- Reset animation state
@@ -2368,6 +2373,13 @@ function loadDemonIconSprites()
             demonIconSprites[name] = love.graphics.newImage(filename)
             demonIconSprites[name]:setFilter("nearest", "nearest")
         end
+    end
+
+    -- Load settings button sprite (IMPLOYEE.png)
+    local settingsFilename = "sprites/demon_icon/IMPLOYEE.png"
+    if love.filesystem.getInfo(settingsFilename) then
+        settingsButtonSprite = love.graphics.newImage(settingsFilename)
+        settingsButtonSprite:setFilter("nearest", "nearest")
     end
 
     -- Load imp variants (imp1.png through imp7.png)
