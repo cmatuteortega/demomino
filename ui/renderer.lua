@@ -2490,6 +2490,95 @@ function UI.Renderer.drawDialogue()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function UI.Renderer.drawIntroDialogue()
+    local intro = gameState.introDialogueAnimation
+    if not intro or intro.currentCharIndex == 0 then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Draw dark background (matching map fog - pure black OUTLINE color)
+    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Draw IMPLOYEE icon centered, positioned up a bit
+    if demonIconSprites and demonIconSprites["IMPLOYEE"] then
+        local sprite = demonIconSprites["IMPLOYEE"]
+
+        -- Match combat demon icon scaling: based on formulaScore font height * 1.3x
+        local font = UI.Fonts.get("formulaScore")
+        local fontHeight = font:getHeight()
+        local iconScale = (fontHeight / sprite:getHeight()) * 1.3
+        local iconWidth = sprite:getWidth() * iconScale
+        local iconHeight = sprite:getHeight() * iconScale
+
+        -- Center horizontally, position at 35% from top
+        local iconX = screenWidth / 2 - iconWidth / 2
+        local iconY = screenHeight * 0.35 - iconHeight / 2
+
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(sprite, iconX, iconY, 0, iconScale, iconScale)
+    end
+
+    -- Draw current dialogue line with typewriter effect
+    local font = UI.Fonts.get("large")
+
+    -- Determine text color based on state
+    local textColor
+    if intro.phase == "waiting" and intro.isPressed then
+        -- Pink when pressed during waiting
+        textColor = UI.Colors.FONT_PINK
+    elseif intro.currentLineIndex >= #introDialogue then
+        -- RED for last dialogue line
+        textColor = UI.Colors.FONT_RED
+    else
+        -- White for normal dialogue
+        textColor = UI.Colors.FONT_WHITE
+    end
+
+    local time = love.timer.getTime()
+
+    -- Build the display text (characters typed so far)
+    local displayText = intro.text:sub(1, intro.currentCharIndex)
+
+    -- Add prompt if typing is complete (changes based on press state)
+    if intro.showPrompt then
+        displayText = displayText .. (intro.isPressed and " *" or " ~")
+    end
+
+    -- Calculate position (below icon, centered)
+    local textY = screenHeight * 0.35 + UI.Layout.scale(80)  -- Below the icon
+    local textWidth = font:getWidth(displayText)
+    local textX = screenWidth / 2 - textWidth / 2
+
+    -- Draw each character with wave animation
+    local currentX = textX
+    for i = 1, #displayText do
+        local char = displayText:sub(i, i)
+        local charWidth = font:getWidth(char)
+
+        -- Wave animation
+        local phase = time * 1.5 + (i - 1) * 0.1
+        local waveOffset = math.sin(phase) * 1
+
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        }
+
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "large", textColor, "left", animProps)
+
+        currentX = currentX + charWidth
+    end
+
+    -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawNodeConfirmation()
     if not gameState.selectedNode then
         return

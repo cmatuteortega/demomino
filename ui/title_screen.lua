@@ -431,9 +431,20 @@ function UI.TitleScreen.startNewGame()
     -- Reset the entire game to a fresh state
     resetGameToFresh()
 
-    -- Initialize and go to round intro phase
-    initializeRoundIntro()
-    gameState.gamePhase = "round_intro"
+    -- Mark that we came from NEW GAME button
+    gameState.fromNewGame = true
+
+    -- Initialize intro dialogue animation
+    gameState.introDialogueAnimation.phase = "typing"
+    gameState.introDialogueAnimation.currentLineIndex = 1
+    gameState.introDialogueAnimation.text = introDialogue[1]
+    gameState.introDialogueAnimation.currentCharIndex = 0
+    gameState.introDialogueAnimation.charTimer = 0
+    gameState.introDialogueAnimation.showPrompt = false
+    gameState.introDialogueAnimation.isPressed = false
+
+    -- Go to intro dialogue phase instead of round intro
+    gameState.gamePhase = "intro_dialogue"
 end
 
 -- Continue saved game

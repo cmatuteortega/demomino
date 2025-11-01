@@ -219,7 +219,19 @@ function love.load()
             idleTriggerTime = 5.0,  -- Trigger witty remark after 5 seconds of no dialogue
             winDialogueShown = false,  -- Track if we've shown win dialogue this round
             isPressed = false  -- Track if dialogue is being pressed
-        }
+        },
+        -- Intro dialogue system (plays before first Night X on NEW GAME only)
+        introDialogueAnimation = {
+            phase = "typing",  -- "typing", "waiting", "complete"
+            currentLineIndex = 1,  -- Current line from introDialogue table
+            text = "",  -- Current line being displayed
+            currentCharIndex = 0,  -- Current character being typed
+            charTimer = 0,  -- Timer for next character
+            charsPerSecond = 8,  -- Typing speed
+            showPrompt = false,  -- Show " ~" prompt when typing completes
+            isPressed = false  -- Track if dialogue is being pressed
+        },
+        fromNewGame = false  -- Flag to track if we came from NEW GAME button
     }
 
     UI.Fonts.load()
@@ -541,6 +553,13 @@ local demonDialoguePlayerWins = {
     "Fuck...",
 }
 
+introDialogue = {
+    "Welcome to Hell",
+    "Make yourself uncomfortable",
+    "Be a guest at our table...",
+    "Our host...",
+    "SATANAS",
+}
 
 function getRandomDialoguePhrase(category)
     -- Select a random phrase from specified category
@@ -1473,6 +1492,35 @@ function updateDialogue(dt)
     -- "waiting" phase does nothing - player can click to dismiss
 end
 
+function updateIntroDialogue(dt)
+    local intro = gameState.introDialogueAnimation
+
+    if intro.phase == "typing" then
+        -- Typewriter effect - reveal characters one by one
+        -- 2x speed when player is holding tap
+        local speedMultiplier = intro.isPressed and 2.0 or 1.0
+        intro.charTimer = intro.charTimer + (dt * speedMultiplier)
+        local timePerChar = 1.0 / intro.charsPerSecond
+
+        -- Only reveal ONE character per frame to prevent sound spam during lag
+        if intro.charTimer >= timePerChar then
+            intro.charTimer = 0  -- Reset timer to ensure one char per frame
+            intro.currentCharIndex = intro.currentCharIndex + 1
+
+            -- Play a random typewriter sound for each character
+            UI.Audio.playTypewriter()
+
+            -- Check if we've typed all characters
+            if intro.currentCharIndex >= #intro.text then
+                intro.currentCharIndex = #intro.text
+                intro.phase = "waiting"
+                intro.showPrompt = true  -- Show " ~" prompt
+            end
+        end
+    end
+    -- "waiting" phase does nothing - player can click to advance to next line
+end
+
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
         local button = gameState.buttonAnimations[buttonName]
@@ -1527,6 +1575,12 @@ function love.update(dt)
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
         -- Stop map ambiance on title screen
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.stopMapAmbiance()
+        end
+    elseif gameState.gamePhase == "intro_dialogue" then
+        updateIntroDialogue(dt)
+        -- Stop map ambiance during intro dialogue
         if UI.Audio.isMapAmbiancePlaying() then
             UI.Audio.stopMapAmbiance()
         end
@@ -1638,6 +1692,8 @@ function love.draw()
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.draw()
         UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "intro_dialogue" then
+        UI.Renderer.drawIntroDialogue()
     elseif gameState.gamePhase == "round_intro" then
         UI.Renderer.drawRoundIntro()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
@@ -2299,6 +2355,8 @@ function loadDemonIconSprites()
         "MAMMON", "PAIMON", "LILITH", "STOLAS",
         -- Other demons (for completeness)
         "ASTAROTH", "PAZUZU",
+        -- Intro dialogue
+        "IMPLOYEE",
         -- Fallback
         "NOT_FOUND"
     }

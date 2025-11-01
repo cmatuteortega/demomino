@@ -166,6 +166,14 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle intro dialogue press (anywhere on screen - speeds up typing or waits to advance)
+    if gameState.gamePhase == "intro_dialogue" and gameState.introDialogueAnimation then
+        gameState.introDialogueAnimation.isPressed = true
+        -- Track whether the press started during waiting phase (for advance detection)
+        gameState.introDialogueAnimation.pressedDuringWaiting = (gameState.introDialogueAnimation.phase == "waiting")
+        return
+    end
+
     -- Handle dialogue press (only in upper third of screen when dialogue is waiting)
     if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
         local screenHeight = gameState.screen.height
@@ -633,6 +641,48 @@ end
 function Touch.released(x, y, istouch, touchId)
     if not touchState.isPressed then
         return
+    end
+
+    -- Handle intro dialogue release
+    if gameState.gamePhase == "intro_dialogue" and gameState.introDialogueAnimation then
+        -- Only advance to next line if:
+        -- 1. Currently in waiting phase
+        -- 2. Was pressed
+        -- 3. Press STARTED during waiting phase (not during typing/fast-forward)
+        if gameState.introDialogueAnimation.phase == "waiting"
+           and gameState.introDialogueAnimation.isPressed
+           and gameState.introDialogueAnimation.pressedDuringWaiting then
+            -- Play dismiss sound
+            UI.Audio.playDismissDialogue()
+
+            -- Check if this was the last dialogue line
+            if gameState.introDialogueAnimation.currentLineIndex >= #introDialogue then
+                -- Last line complete - transition to round intro
+                gameState.introDialogueAnimation.phase = "complete"
+                initializeRoundIntro()
+                gameState.gamePhase = "round_intro"
+            else
+                -- Advance to next line
+                gameState.introDialogueAnimation.currentLineIndex = gameState.introDialogueAnimation.currentLineIndex + 1
+                gameState.introDialogueAnimation.text = introDialogue[gameState.introDialogueAnimation.currentLineIndex]
+                gameState.introDialogueAnimation.currentCharIndex = 0
+                gameState.introDialogueAnimation.charTimer = 0
+                gameState.introDialogueAnimation.showPrompt = false
+                gameState.introDialogueAnimation.phase = "typing"
+                gameState.introDialogueAnimation.pressedDuringWaiting = false
+            end
+
+            gameState.introDialogueAnimation.isPressed = false
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+
+        -- Reset pressed state when released (for fast-forward typing)
+        gameState.introDialogueAnimation.isPressed = false
+        gameState.introDialogueAnimation.pressedDuringWaiting = false
+        touchState.isPressed = false
+        touchState.touchId = nil
     end
 
     -- Handle dialogue release (only in upper third of screen) - DISMISS dialogue
