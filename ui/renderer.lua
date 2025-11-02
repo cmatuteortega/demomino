@@ -2111,7 +2111,23 @@ function UI.Renderer.drawSettingsMenu()
     }
     currentY = currentY + optionSpacing
 
-    -- Option 3: Return to Title (only if not from title screen)
+    -- Option 3: Tutorial toggle
+    local tutorialText = gameState.tutorialEnabled and "TUTORIAL: ON" or "TUTORIAL: OFF"
+    local tutorialColor = gameState.tutorialEnabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local tutorialWidth = font:getWidth(tutorialText)
+    local tutorialX = screenWidth / 2 - tutorialWidth / 2
+    UI.Fonts.drawText(tutorialText, screenWidth / 2, currentY, "large", tutorialColor, "center")
+
+    -- Store tutorial toggle bounds
+    gameState.settingsTutorialToggleBounds = {
+        x = tutorialX - UI.Layout.scale(10),
+        y = currentY - optionHeight / 2,
+        width = tutorialWidth + UI.Layout.scale(20),
+        height = optionHeight
+    }
+    currentY = currentY + optionSpacing
+
+    -- Option 4: Return to Title (only if not from title screen)
     if not fromTitle then
         local returnText = "RETURN TO TITLE"
         local returnWidth = font:getWidth(returnText)

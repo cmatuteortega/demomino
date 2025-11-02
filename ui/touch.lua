@@ -768,16 +768,23 @@ function Touch.released(x, y, istouch, touchId)
         -- Check if player is dragging anything
         local isDraggingTile = touchState.draggedTile ~= nil
         local isDraggingTool = touchState.draggedTool ~= nil
+        local isTutorial = gameState.currentRound == 1 and gameState.tutorialEnabled
 
         -- Only dismiss if released in upper third AND dialogue was pressed AND not dragging
         if y <= upperThirdHeight and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
             -- Play dismiss sound
             UI.Audio.playDismissDialogue()
 
-            -- Dismiss dialogue and reset idle timer
-            gameState.dialogueAnimation.isActive = false
-            gameState.dialogueAnimation.phase = "idle"
-            gameState.dialogueAnimation.idleTimer = 0
+            -- For tutorial, use special dismiss function
+            if isTutorial then
+                dismissTutorialDialogue()
+            else
+                -- Regular dialogue dismissal
+                gameState.dialogueAnimation.isActive = false
+                gameState.dialogueAnimation.phase = "idle"
+                gameState.dialogueAnimation.idleTimer = 0
+            end
+
             gameState.dialogueAnimation.isPressed = false
             touchState.isPressed = false
             touchState.touchId = nil
@@ -796,10 +803,17 @@ function Touch.released(x, y, istouch, touchId)
             if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
                 UI.Audio.playButtonDefault()
                 UI.Audio.toggleMusic()
+                Save.saveSettings(gameState)
             -- Check for SFX toggle
             elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
                 UI.Audio.playButtonDefault()
                 UI.Audio.toggleSFX()
+                Save.saveSettings(gameState)
+            -- Check for tutorial toggle
+            elseif gameState.settingsTutorialToggleBounds and isPointInRect(x, y, gameState.settingsTutorialToggleBounds) then
+                UI.Audio.playButtonDefault()
+                gameState.tutorialEnabled = not gameState.tutorialEnabled
+                Save.saveSettings(gameState)
             -- Check for close button
             elseif gameState.settingsCloseBounds and isPointInRect(x, y, gameState.settingsCloseBounds) then
                 UI.Audio.playButtonDefault()
@@ -891,10 +905,17 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.settingsMusicToggleBounds and isPointInRect(x, y, gameState.settingsMusicToggleBounds) then
             UI.Audio.playButtonDefault()
             UI.Audio.toggleMusic()
+            Save.saveSettings(gameState)
         -- Check for SFX toggle
         elseif gameState.settingsSFXToggleBounds and isPointInRect(x, y, gameState.settingsSFXToggleBounds) then
             UI.Audio.playButtonDefault()
             UI.Audio.toggleSFX()
+            Save.saveSettings(gameState)
+        -- Check for tutorial toggle
+        elseif gameState.settingsTutorialToggleBounds and isPointInRect(x, y, gameState.settingsTutorialToggleBounds) then
+            UI.Audio.playButtonDefault()
+            gameState.tutorialEnabled = not gameState.tutorialEnabled
+            Save.saveSettings(gameState)
         -- Check for restart button
         elseif gameState.settingsRestartBounds and isPointInRect(x, y, gameState.settingsRestartBounds) then
             UI.Audio.playButtonDefault()
@@ -1813,6 +1834,12 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                 touchState.draggedTile.isDragging = true
                 touchState.draggedTile.dragScale = 1.08 -- Slightly bigger when dragging
                 touchState.draggedTile.dragOpacity = 0.95 -- Slightly transparent
+
+                -- TUTORIAL BONUS: Detect attempt to drag tile from board
+                if touchState.draggedFrom == "board" and gameState.currentRound == 1 and gameState.tutorialEnabled and not gameState.tutorialState.bonusMessageShown then
+                    showTutorialMessage("Tap tiles on board twice to return them to hand")
+                    gameState.tutorialState.bonusMessageShown = true
+                end
             end
 
             -- Handle hand reordering - track hover position
@@ -2063,6 +2090,15 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
                 Touch.animateTileToPosition(placedTile, placedTile.x, placedTile.y)
                 break
             end
+        end
+
+        -- TUTORIAL: Trigger message 3 after first tile placement
+        if gameState.currentRound == 1 and gameState.tutorialEnabled and not gameState.tutorialState.hasSeenFirstTile then
+            -- Dismiss message 2 (if active) and queue message 3 to show after dismiss completes
+            dismissTutorialOnAction()
+
+            -- Mark that first tile was placed (message 3 will be shown after dismiss animation)
+            gameState.tutorialState.hasSeenFirstTile = true
         end
     end
 
@@ -2446,6 +2482,14 @@ function Touch.discardSelectedTiles()
     end)
 
     gameState.discardsUsed = gameState.discardsUsed + 1
+
+    -- TUTORIAL: Track that player has discarded (resets idle timer)
+    if gameState.currentRound == 1 and gameState.tutorialEnabled then
+        gameState.tutorialState.hasDiscarded = true
+
+        -- Dismiss message 4 (idle message) if active
+        dismissTutorialOnAction()
+    end
 
     return true
 end

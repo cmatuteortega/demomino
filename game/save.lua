@@ -3,6 +3,7 @@ Save = {}
 -- Save file paths
 local SAVE_FILE = "demomino_save.lua"
 local STATS_FILE = "demomino_stats.lua"
+local SETTINGS_FILE = "demomino_settings.lua"
 
 -- Save the current game state to disk
 function Save.saveGame(gameState)
@@ -456,6 +457,63 @@ function Save.updateBestRound(currentRound)
         stats.bestRound = currentRound
         Save.saveStats(stats)
     end
+end
+
+-- Save settings to disk (music, sfx, tutorial preferences)
+function Save.saveSettings(gameState)
+    if not gameState then
+        return false
+    end
+
+    local settings = {
+        musicEnabled = gameState.musicEnabled,
+        sfxEnabled = gameState.sfxEnabled,
+        tutorialEnabled = gameState.tutorialEnabled
+    }
+
+    local serializedSettings = "return " .. Save.serializeTable(settings)
+    local success = love.filesystem.write(SETTINGS_FILE, serializedSettings)
+
+    return success
+end
+
+-- Load settings from disk
+function Save.loadSettings()
+    local defaultSettings = {
+        musicEnabled = true,
+        sfxEnabled = true,
+        tutorialEnabled = true
+    }
+
+    if not love.filesystem.getInfo(SETTINGS_FILE) then
+        return defaultSettings
+    end
+
+    local serializedSettings = love.filesystem.read(SETTINGS_FILE)
+    if not serializedSettings then
+        return defaultSettings
+    end
+
+    local loadFunc, err = loadstring(serializedSettings)
+    if not loadFunc then
+        print("Error loading settings: " .. tostring(err))
+        return defaultSettings
+    end
+
+    local success, settings = pcall(loadFunc)
+    if not success or type(settings) ~= "table" then
+        print("Error deserializing settings: " .. tostring(settings))
+        return defaultSettings
+    end
+
+    -- Merge with defaults to handle new settings
+    for key, value in pairs(defaultSettings) do
+        if settings[key] == nil then
+            settings[key] = value
+        end
+    end
+
+    return settings
 end
 
 return Save

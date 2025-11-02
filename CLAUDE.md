@@ -116,6 +116,51 @@ The game loads modules in this specific order (main.lua:18-33):
 - **Font**: `Pixellari.ttf` (pixel art style with fallback support)
 - **Naming**: Domino sprites follow pattern `XY.png` where X and Y are pip values (0-6)
 
+### Dialogue System
+The game has two integrated dialogue systems that share the same visual presentation:
+
+#### Combat Dialogue (Regular Gameplay)
+- Displays random flavour text during combat on specific triggers
+- Active in all combat rounds EXCEPT round 1 when tutorial is enabled
+- Managed by `gameState.dialogueAnimation` table in main.lua
+- Auto-dismisses after 2 seconds or on player tap (top third of screen)
+- Reset in `initializeCombatRound()` to ensure proper state for each round
+
+#### Tutorial Dialogue (Round 1 with Tutorial Toggle ON)
+- Teaching system for first-time players, triggered only in round 1
+- Controlled by `gameState.tutorialEnabled` setting (persisted in `demomino_settings.lua`)
+- Managed by `gameState.tutorialState` table tracking progress flags
+- **IMPORTANT**: Resets completely every time player enters round 1 (even on restarts)
+
+**Tutorial Message Flow**:
+1. Round start: "Try to score {targetScore} points" (auto-dismiss after 2s)
+2. After message 1 dismiss: "Drag tiles from hand to center to play" (requires action)
+3. After first tile placed: "Good! Chain as many tiles as you can" (auto-dismiss after 2s)
+4. After 5s idle (post-message 3): Random idle prompt (requires action)
+5. After non-winning play: "Still missing a couple" (auto-dismiss after 2s)
+6. After winning play: "Good luck, proceed" (auto-dismiss after 2s)
+7. BONUS: On board drag attempt: "Tap tiles on board twice to return them to hand"
+
+**Key Implementation Rules**:
+- **Pending Message System**: Game actions (tile placement, hand plays) set `tutorialState.pendingMessage` instead of showing messages immediately
+- **Dismiss Animation**: All dismissals (auto or manual) trigger 0.1s pink flash + sound before clearing dialogue
+- **Message Queueing**: New messages only show AFTER dismiss animation completes (checked in `updateTutorialDialogue()`)
+- **Action-Required Messages**: Messages 2 and 4 have `currentMessageRequiresAction = true` to prevent auto-dismiss
+- **Tap Detection**: Only top third of screen registers dialogue taps (same as combat dialogue)
+- **Integration**: Tutorial uses same `dialogueAnimation` table as combat dialogue (not separate system)
+
+**Core Functions** (all in main.lua):
+- `showTutorialMessage(message, requiresAction)`: Initializes tutorial dialogue with typewriter effect
+- `dismissTutorialOnAction()`: Triggers dismiss animation when player performs relevant action
+- `updateTutorialDialogue(dt)`: Handles timing, auto-dismiss, animation, and message queueing
+- `initializeDialogue(text, category)`: Suppressed during round 1 with tutorial enabled
+
+**Files Involved**:
+- **main.lua**: Tutorial state, message logic, timing, animation handling
+- **ui/touch.lua**: Tap detection (top third), tile placement triggers, discard triggers, drag detection
+- **ui/renderer.lua**: Settings menu tutorial toggle rendering
+- **game/save.lua**: Tutorial setting persistence (`saveSettings()`, `loadSettings()`)
+
 ### Cross-Platform Compatibility
 - **Mobile (Android/iOS)**: Automatic fullscreen, **ALWAYS LANDSCAPE MODE** (game is designed for horizontal orientation)
 - **Desktop**: Resizable windows with iPhone-like landscape aspect ratio (1014x468 default, 2.16:1)

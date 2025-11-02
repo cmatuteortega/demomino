@@ -153,6 +153,7 @@ function love.load()
         settingsMenuOpen = false,  -- Track if settings menu is open
         musicEnabled = true,  -- Track music state
         sfxEnabled = true,  -- Track sound effects state
+        tutorialEnabled = true,  -- Track tutorial state (on by default)
         settingsCloseButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
@@ -239,7 +240,29 @@ function love.load()
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
         introSkipButtonBounds = nil,  -- Clickable area bounds
-        fromNewGame = false  -- Flag to track if we came from NEW GAME button
+        fromNewGame = false,  -- Flag to track if we came from NEW GAME button
+        -- Tutorial state tracking (uses combat dialogue system for display)
+        tutorialState = {
+            hasSeenFirstTile = false,  -- Player placed first tile on board
+            hasDiscarded = false,  -- Player has discarded at least once
+            hasPlayedHand = false,  -- Player has played at least one hand
+            hasWonFirstRound = false,  -- Player won first combat round
+            boardToDragAttempted = false,  -- Player attempted to drag tile from board
+            idleTimerSinceFirstTile = 0,  -- Timer tracking idle time after first tile
+            idleMessageShown = false,  -- Whether we've shown the idle message
+            message1Shown = false,  -- "Try to score 666 points"
+            message2Shown = false,  -- "Drag tiles from hand to the center to play"
+            message3Shown = false,  -- "Good! Chain as many tiles as you can"
+            message4Shown = false,  -- Idle message shown
+            message5Shown = false,  -- "Still missing a couple"
+            message6Shown = false,  -- "Good luck, proceed"
+            bonusMessageShown = false,  -- Board drag hint shown
+            currentMessageRequiresAction = false,  -- Current message requires manual dismiss (messages 2 and 4)
+            waitingTimer = 0,  -- Timer for auto-dismiss (only for messages that allow it)
+            dismissAnimating = false,  -- Currently playing pink flash dismiss animation
+            dismissAnimTimer = 0,  -- Timer for dismiss animation
+            pendingMessage = nil  -- Pending message to show after dismiss animation ("win", "continue", etc.)
+        }
     }
 
     UI.Fonts.load()
@@ -248,6 +271,12 @@ function love.load()
     -- Load CRT shader and create render canvas with depth/stencil support for fog of war
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
     mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
+
+    -- Load settings from disk
+    local settings = Save.loadSettings()
+    gameState.musicEnabled = settings.musicEnabled
+    gameState.sfxEnabled = settings.sfxEnabled
+    gameState.tutorialEnabled = settings.tutorialEnabled
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -442,6 +471,24 @@ function initializeCombatRound()
         scale = 1.0
     }
 
+    -- Reset dialogue animation state for new round
+    gameState.dialogueAnimation = {
+        phase = "idle",
+        text = "",
+        lines = {},
+        currentCharIndex = 0,
+        charTimer = 0,
+        charsPerSecond = 15,
+        showPrompt = false,
+        isActive = false,
+        delayTimer = 0,
+        delayDuration = 2.0,
+        idleTimer = 0,
+        idleTriggerTime = 5.0,  -- 5 seconds for witty remarks
+        isPressed = false,
+        winDialogueShown = false
+    }
+
     -- STEP 2: Create fresh deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
@@ -474,6 +521,34 @@ function initializeCombatRound()
 
     -- STEP 8: Reset tool usages for new combat round
     Tools.resetUsages(gameState)
+
+    -- STEP 9: Reset tutorial state for round 1 (always show tutorial if enabled)
+    if gameState.currentRound == 1 and gameState.tutorialEnabled then
+        -- Reset all tutorial tracking flags so tutorial plays every time player enters round 1
+        gameState.tutorialState.hasSeenFirstTile = false
+        gameState.tutorialState.hasDiscarded = false
+        gameState.tutorialState.hasPlayedHand = false
+        gameState.tutorialState.hasWonFirstRound = false
+        gameState.tutorialState.boardToDragAttempted = false
+        gameState.tutorialState.idleTimerSinceFirstTile = 0
+        gameState.tutorialState.idleMessageShown = false
+        gameState.tutorialState.message1Shown = false
+        gameState.tutorialState.message2Shown = false
+        gameState.tutorialState.message3Shown = false
+        gameState.tutorialState.message4Shown = false
+        gameState.tutorialState.message5Shown = false
+        gameState.tutorialState.message6Shown = false
+        gameState.tutorialState.bonusMessageShown = false
+        gameState.tutorialState.currentMessageRequiresAction = false
+        gameState.tutorialState.waitingTimer = 0
+        gameState.tutorialState.dismissAnimating = false
+        gameState.tutorialState.dismissAnimTimer = 0
+        gameState.tutorialState.pendingMessage = nil
+
+        -- Show first message: "Try to score 666 points"
+        showTutorialMessage("Try to score " .. gameState.targetScore .. " points")
+        gameState.tutorialState.message1Shown = true
+    end
 
     -- Keep currentRound, targetScore, currentMap, tileCollection, and ownedTools unchanged
     -- These should persist across combat rounds
@@ -658,6 +733,12 @@ function wrapDialogueTextByWords(text, wordsPerLine)
 end
 
 function initializeDialogue(text, category)
+    -- TUTORIAL: Skip combat dialogue ONLY during round 1 when tutorial is enabled
+    if gameState.currentRound == 1 and gameState.tutorialEnabled then
+        -- Don't show combat dialogue during tutorial (round 1 only)
+        return
+    end
+
     -- Initialize dialogue animation with typewriter effect
     -- If no text provided, select a random phrase from category
     if not text then
@@ -1403,6 +1484,22 @@ function completeScoringSequence()
     -- Check game end condition BEFORE refilling hand
     -- This way we can animate the actual remaining tiles, not a refilled hand
     local isGameEnding = gameState.score >= gameState.targetScore or gameState.handsPlayed >= gameState.maxHandsPerRound
+    local isWinning = gameState.score >= gameState.targetScore
+
+    -- TUTORIAL: Track that player has played a hand
+    if gameState.currentRound == 1 and gameState.tutorialEnabled then
+        gameState.tutorialState.hasPlayedHand = true
+
+        -- Dismiss message 4 (idle message) if active, message 5/6 will show after dismiss completes
+        dismissTutorialOnAction()
+
+        -- Store which message to show (will be displayed after dismiss animation)
+        if isWinning and not gameState.tutorialState.message6Shown then
+            gameState.tutorialState.pendingMessage = "win"
+        elseif not isWinning and not gameState.tutorialState.message5Shown then
+            gameState.tutorialState.pendingMessage = "continue"
+        end
+    end
 
     if not isGameEnding then
         -- Only refill hand if game is continuing
@@ -1562,6 +1659,174 @@ function updateIntroDialogue(dt)
     -- "waiting" phase does nothing - player can click to advance to next line
 end
 
+-- Tutorial dialogue system - queues and displays tutorial messages using combat dialogue
+function updateTutorialDialogue(dt)
+    local tutState = gameState.tutorialState
+    local dialogue = gameState.dialogueAnimation
+
+    -- Only run during first round with tutorial enabled
+    if gameState.currentRound ~= 1 or not gameState.tutorialEnabled or gameState.gamePhase ~= "playing" then
+        return
+    end
+
+    -- Check for idle timer trigger (message 4) - 5 seconds AFTER message 3 dismisses
+    -- Only start counting if message 3 was shown AND no dialogue is active (meaning message 3 was dismissed)
+    if tutState.message3Shown and not tutState.idleMessageShown and not tutState.hasPlayedHand and not tutState.hasDiscarded and not dialogue.isActive then
+        tutState.idleTimerSinceFirstTile = tutState.idleTimerSinceFirstTile + dt
+        if tutState.idleTimerSinceFirstTile >= 5.0 then
+            -- Randomly choose one of two messages
+            local messages = {
+                "Try selecting tiles to discard them",
+                "If you think its enough... play it"
+            }
+            local msg = messages[love.math.random(1, 2)]
+            showTutorialMessage(msg, true)  -- requires action (play/discard button)
+            tutState.idleMessageShown = true
+            tutState.message4Shown = true
+        end
+    end
+
+    -- Handle dismiss animation (both auto-dismiss and action-based dismiss)
+    if tutState.dismissAnimating then
+        -- Wait for brief flash (0.1 seconds), then dismiss
+        tutState.dismissAnimTimer = tutState.dismissAnimTimer + dt
+        if tutState.dismissAnimTimer >= 0.1 then
+            dialogue.isActive = false
+            dialogue.phase = "idle"
+            dialogue.isPressed = false
+            tutState.waitingTimer = 0
+            tutState.dismissAnimating = false
+            tutState.dismissAnimTimer = 0
+            tutState.currentMessageRequiresAction = false
+
+            -- Trigger next message after dismiss completes
+            -- Check for pending messages first (set by game actions)
+            if tutState.pendingMessage == "win" then
+                showTutorialMessage("Good luck, proceed")
+                tutState.message6Shown = true
+                tutState.pendingMessage = nil
+            elseif tutState.pendingMessage == "continue" then
+                showTutorialMessage("Still missing a couple")
+                tutState.message5Shown = true
+                tutState.pendingMessage = nil
+            -- Message 2 after message 1 (auto-dismiss)
+            elseif tutState.message1Shown and not tutState.message2Shown then
+                showTutorialMessage("Drag tiles from hand to the center to play", true)  -- requires action
+                tutState.message2Shown = true
+            -- Message 3 after message 2 (action-based dismiss from tile placement)
+            elseif tutState.hasSeenFirstTile and not tutState.message3Shown then
+                showTutorialMessage("Good! Chain as many tiles as you can")
+                tutState.message3Shown = true
+            end
+        end
+        return
+    end
+
+    -- Handle auto-advance and message 2 trigger after message 1
+    if dialogue.isActive and dialogue.phase == "waiting" then
+        -- Only auto-dismiss if message doesn't require action
+        if not tutState.currentMessageRequiresAction then
+            tutState.waitingTimer = tutState.waitingTimer + dt
+
+            -- Auto-dismiss after 2 seconds with pink flash animation
+            if tutState.waitingTimer >= 2.0 then
+                -- Start pink flash animation
+                dialogue.isPressed = true
+                UI.Audio.playDismissDialogue()
+                tutState.dismissAnimating = true
+                tutState.dismissAnimTimer = 0
+            end
+        end
+    else
+        tutState.waitingTimer = 0
+    end
+end
+
+-- Show a tutorial message using the combat dialogue system
+-- requiresAction: if true, message won't auto-dismiss and needs manual tap or game action
+function showTutorialMessage(message, requiresAction)
+    if not gameState.tutorialEnabled or gameState.currentRound ~= 1 then
+        return
+    end
+
+    -- Set flag for whether this message requires action
+    gameState.tutorialState.currentMessageRequiresAction = requiresAction or false
+    gameState.tutorialState.waitingTimer = 0
+
+    -- Use the existing dialogue system
+    local screenWidth = gameState.screen.width
+    local maxWidth = screenWidth / 3
+    local font = UI.Fonts.get("large")
+    local wrappedLines = wrapDialogueText(message, maxWidth, font)
+
+    gameState.dialogueAnimation = {
+        phase = "typing",  -- Start typing immediately (no delay for tutorial)
+        text = message,
+        lines = wrappedLines,
+        currentCharIndex = 0,
+        charTimer = 0,
+        charsPerSecond = 12,  -- Slightly faster for tutorial
+        showPrompt = true,  -- Always show prompt for tutorial
+        isActive = true,
+        delayTimer = 0,
+        delayDuration = 0,  -- No delay for tutorial messages
+        idleTimer = 0,
+        idleTriggerTime = 999999,  -- Disable witty remarks during tutorial
+        isPressed = false
+    }
+end
+
+-- Dismiss current tutorial message (called on tap)
+function dismissTutorialDialogue()
+    local dialogue = gameState.dialogueAnimation
+    local tutState = gameState.tutorialState
+
+    if not dialogue or not dialogue.isActive then
+        return
+    end
+
+    if dialogue.phase == "typing" then
+        -- Skip to end of typing
+        dialogue.currentCharIndex = #dialogue.text
+        dialogue.phase = "waiting"
+        dialogue.showPrompt = true
+        tutState.waitingTimer = 0
+    elseif dialogue.phase == "waiting" then
+        -- Dismiss immediately
+        dialogue.isActive = false
+        dialogue.phase = "idle"
+        tutState.waitingTimer = 0
+        tutState.currentMessageRequiresAction = false
+
+        -- Trigger message 2 after message 1 is dismissed (by tap)
+        if tutState.message1Shown and not tutState.message2Shown then
+            showTutorialMessage("Drag tiles from hand to the center to play", true)  -- requires action
+            tutState.message2Shown = true
+        end
+    end
+end
+
+-- Auto-dismiss tutorial dialogue when player performs required action
+function dismissTutorialOnAction()
+    local dialogue = gameState.dialogueAnimation
+    local tutState = gameState.tutorialState
+
+    -- Only dismiss if tutorial is active, message requires action, and dialogue is in waiting phase
+    if gameState.currentRound == 1 and gameState.tutorialEnabled and
+       dialogue and dialogue.isActive and dialogue.phase == "waiting" and
+       tutState.currentMessageRequiresAction then
+
+        -- Flash to pink/asterisk and play sound (like manual tap)
+        dialogue.isPressed = true
+        UI.Audio.playDismissDialogue()
+
+        -- Start dismiss animation (will be handled in updateTutorialDialogue)
+        tutState.dismissAnimating = true
+        tutState.dismissAnimTimer = 0
+        tutState.waitingTimer = 0
+    end
+end
+
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
         local button = gameState.buttonAnimations[buttonName]
@@ -1637,6 +1902,7 @@ function love.update(dt)
         updateScoreIdleAnimation(dt)
         updateVictoryBellSequence(dt)
         updateDialogue(dt)  -- Update dialogue animation (in both playing and won phases)
+        updateTutorialDialogue(dt)  -- Update tutorial dialogue system
 
         -- Stop map ambiance during combat
         if UI.Audio.isMapAmbiancePlaying() then
@@ -1750,7 +2016,7 @@ function love.draw()
         UI.Renderer.drawCoinSprites()  -- Draw coin sprites first
         UI.Renderer.drawCoinText()  -- Draw coin text on top
         UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
-        UI.Renderer.drawDialogue()  -- Draw demon dialogue at top
+        UI.Renderer.drawDialogue()  -- Draw demon dialogue at top (includes tutorial when enabled)
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
