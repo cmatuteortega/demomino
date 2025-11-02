@@ -2468,6 +2468,44 @@ function UI.Renderer.drawDialogue()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
+    -- DEBUG: Draw boundary lines and info (TOGGLED OFF)
+    local showDebug = false  -- Set to true to enable debug visualization
+    if showDebug and dialogue.leftBoundary and dialogue.rightBoundary then
+        love.graphics.setColor(1, 0, 0, 0.5)  -- Red, semi-transparent
+        love.graphics.setLineWidth(2)
+        -- Left boundary line
+        love.graphics.line(dialogue.leftBoundary, 0, dialogue.leftBoundary, screenHeight)
+        -- Right boundary line
+        love.graphics.line(dialogue.rightBoundary, 0, dialogue.rightBoundary, screenHeight)
+        -- Center line (green)
+        if dialogue.centerX then
+            love.graphics.setColor(0, 1, 0, 0.5)  -- Green, semi-transparent
+            love.graphics.line(dialogue.centerX, 0, dialogue.centerX, screenHeight)
+        end
+        love.graphics.setLineWidth(1)
+
+        -- Draw debug text at bottom of screen
+        local debugFont = love.graphics.getFont()
+        local debugText = string.format("Phase: %s | L: %.0f | R: %.0f | C: %.0f | W: %.0f",
+            dialogue.currentPhase or "nil",
+            dialogue.leftBoundary,
+            dialogue.rightBoundary,
+            dialogue.centerX or 0,
+            dialogue.rightBoundary - dialogue.leftBoundary)
+
+        -- Add fallback warning if used
+        if dialogue.debugFallback then
+            debugText = debugText .. "\nFALLBACK! " .. (dialogue.debugReason or "unknown")
+            love.graphics.setColor(1, 0, 0, 1)  -- Red warning
+        else
+            love.graphics.setColor(1, 1, 0, 1)  -- Yellow
+        end
+
+        love.graphics.print(debugText, 10, screenHeight - 50)
+
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
     -- Use "large" font with color based on press state
     local font = UI.Fonts.get("large")
     local textColor = dialogue.isPressed and UI.Colors.FONT_PINK or UI.Colors.FONT_WHITE
@@ -2501,9 +2539,10 @@ function UI.Renderer.drawDialogue()
                 lineDisplayText = lineDisplayText .. promptText
             end
 
-            -- Calculate line width for centering
+            -- Calculate line width for centering between UI boundaries
             local lineWidth = font:getWidth(lineDisplayText)
-            local lineStartX = screenWidth / 2 - lineWidth / 2
+            local centerX = dialogue.centerX or (screenWidth / 2)  -- Fallback to screen center
+            local lineStartX = centerX - lineWidth / 2
             local lineY = startY + (lineNum - 1) * lineHeight
 
             -- Draw each character in the line with wave animation

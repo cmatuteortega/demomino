@@ -923,6 +923,8 @@ function Touch.released(x, y, istouch, touchId)
             resetGameToFresh()
             -- Clear any thrown tool sprites before returning to map
             UI.Animation.clearAllDiePhysics()
+            -- Clear dialogue when returning to map
+            Dialogue.clear()
             gameState.gamePhase = "map"
         -- Check for return to title button
         elseif gameState.settingsReturnToTitleBounds and isPointInRect(x, y, gameState.settingsReturnToTitleBounds) then
@@ -997,6 +999,9 @@ function Touch.released(x, y, istouch, touchId)
                     gameState.dialogueAnimation.phase = "idle"
                     gameState.dialogueAnimation.winDialogueShown = false  -- Reset for next win
                 end
+
+                -- Clear dialogue before returning to map
+                Dialogue.clear()
 
                 -- Go directly to map (skip intro - player is mid-run)
                 gameState.gamePhase = "map"
@@ -1213,6 +1218,8 @@ function Touch.released(x, y, istouch, touchId)
                 }, 0.1, "easeOutQuart", function()
                     -- Clear any thrown tool sprites before returning to map
                     UI.Animation.clearAllDiePhysics()
+                    -- Clear dialogue before returning to map
+                    Dialogue.clear()
                     -- Return to map
                     gameState.gamePhase = "map"
                 end)
@@ -1246,6 +1253,8 @@ function Touch.released(x, y, istouch, touchId)
             }, 0.1, "easeOutQuart", function()
                 -- Clear any thrown tool sprites before returning to map
                 UI.Animation.clearAllDiePhysics()
+                -- Clear dialogue before returning to map
+                Dialogue.clear()
                 -- Return to map
                 gameState.gamePhase = "map"
             end)
@@ -1278,6 +1287,8 @@ function Touch.released(x, y, istouch, touchId)
                 gameState.artifactsShopSettledTools = {}
                 -- Clear any thrown tool sprites before returning to map
                 UI.Animation.clearAllDiePhysics()
+                -- Clear dialogue before returning to map
+                Dialogue.clear()
 
                 -- Return to map
                 gameState.gamePhase = "map"
@@ -1311,6 +1322,8 @@ function Touch.released(x, y, istouch, touchId)
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
             -- Clear any thrown tool sprites before returning to map
             UI.Animation.clearAllDiePhysics()
+            -- Clear dialogue when returning to map
+            Dialogue.clear()
             gameState.gamePhase = "map"
         end
         touchState.isPressed = false
@@ -2634,7 +2647,12 @@ function Touch.enterSelectedNode()
         -- Store the demon name for this combat encounter
         gameState.currentDemonName = node.demonName
 
+        -- Clear any existing dialogue from previous screen BEFORE initializing combat
+        -- (initializeCombatRound shows tutorial message, so clear must happen first)
+        Dialogue.clear()
+
         -- Reset combat state for fresh round (score=0, new deck/hand, reset counters)
+        -- This will show tutorial message for round 1 if enabled
         initializeCombatRound()
 
         -- Reset tap tracking when entering playing phase
@@ -2668,6 +2686,9 @@ function Touch.enterSelectedNode()
         if gameState.offeredTiles then
             Hand.animateTilesDraw(gameState.offeredTiles, 0)
         end
+
+        -- Clear any existing dialogue from previous screen
+        Dialogue.clear()
 
         gameState.gamePhase = "tiles_menu"
 
@@ -2775,6 +2796,8 @@ function Touch.enterSelectedNode()
         -- Unknown node type, return to map
         -- Clear any thrown tool sprites
         UI.Animation.clearAllDiePhysics()
+        -- Clear dialogue
+        Dialogue.clear()
         gameState.gamePhase = "map"
     end
     

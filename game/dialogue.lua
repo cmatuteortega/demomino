@@ -40,6 +40,130 @@ function Dialogue.wrapText(text, maxWidth, font)
     return lines
 end
 
+-- Calculate max width for dialogue text based on UI elements
+function Dialogue.calculateMaxWidth()
+    local screenWidth = gameState.screen.width
+    local font = UI.Fonts.get("large")
+    local phase = gameState.gamePhase
+    local shadowOffset = UI.Layout.scale(4)  -- Text shadow offset
+
+    -- Calculate left boundary (demon name/night counter + shadow + 40px margin)
+    local leftBoundary = 0
+
+    if phase == "playing" or phase == "won" then
+        -- Combat screen: demon icon + demon name + shadow
+        local demonName = gameState.currentDemonName or ""
+        local demonFont = UI.Fonts.get("formulaScore")
+        local leftX = UI.Layout.scale(60)
+
+        -- Estimate icon width (if present)
+        local iconWidth = demonName ~= "" and (demonFont:getHeight() * 1.3 + UI.Layout.scale(8)) or 0
+        local nameWidth = demonFont:getWidth(demonName)
+
+        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+    elseif phase == "map" then
+        -- Map screen: "Night X" counter + shadow
+        local dayText = "Night " .. tostring(gameState.currentDay)
+        local dayFont = UI.Fonts.get("formulaScore")
+        local leftX = UI.Layout.scale(60)
+        local nameWidth = dayFont:getWidth(dayText)
+
+        leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" then
+        -- Shop screens: demon name (MAMMON, etc.) + shadow
+        local demonName = "MAMMON"  -- Default for shops
+        local demonFont = UI.Fonts.get("formulaScore")
+        local leftX = UI.Layout.scale(60)
+
+        -- Estimate icon width
+        local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
+        local nameWidth = demonFont:getWidth(demonName)
+
+        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+    else
+        -- Default: use standard left margin
+        leftBoundary = UI.Layout.scale(60) + shadowOffset + 40
+    end
+
+    -- Calculate right boundary (score/menu title - 40px margin from leftmost character)
+    local rightBoundary = screenWidth
+
+    if phase == "playing" or phase == "won" then
+        -- Combat screen: "ROUND X" counter (right-aligned from rightX)
+        -- Function to convert to Roman numerals (same as renderer)
+        local function toRoman(num)
+            local romanNumerals = {
+                {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+                {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+                {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}
+            }
+            local result = ""
+            for _, pair in ipairs(romanNumerals) do
+                local value, numeral = pair[1], pair[2]
+                while num >= value do
+                    result = result .. numeral
+                    num = num - value
+                end
+            end
+            return result
+        end
+
+        local roundText = "ROUND " .. toRoman(gameState.currentRound or 1)
+        local roundFont = UI.Fonts.get("larger")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local roundWidth = roundFont:getWidth(roundText)
+
+        -- Text starts at: rightX - roundWidth - UI.Layout.scale(10)
+        local roundStartX = rightX - roundWidth - UI.Layout.scale(10)
+        rightBoundary = roundStartX - 40  -- -40px margin from leftmost char
+
+    elseif phase == "tiles_menu" then
+        -- Tile shop: "TRADE" or "ALCHEMY" title (right-aligned from rightX)
+        local nodeTitle = (gameState.currentTilesNodeType == "alchemy") and "ALCHEMY" or "TRADE"
+        local titleFont = UI.Fonts.get("formulaScore")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local titleWidth = titleFont:getWidth(nodeTitle)
+
+        -- Text starts at: rightX - titleWidth
+        local titleStartX = rightX - titleWidth
+        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+
+    elseif phase == "artifacts_menu" then
+        -- Artifacts shop: "ARTIFACTS" title (right-aligned from rightX)
+        local titleFont = UI.Fonts.get("formulaScore")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local titleWidth = titleFont:getWidth("ARTIFACTS")
+
+        local titleStartX = rightX - titleWidth
+        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+
+    elseif phase == "contracts_menu" then
+        -- Contracts: "CONTRACTS" title (right-aligned from rightX)
+        local titleFont = UI.Fonts.get("formulaScore")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local titleWidth = titleFont:getWidth("CONTRACTS")
+
+        local titleStartX = rightX - titleWidth
+        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+
+    else
+        -- Default: use standard right margin
+        rightBoundary = screenWidth - UI.Layout.scale(40) - 40
+    end
+
+    -- Calculate available width
+    local maxWidth = rightBoundary - leftBoundary
+
+    -- Ensure minimum width (fallback to center third if calculation fails)
+    if maxWidth < screenWidth / 5 then
+        maxWidth = screenWidth / 3
+        leftBoundary = screenWidth / 3
+        rightBoundary = screenWidth * 2 / 3
+    end
+
+    return maxWidth, leftBoundary, rightBoundary
+end
+
 -- Get random dialogue phrase from content for given phase and category
 function Dialogue.getRandomPhrase(phase, category)
     if not gameState or not gameState.dialogueContent then
@@ -84,11 +208,13 @@ function Dialogue.show(text, options)
         charsPerSecond = math.max(10, math.min(30, charsPerSecond))
     end
 
-    -- Wrap text to fit within middle third of screen
-    local screenWidth = gameState.screen.width
-    local maxWidth = screenWidth / 3
+    -- Wrap text to fit between left UI (demon name) and right UI (score/title) with 40px margins
+    local maxWidth, leftBoundary, rightBoundary = Dialogue.calculateMaxWidth()
     local font = UI.Fonts.get("large")
     local wrappedLines = Dialogue.wrapText(text, maxWidth, font)
+
+    -- Calculate center point between boundaries for dialogue positioning
+    local centerX = (leftBoundary + rightBoundary) / 2
 
     -- Initialize dialogue animation state
     gameState.dialogueAnimation = {
@@ -112,8 +238,24 @@ function Dialogue.show(text, options)
         category = options.category or "default",
         requiresAction = options.requiresAction or false,
         autoDissmissTime = options.autoDissmissTime or 10.0,  -- Default 10 seconds for combat dialogue
-        waitingTimer = 0  -- Timer for auto-dismiss during "waiting" phase
+        waitingTimer = 0,  -- Timer for auto-dismiss during "waiting" phase
+        -- Positioning boundaries for centering
+        centerX = centerX,  -- Center point between left and right UI elements
+        leftBoundary = leftBoundary,
+        rightBoundary = rightBoundary
     }
+end
+
+-- Clear dialogue completely (for screen transitions)
+function Dialogue.clear()
+    if gameState and gameState.dialogueAnimation then
+        gameState.dialogueAnimation.isActive = false
+        gameState.dialogueAnimation.phase = "idle"
+        gameState.dialogueAnimation.text = ""
+        gameState.dialogueAnimation.currentCharIndex = 0
+        gameState.dialogueAnimation.waitingTimer = 0
+        gameState.dialogueAnimation.idleTimer = 0
+    end
 end
 
 -- Dismiss current dialogue (instant or with animation)
