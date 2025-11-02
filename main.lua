@@ -27,6 +27,7 @@ function love.load()
     require("game.map")
     require("game.save")
     require("game.tools")
+    require("game.dialogue")
     require("ui.touch")
     require("ui.layout")
     require("ui.fonts")
@@ -207,7 +208,7 @@ function love.load()
             opacity = 1.0,
             candleGrowth = 0  -- 0-1 for candle light radius growth
         },
-        -- Dialogue system (demon "talk" at combat screens)
+        -- Dialogue system (universal for all screens)
         dialogueAnimation = {
             phase = "idle",  -- "delaying", "typing", "waiting", "idle"
             text = "",  -- Current dialogue text (full unwrapped text)
@@ -222,7 +223,53 @@ function love.load()
             idleTimer = 0,  -- Timer for triggering witty remarks
             idleTriggerTime = 5.0,  -- Trigger witty remark after 5 seconds of no dialogue
             winDialogueShown = false,  -- Track if we've shown win dialogue this round
-            isPressed = false  -- Track if dialogue is being pressed
+            isPressed = false,  -- Track if dialogue is being pressed
+            currentPhase = nil,  -- Which phase this dialogue belongs to
+            category = "default",  -- Dialogue category (greeting, idle, action, etc.)
+            requiresAction = false,  -- Whether dialogue requires manual dismiss
+            autoDissmissTime = 2.0,  -- Time before auto-dismiss (if not requiring action)
+            waitingTimer = 0  -- Timer for auto-dismiss
+        },
+        -- Dialogue content storage (populated by user prompts)
+        dialogueContent = {
+            playing = {  -- Combat nodes (existing system)
+                score = {},
+                win = {},
+                witty = {}
+            },
+            boss = {  -- Boss combat nodes
+                greetings = {},
+                idle = {},
+                actions = {}
+            },
+            map = {  -- Map screen
+                greetings = {},
+                idle = {},
+                actions = {}
+            },
+            node_confirmation = {  -- Node confirmation dialog
+                greetings = {},
+                idle = {},
+                actions = {}
+            },
+            tiles_menu = {  -- Tile shop/fusion
+                greetings = {},
+                idle = {},
+                purchase = {},
+                fusion = {},
+                actions = {}
+            },
+            artifacts_menu = {  -- Artifact/tool shop
+                greetings = {},
+                idle = {},
+                purchase = {},
+                actions = {}
+            },
+            contracts_menu = {  -- Contracts node
+                greetings = {},
+                idle = {},
+                actions = {}
+            }
         },
         -- Intro dialogue system (plays before first Night X on NEW GAME only)
         introDialogueAnimation = {
@@ -280,6 +327,11 @@ function love.load()
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
+
+    -- Initialize dialogue content with existing combat phrases
+    gameState.dialogueContent.playing.score = demonDialoguePlayerScores
+    gameState.dialogueContent.playing.win = demonDialoguePlayerWins
+    gameState.dialogueContent.playing.witty = demonDialogueWittyRemarks
 
     -- Start background music
     UI.Audio.playMusic()
@@ -663,41 +715,9 @@ function getRandomDialoguePhrase(category)
 end
 
 function wrapDialogueText(text, maxWidth, font)
-    -- Break text into lines that fit within maxWidth
-    local lines = {}
-    local words = {}
-
-    -- Split text into words
-    for word in text:gmatch("%S+") do
-        table.insert(words, word)
-    end
-
-    local currentLine = ""
-    for i, word in ipairs(words) do
-        local testLine = currentLine == "" and word or (currentLine .. " " .. word)
-        local lineWidth = font:getWidth(testLine)
-
-        if lineWidth > maxWidth then
-            -- Line is too long, start a new line
-            if currentLine ~= "" then
-                table.insert(lines, currentLine)
-                currentLine = word
-            else
-                -- Single word is too long, just add it anyway
-                table.insert(lines, word)
-                currentLine = ""
-            end
-        else
-            currentLine = testLine
-        end
-    end
-
-    -- Add the last line
-    if currentLine ~= "" then
-        table.insert(lines, currentLine)
-    end
-
-    return lines
+    -- DEPRECATED: Use Dialogue.wrapText() instead
+    -- Keeping for backwards compatibility
+    return Dialogue.wrapText(text, maxWidth, font)
 end
 
 function wrapDialogueTextByWords(text, wordsPerLine)
@@ -750,39 +770,14 @@ function initializeDialogue(text, category)
         return
     end
 
-    -- Calculate typing speed based on typewriter sound duration
-    local typewriterDuration = UI.Audio.getTypewriterMaxDuration()
-    local charsPerSecond = 15  -- Default fallback (faster!)
-
-    if typewriterDuration > 0 then
-        -- Cap duration at 0.5 seconds to prevent extremely slow typing
-        local cappedDuration = math.min(typewriterDuration, 0.5)
-        -- Use the sound duration as minimum time per character, but make it faster
-        charsPerSecond = 1.0 / (cappedDuration * 0.5)  -- Reduced multiplier for faster typing
-        -- Clamp to reasonable bounds (increased minimum for faster typing)
-        charsPerSecond = math.max(10, math.min(30, charsPerSecond))
-    end
-
-    -- Wrap text to fit within middle third of screen
-    local screenWidth = gameState.screen.width
-    local maxWidth = screenWidth / 3  -- Middle third of screen
-    local font = UI.Fonts.get("large")
-    local wrappedLines = wrapDialogueText(text, maxWidth, font)
-
-    gameState.dialogueAnimation = {
-        phase = "delaying",  -- Start with delay phase
-        text = text,
-        lines = wrappedLines,
-        currentCharIndex = 0,
-        charTimer = 0,
-        charsPerSecond = charsPerSecond,
-        showPrompt = false,
-        isActive = true,
-        delayTimer = 0,
-        delayDuration = 2.0,  -- Wait 2 seconds before showing dialogue
-        idleTimer = 0,  -- Reset idle timer when new dialogue starts
-        idleTriggerTime = 5.0  -- Trigger witty remark after 5 seconds
-    }
+    -- Use new centralized dialogue system
+    Dialogue.show(text, {
+        category = category,
+        skipDelay = false,
+        requiresAction = false,
+        delayDuration = 2.0,
+        idleTriggerTime = 5.0
+    })
 end
 
 function triggerVictoryPhrase()
@@ -1597,36 +1592,8 @@ function updateDialogue(dt)
         return
     end
 
-    if not dialogue.isActive then return end
-
-    if dialogue.phase == "delaying" then
-        -- Wait for delay duration before starting to type
-        dialogue.delayTimer = dialogue.delayTimer + dt
-        if dialogue.delayTimer >= dialogue.delayDuration then
-            dialogue.phase = "typing"
-        end
-    elseif dialogue.phase == "typing" then
-        -- Typewriter effect - reveal characters one by one
-        dialogue.charTimer = dialogue.charTimer + dt
-        local timePerChar = 1.0 / dialogue.charsPerSecond
-
-        -- Only reveal ONE character per frame to prevent sound spam during lag
-        if dialogue.charTimer >= timePerChar then
-            dialogue.charTimer = 0  -- Reset timer to ensure one char per frame
-            dialogue.currentCharIndex = dialogue.currentCharIndex + 1
-
-            -- Play a random typewriter sound for each character (20% quieter)
-            UI.Audio.playTypewriter(0.8)
-
-            -- Check if we've typed all characters
-            if dialogue.currentCharIndex >= #dialogue.text then
-                dialogue.currentCharIndex = #dialogue.text
-                dialogue.phase = "waiting"
-                dialogue.showPrompt = true  -- Show " ~" prompt
-            end
-        end
-    end
-    -- "waiting" phase does nothing - player can click to dismiss
+    -- Use centralized dialogue update for animation logic
+    Dialogue.update(dt)
 end
 
 
@@ -1753,27 +1720,15 @@ function showTutorialMessage(message, requiresAction)
     gameState.tutorialState.currentMessageRequiresAction = requiresAction or false
     gameState.tutorialState.waitingTimer = 0
 
-    -- Use the existing dialogue system
-    local screenWidth = gameState.screen.width
-    local maxWidth = screenWidth / 3
-    local font = UI.Fonts.get("large")
-    local wrappedLines = wrapDialogueText(message, maxWidth, font)
-
-    gameState.dialogueAnimation = {
-        phase = "typing",  -- Start typing immediately (no delay for tutorial)
-        text = message,
-        lines = wrappedLines,
-        currentCharIndex = 0,
-        charTimer = 0,
-        charsPerSecond = 12,  -- Slightly faster for tutorial
-        showPrompt = true,  -- Always show prompt for tutorial
-        isActive = true,
-        delayTimer = 0,
-        delayDuration = 0,  -- No delay for tutorial messages
-        idleTimer = 0,
+    -- Use new centralized dialogue system
+    Dialogue.show(message, {
+        skipDelay = true,
+        requiresAction = requiresAction or false,
+        charsPerSecond = 12,
+        category = "tutorial",
         idleTriggerTime = 999999,  -- Disable witty remarks during tutorial
-        isPressed = false
-    }
+        autoDissmissTime = 2.0  -- Tutorial messages auto-dismiss after 2 seconds
+    })
 end
 
 -- Dismiss current tutorial message (called on tap)
@@ -1792,37 +1747,26 @@ function dismissTutorialDialogue()
         dialogue.showPrompt = true
         tutState.waitingTimer = 0
     elseif dialogue.phase == "waiting" then
-        -- Dismiss immediately
-        dialogue.isActive = false
-        dialogue.phase = "idle"
-        tutState.waitingTimer = 0
-        tutState.currentMessageRequiresAction = false
-
-        -- Trigger message 2 after message 1 is dismissed (by tap)
-        if tutState.message1Shown and not tutState.message2Shown then
-            showTutorialMessage("Drag tiles from hand to the center to play", true)  -- requires action
-            tutState.message2Shown = true
-        end
+        -- Start dismiss animation with pink flash
+        dialogue.isPressed = true
+        UI.Audio.playDismissDialogue()
+        tutState.dismissAnimating = true
+        tutState.dismissAnimTimer = 0
     end
 end
 
 -- Auto-dismiss tutorial dialogue when player performs required action
 function dismissTutorialOnAction()
-    local dialogue = gameState.dialogueAnimation
     local tutState = gameState.tutorialState
 
-    -- Only dismiss if tutorial is active, message requires action, and dialogue is in waiting phase
+    -- Only dismiss if tutorial is active and message requires action
     if gameState.currentRound == 1 and gameState.tutorialEnabled and
-       dialogue and dialogue.isActive and dialogue.phase == "waiting" and
+       gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and
+       gameState.dialogueAnimation.phase == "waiting" and
        tutState.currentMessageRequiresAction then
 
-        -- Flash to pink/asterisk and play sound (like manual tap)
-        dialogue.isPressed = true
-        UI.Audio.playDismissDialogue()
-
-        -- Start dismiss animation (will be handled in updateTutorialDialogue)
-        tutState.dismissAnimating = true
-        tutState.dismissAnimTimer = 0
+        -- Use centralized dismiss with animation
+        Dialogue.dismissWithAnimation()
         tutState.waitingTimer = 0
     end
 end

@@ -772,20 +772,18 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Only dismiss if released in upper third AND dialogue was pressed AND not dragging
         if y <= upperThirdHeight and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
-            -- Play dismiss sound
-            UI.Audio.playDismissDialogue()
-
             -- For tutorial, use special dismiss function
             if isTutorial then
                 dismissTutorialDialogue()
             else
-                -- Regular dialogue dismissal
-                gameState.dialogueAnimation.isActive = false
-                gameState.dialogueAnimation.phase = "idle"
+                -- Regular combat dialogue: trigger pink flash animation
+                UI.Audio.playDismissDialogue()
+                gameState.dialogueAnimation.phase = "dismissing"
+                gameState.dialogueAnimation.dismissTimer = 0
                 gameState.dialogueAnimation.idleTimer = 0
+                -- Keep isPressed = true to show pink/asterisk during animation
             end
 
-            gameState.dialogueAnimation.isPressed = false
             touchState.isPressed = false
             touchState.touchId = nil
             return
