@@ -53,7 +53,7 @@ function Dialogue.calculateMaxWidth()
     if phase == "playing" or phase == "won" then
         -- Combat screen: demon icon + demon name + shadow
         local demonName = gameState.currentDemonName or ""
-        local demonFont = UI.Fonts.get("formulaScore")
+        local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
         local leftX = UI.Layout.scale(60)
 
         -- Estimate icon width (if present)
@@ -70,9 +70,15 @@ function Dialogue.calculateMaxWidth()
 
         leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
     elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" then
-        -- Shop screens: demon name (MAMMON, etc.) + shadow
-        local demonName = "MAMMON"  -- Default for shops
-        local demonFont = UI.Fonts.get("formulaScore")
+        -- Shop screens: demon name (MAMMON, PAIMON, LILITH) + shadow
+        local demonName = "MAMMON"  -- Default for shops (longest name)
+        if phase == "artifacts_menu" then
+            demonName = "PAIMON"
+        elseif phase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+            demonName = "LILITH"
+        end
+
+        local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
         local leftX = UI.Layout.scale(60)
 
         -- Estimate icon width

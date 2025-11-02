@@ -1307,7 +1307,7 @@ function UI.Renderer.drawScore(score)
 
     local roundColor = UI.Colors.FONT_RED
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("formulaScore")
+    local font = UI.Fonts.get("demonName")
     local currentX = leftX
 
     -- Draw demon icon first (if available)
@@ -1315,14 +1315,23 @@ function UI.Renderer.drawScore(score)
         local iconSprite = nil
 
         -- Select appropriate icon sprite
-        if demonName == "IMP" then
-            -- Random imp variant
+        -- Check if this is a regular demon (use random IMP variant)
+        local isRegularDemon = false
+        for _, regularName in ipairs(DemonData.REGULAR_DEMON_NAMES) do
+            if demonName == regularName then
+                isRegularDemon = true
+                break
+            end
+        end
+
+        if isRegularDemon then
+            -- Random imp variant for all regular demons
             if demonIconSprites.impVariants and #demonIconSprites.impVariants > 0 then
                 local impIndex = ((gameState.currentRound - 1) % #demonIconSprites.impVariants) + 1
                 iconSprite = demonIconSprites.impVariants[impIndex]
             end
         else
-            -- Use exact demon name match
+            -- Use exact demon name match for bosses and special demons
             iconSprite = demonIconSprites[demonName]
         end
 
@@ -1372,19 +1381,91 @@ function UI.Renderer.drawScore(score)
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "formulaScore", roundColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "demonName", roundColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
 
-    -- Draw challenge counters below round counter
-    local bigScoreFont = UI.Fonts.get("bigScore")
-    local formulaScoreFont = UI.Fonts.get("formulaScore")
+    -- Draw demon subtitle below demon name
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY = leftY + font:getHeight() - UI.Layout.scale(5)
 
-    -- Calculate icon height to properly position counters below it
-    local iconHeight = formulaScoreFont:getHeight() * 1.3  -- Icon is 1.3x font height
-    local counterFontHeight = formulaScoreFont:getHeight() * 0.5  -- Account for 0.5x scale
-    local currentCounterY = leftY + iconHeight + UI.Layout.scale(5)  -- Position below icon with spacing
+        -- Calculate icon width to position subtitle after icon
+        local iconWidth = 0
+        if demonIconSprites and demonName ~= "" then
+            local iconSprite = nil
+            local isRegularDemon = false
+            for _, regularName in ipairs(DemonData.REGULAR_DEMON_NAMES) do
+                if demonName == regularName then
+                    isRegularDemon = true
+                    break
+                end
+            end
+            if isRegularDemon then
+                if demonIconSprites.impVariants and #demonIconSprites.impVariants > 0 then
+                    local impIndex = ((gameState.currentRound - 1) % #demonIconSprites.impVariants) + 1
+                    iconSprite = demonIconSprites.impVariants[impIndex]
+                end
+            else
+                iconSprite = demonIconSprites[demonName]
+            end
+            if not iconSprite then
+                iconSprite = demonIconSprites.NOT_FOUND
+            end
+            if iconSprite then
+                local fontHeight = font:getHeight()
+                local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+            end
+        end
+
+        -- Draw subtitle with wave animation (large font size, pink)
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+
+            -- Wave animation: same pattern but with smaller font
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1  -- Smaller wave for smaller text
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(2),
+                scale = 1.0,
+                shake = 0
+            }
+
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", animProps)
+
+            subtitleX = subtitleX + charWidth
+        end
+    end
+
+    -- Draw challenge counters below demon icon
+    local bigScoreFont = UI.Fonts.get("bigScore")
+    local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
+    local counterFont = UI.Fonts.get("formulaScore")
+
+    -- Calculate icon dimensions and center point
+    local iconHeight = demonFont:getHeight() * 1.3  -- Icon is 1.3x demonName font height
+    local iconWidth = demonFont:getHeight() * 1.3  -- Assume square icon for centering
+    local iconCenterX = leftX + iconWidth / 2  -- Center point of icon
+
+    -- Account for subtitle height when positioning counters
+    local subtitleHeight = 0
+    local demonName = gameState.currentDemonName or ""
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        subtitleHeight = subtitleFont:getHeight()
+    end
+
+    local counterFontHeight = counterFont:getHeight() * 0.5  -- Account for 0.5x scale
+    local currentCounterY = leftY + iconHeight + subtitleHeight + UI.Layout.scale(5)  -- Position below icon + subtitle with spacing
 
     -- Floating animation: same wave effect as score digits
     local floatPhase = time * 2.5
@@ -1406,7 +1487,8 @@ function UI.Renderer.drawScore(score)
         local counterScale = gameState.maxTilesCounterAnimation.scale or 1.0
         local actualScale = counterScale * 0.5
 
-        UI.Fonts.drawAnimatedText(counterText, leftX, currentCounterY + floatOffset, "formulaScore", counterColor, "left", {
+        -- Center counter text under icon
+        UI.Fonts.drawAnimatedText(counterText, iconCenterX, currentCounterY + floatOffset, "formulaScore", counterColor, "center", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
             scale = actualScale
@@ -1423,7 +1505,8 @@ function UI.Renderer.drawScore(score)
         local counterScale = gameState.bannedNumberCounterAnimation.scale or 1.0
         local actualScale = counterScale * 0.5
 
-        UI.Fonts.drawAnimatedText(counterText, leftX, currentCounterY + floatOffset, "formulaScore", counterColor, "left", {
+        -- Center counter text under icon
+        UI.Fonts.drawAnimatedText(counterText, iconCenterX, currentCounterY + floatOffset, "formulaScore", counterColor, "center", {
             shadow = true,
             shadowOffset = UI.Layout.scale(3),
             scale = actualScale
@@ -2897,7 +2980,7 @@ function UI.Renderer.drawTilesMenu()
         local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
         local topY = UI.Layout.scale(20)
         local time = love.timer.getTime()
-        local font = UI.Fonts.get("formulaScore")
+        local titleFont = UI.Fonts.get("formulaScore")
 
         -- Right side: TRADE title
         local nodeTitle = "TRADE"
@@ -2906,13 +2989,13 @@ function UI.Renderer.drawTilesMenu()
         local totalWidth = 0
         for i = 1, #nodeTitle do
             local char = nodeTitle:sub(i, i)
-            totalWidth = totalWidth + font:getWidth(char)
+            totalWidth = totalWidth + titleFont:getWidth(char)
         end
 
         local currentX = rightX - totalWidth
         for i = 1, #nodeTitle do
             local char = nodeTitle:sub(i, i)
-            local charWidth = font:getWidth(char)
+            local charWidth = titleFont:getWidth(char)
             local phase = time * 2.5 + (i - 1) * 0.4
             local waveOffset = math.sin(phase) * 3
 
@@ -2929,6 +3012,7 @@ function UI.Renderer.drawTilesMenu()
         -- Left side: MAMMON demon icon and name
         local demonName = "MAMMON"
         local demonColor = UI.Colors.FONT_RED
+        local font = UI.Fonts.get("demonName")
 
         currentX = leftX
 
@@ -2964,7 +3048,7 @@ function UI.Renderer.drawTilesMenu()
             local phase = time * 2.5 + (i - 1) * 0.4
             local waveOffset = math.sin(phase) * 3
 
-            UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+            UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "demonName", demonColor, "left", {
                 shadow = true,
                 shadowOffset = UI.Layout.scale(4),
                 scale = 1.0,
@@ -2972,6 +3056,47 @@ function UI.Renderer.drawTilesMenu()
             })
 
             currentX = currentX + charWidth
+        end
+
+        -- Draw demon subtitle below demon name
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            local subtitleFont = UI.Fonts.get("large")
+            local subtitleColor = UI.Colors.FONT_PINK
+            local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
+
+            -- Calculate icon width to position subtitle after icon
+            local iconWidth = 0
+            if demonIconSprites and demonIconSprites[demonName] then
+                local iconSprite = demonIconSprites[demonName]
+                if iconSprite then
+                    local fontHeight = font:getHeight()
+                    local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                    iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+                end
+            end
+
+            -- Draw subtitle with wave animation (large font size, pink)
+            local subtitleX = leftX + iconWidth
+            for i = 1, #subtitle do
+                local char = subtitle:sub(i, i)
+                local charWidth = subtitleFont:getWidth(char)
+
+                -- Wave animation: same pattern but with smaller font
+                local phase = time * 2.5 + (i - 1) * 0.4
+                local waveOffset = math.sin(phase) * 1  -- Smaller wave for smaller text
+
+                local animProps = {
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(2),
+                    scale = 1.0,
+                    shake = 0
+                }
+
+                UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", animProps)
+
+                subtitleX = subtitleX + charWidth
+            end
         end
 
         -- Draw coin sprites and text (same as combat)
@@ -3032,7 +3157,7 @@ function UI.Renderer.drawArtifactsMenu()
     local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
     local topY = UI.Layout.scale(20)
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("formulaScore")
+    local titleFont = UI.Fonts.get("formulaScore")
 
     -- Right side: ARTIFACTS title
     local nodeTitle = "ARTIFACTS"
@@ -3041,13 +3166,13 @@ function UI.Renderer.drawArtifactsMenu()
     local totalWidth = 0
     for i = 1, #nodeTitle do
         local char = nodeTitle:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + titleFont:getWidth(char)
     end
 
     local currentX = rightX - totalWidth
     for i = 1, #nodeTitle do
         local char = nodeTitle:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = titleFont:getWidth(char)
         local phase = time * 2.5 + (i - 1) * 0.4
         local waveOffset = math.sin(phase) * 3
 
@@ -3064,6 +3189,7 @@ function UI.Renderer.drawArtifactsMenu()
     -- Left side: PAIMON demon icon and name
     local demonName = "PAIMON"
     local demonColor = UI.Colors.FONT_RED
+    local font = UI.Fonts.get("demonName")
 
     currentX = leftX
 
@@ -3099,7 +3225,7 @@ function UI.Renderer.drawArtifactsMenu()
         local phase = time * 2.5 + (i - 1) * 0.4
         local waveOffset = math.sin(phase) * 3
 
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "demonName", demonColor, "left", {
             shadow = true,
             shadowOffset = UI.Layout.scale(4),
             scale = 1.0,
@@ -3107,6 +3233,47 @@ function UI.Renderer.drawArtifactsMenu()
         })
 
         currentX = currentX + charWidth
+    end
+
+    -- Draw demon subtitle below demon name
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
+
+        -- Calculate icon width to position subtitle after icon
+        local iconWidth = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+            if iconSprite then
+                local fontHeight = font:getHeight()
+                local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+            end
+        end
+
+        -- Draw subtitle with wave animation (large font size, pink)
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+
+            -- Wave animation: same pattern but with smaller font
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1  -- Smaller wave for smaller text
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(2),
+                scale = 1.0,
+                shake = 0
+            }
+
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", animProps)
+
+            subtitleX = subtitleX + charWidth
+        end
     end
 
     -- Draw coin sprites and text (same as combat/trade)
@@ -4514,7 +4681,7 @@ function UI.Renderer.drawFusionMode()
     local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
     local topY = UI.Layout.scale(20)
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("formulaScore")
+    local titleFont = UI.Fonts.get("formulaScore")
 
     -- Right side: ALCHEMY title
     local nodeTitle = "ALCHEMY"
@@ -4523,13 +4690,13 @@ function UI.Renderer.drawFusionMode()
     local totalWidth = 0
     for i = 1, #nodeTitle do
         local char = nodeTitle:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + titleFont:getWidth(char)
     end
 
     local currentX = rightX - totalWidth
     for i = 1, #nodeTitle do
         local char = nodeTitle:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = titleFont:getWidth(char)
         local phase = time * 2.5 + (i - 1) * 0.4
         local waveOffset = math.sin(phase) * 3
 
@@ -4546,6 +4713,7 @@ function UI.Renderer.drawFusionMode()
     -- Left side: LILITH demon icon and name
     local demonName = "LILITH"
     local demonColor = UI.Colors.FONT_RED
+    local font = UI.Fonts.get("demonName")
 
     currentX = leftX
 
@@ -4581,7 +4749,7 @@ function UI.Renderer.drawFusionMode()
         local phase = time * 2.5 + (i - 1) * 0.4
         local waveOffset = math.sin(phase) * 3
 
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", demonColor, "left", {
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "demonName", demonColor, "left", {
             shadow = true,
             shadowOffset = UI.Layout.scale(4),
             scale = 1.0,
@@ -4589,6 +4757,47 @@ function UI.Renderer.drawFusionMode()
         })
 
         currentX = currentX + charWidth
+    end
+
+    -- Draw demon subtitle below demon name
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
+
+        -- Calculate icon width to position subtitle after icon
+        local iconWidth = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+            if iconSprite then
+                local fontHeight = font:getHeight()
+                local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+            end
+        end
+
+        -- Draw subtitle with wave animation (large font size, pink)
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+
+            -- Wave animation: same pattern but with smaller font
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1  -- Smaller wave for smaller text
+
+            local animProps = {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(2),
+                scale = 1.0,
+                shake = 0
+            }
+
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", animProps)
+
+            subtitleX = subtitleX + charWidth
+        end
     end
 
     -- Draw instructions

@@ -1,17 +1,8 @@
 Map = {}
 
--- Demon name lists for combat encounters
-Map.REGULAR_DEMON_NAMES = {
-    "IMP"
-}
-
-Map.BOSS_DEMON_NAMES = {
-    "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN"
-}
-
 -- Select a random demon name from the pool, avoiding recent duplicates
 function Map.selectDemonName(usedNames, isBoss)
-    local namePool = isBoss and Map.BOSS_DEMON_NAMES or Map.REGULAR_DEMON_NAMES
+    local namePool = isBoss and DemonData.BOSS_DEMON_NAMES or DemonData.REGULAR_DEMON_NAMES
 
     -- If we've used all names, reset the pool
     if #usedNames >= #namePool then
