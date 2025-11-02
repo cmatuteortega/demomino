@@ -2008,16 +2008,13 @@ function UI.Renderer.drawSettingsButton()
         local spriteHeight = settingsButtonSprite:getHeight()
         local scale = (size / math.max(spriteWidth, spriteHeight)) * 1.2
 
-        -- Draw shadow (same as demon tiles: 0.15 opacity, (0, -5) offset)
-        local shadowOpacity = 0.15
-        local shadowOffsetX = 0
-        local shadowOffsetY = -5
-
-        love.graphics.setColor(0, 0, 0, shadowOpacity)
+        -- Draw shadow (same as top-left demon icon: 0.5 opacity, positive offset down-right)
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
         love.graphics.draw(
             settingsButtonSprite,
-            centerX + shadowOffsetX,
-            centerY + shadowOffsetY,
+            centerX + shadowOffset,
+            centerY + shadowOffset,
             0,  -- rotation
             scale,
             scale,
@@ -2041,99 +2038,6 @@ function UI.Renderer.drawSettingsButton()
 
     -- Store button bounds for touch handling
     gameState.settingsButtonBounds = {x = x, y = y, width = size, height = size}
-end
-
-function UI.Renderer.drawSettingsDialogue()
-    local dialogue = gameState.settingsDialogueAnimation
-    if not dialogue or not dialogue.isActive or dialogue.currentCharIndex == 0 then
-        return
-    end
-
-    local screenWidth = gameState.screen.width
-    local screenHeight = gameState.screen.height
-
-    -- Position to the right of settings button
-    local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
-    local startX = settingsX + settingsSize + UI.Layout.scale(10)  -- 10px margin to the right
-    local startY = settingsY
-
-    -- Use "large" font with color based on press state
-    local font = UI.Fonts.get("large")
-    local textColor = dialogue.isPressed and UI.Colors.FONT_PINK or UI.Colors.FONT_WHITE
-    local time = love.timer.getTime()
-
-    -- Build the display text (characters typed so far)
-    local displayText = dialogue.text:sub(1, dialogue.currentCharIndex)
-
-    -- Add prompt if typing is complete (changes based on press state)
-    local promptText = ""
-    if dialogue.showPrompt then
-        promptText = dialogue.isPressed and " *" or " ~"
-    end
-
-    -- Split display text into lines as it was wrapped
-    local charIndex = 0
-    local lineHeight = font:getHeight() - UI.Layout.scale(5)  -- Reduced spacing for settings dialogue
-
-    -- Draw each line
-    for lineNum, lineText in ipairs(dialogue.lines) do
-        -- Calculate how many characters from this line to display
-        local lineLength = #lineText
-        local charsToShow = math.min(lineLength, dialogue.currentCharIndex - charIndex)
-
-        if charsToShow > 0 then
-            local lineDisplayText = lineText:sub(1, charsToShow)
-
-            -- Add prompt to last line if complete
-            if lineNum == #dialogue.lines and dialogue.showPrompt and charsToShow == lineLength then
-                lineDisplayText = lineDisplayText .. promptText
-            end
-
-            local lineY = startY + (lineNum - 1) * lineHeight
-
-            -- Draw each character in the line (no wave animation)
-            local currentX = startX
-            for i = 1, #lineDisplayText do
-                local char = lineDisplayText:sub(i, i)
-                local charWidth = font:getWidth(char)
-
-                local animProps = {
-                    shadow = true,
-                    shadowOffset = UI.Layout.scale(4),
-                    scale = 1.0,
-                    shake = 0
-                }
-
-                UI.Fonts.drawAnimatedText(char, currentX, lineY, "large", textColor, "left", animProps)
-
-                currentX = currentX + charWidth
-            end
-        end
-
-        charIndex = charIndex + lineLength + 1  -- +1 for space between words
-        if charIndex > dialogue.currentCharIndex then
-            break
-        end
-    end
-
-    -- Store dialogue bounds for touch handling (approximate bounding box)
-    local maxLineWidth = 0
-    for _, lineText in ipairs(dialogue.lines) do
-        local lineWidth = font:getWidth(lineText)
-        if lineWidth > maxLineWidth then
-            maxLineWidth = lineWidth
-        end
-    end
-    local totalHeight = #dialogue.lines * lineHeight
-    gameState.settingsDialogueBounds = {
-        x = startX - UI.Layout.scale(10),  -- Add padding
-        y = startY - UI.Layout.scale(10),
-        width = maxLineWidth + UI.Layout.scale(20),
-        height = totalHeight + UI.Layout.scale(20)
-    }
-
-    -- Reset color
-    love.graphics.setColor(1, 1, 1, 1)
 end
 
 function UI.Renderer.drawSettingsMenu()

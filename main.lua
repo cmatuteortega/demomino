@@ -223,20 +223,6 @@ function love.load()
             winDialogueShown = false,  -- Track if we've shown win dialogue this round
             isPressed = false  -- Track if dialogue is being pressed
         },
-        -- Settings button dialogue system (hints next to settings button)
-        settingsDialogueAnimation = {
-            phase = "idle",  -- "typing", "waiting", "idle"
-            text = "",  -- Current dialogue text (full unwrapped text)
-            lines = {},  -- Wrapped text lines for display
-            currentCharIndex = 0,  -- Current character being typed
-            charTimer = 0,  -- Timer for next character
-            charsPerSecond = 15,  -- Typing speed (no sound, so faster)
-            showPrompt = false,  -- Show " ~" prompt when typing completes
-            isActive = false,  -- Whether dialogue is currently active
-            triggerTimer = 0,  -- Timer for random trigger
-            nextTriggerTime = 0,  -- Random time until next trigger (10-30 seconds)
-            isPressed = false  -- Track if dialogue is being pressed
-        },
         -- Intro dialogue system (plays before first Night X on NEW GAME only)
         introDialogueAnimation = {
             phase = "typing",  -- "typing", "waiting", "complete"
@@ -529,14 +515,6 @@ end
 
 -- Demon dialogue phrases
 
--- Settings messages
-local settingsDialogueCombat = {
-    "Drag tiles to place them",
-    "Double tap to return tiles",
-    "...?",
-    "Want something?",
-}
-
 -- Witty remarks - trigger randomly after 5 seconds of no dialogue
 local demonDialogueWittyRemarks = {
     "Dominoes? How mortal",
@@ -723,40 +701,6 @@ function initializeDialogue(text, category)
         delayDuration = 2.0,  -- Wait 2 seconds before showing dialogue
         idleTimer = 0,  -- Reset idle timer when new dialogue starts
         idleTriggerTime = 5.0  -- Trigger witty remark after 5 seconds
-    }
-end
-
-function initializeSettingsDialogue(text)
-    -- Initialize settings dialogue animation (no sound, next to settings button)
-    -- If no text provided, select random from settingsDialogueCombat
-    if not text then
-        if #settingsDialogueCombat == 0 then
-            return  -- No phrases available
-        end
-        local randomIndex = love.math.random(1, #settingsDialogueCombat)
-        text = settingsDialogueCombat[randomIndex]
-    end
-
-    -- If still no text, don't show dialogue
-    if not text then
-        return
-    end
-
-    -- Wrap text with 3 words per line
-    local wrappedLines = wrapDialogueTextByWords(text, 3)
-
-    gameState.settingsDialogueAnimation = {
-        phase = "typing",  -- Start typing immediately
-        text = text,
-        lines = wrappedLines,
-        currentCharIndex = 0,
-        charTimer = 0,
-        charsPerSecond = 15,  -- Fast typing (no sound)
-        showPrompt = false,
-        isActive = true,
-        triggerTimer = 0,  -- Reset trigger timer
-        nextTriggerTime = love.math.random(10, 30),  -- Random 10-30 seconds until next
-        isPressed = false
     }
 end
 
@@ -1588,47 +1532,6 @@ function updateDialogue(dt)
     -- "waiting" phase does nothing - player can click to dismiss
 end
 
-function updateSettingsDialogue(dt)
-    local dialogue = gameState.settingsDialogueAnimation
-
-    -- Only trigger during playing phase
-    if gameState.gamePhase ~= "playing" then
-        return
-    end
-
-    -- If no active dialogue, increment trigger timer
-    if not dialogue.isActive then
-        dialogue.triggerTimer = dialogue.triggerTimer + dt
-
-        -- Trigger new dialogue after random delay
-        if dialogue.triggerTimer >= dialogue.nextTriggerTime then
-            initializeSettingsDialogue()  -- Pick random phrase
-            dialogue.triggerTimer = 0
-        end
-        return
-    end
-
-    -- Update typing animation (no sound)
-    if dialogue.phase == "typing" then
-        dialogue.charTimer = dialogue.charTimer + dt
-        local timePerChar = 1.0 / dialogue.charsPerSecond
-
-        if dialogue.charTimer >= timePerChar then
-            dialogue.charTimer = 0
-            dialogue.currentCharIndex = dialogue.currentCharIndex + 1
-
-            -- NO SOUND for settings dialogue
-
-            -- Check if we've typed all characters
-            if dialogue.currentCharIndex >= #dialogue.text then
-                dialogue.currentCharIndex = #dialogue.text
-                dialogue.phase = "waiting"
-                dialogue.showPrompt = true  -- Show " ~" prompt
-            end
-        end
-    end
-    -- "waiting" phase does nothing - player can click to dismiss
-end
 
 function updateIntroDialogue(dt)
     local intro = gameState.introDialogueAnimation
@@ -1734,7 +1637,6 @@ function love.update(dt)
         updateScoreIdleAnimation(dt)
         updateVictoryBellSequence(dt)
         updateDialogue(dt)  -- Update dialogue animation (in both playing and won phases)
-        updateSettingsDialogue(dt)  -- Update settings button dialogue (playing phase only)
 
         -- Stop map ambiance during combat
         if UI.Audio.isMapAmbiancePlaying() then
@@ -1850,7 +1752,6 @@ function love.draw()
         UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
         UI.Renderer.drawDialogue()  -- Draw demon dialogue at top
         UI.Renderer.drawSettingsButton()
-        UI.Renderer.drawSettingsDialogue()  -- Draw settings button dialogue
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
         if gameState.gamePhase == "won" then
