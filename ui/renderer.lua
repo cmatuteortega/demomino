@@ -1307,8 +1307,24 @@ function UI.Renderer.drawScore(score)
 
     local roundColor = UI.Colors.FONT_RED
     local time = love.timer.getTime()
-    local font = UI.Fonts.get("demonName")
+    local demonNameFont = UI.Fonts.get("demonName")
+    local formulaScoreFont = UI.Fonts.get("formulaScore")  -- For icon scaling (keep original size)
     local currentX = leftX
+
+    -- Calculate total height of name + subtitle block for vertical centering
+    local subtitle = DemonData.getSubtitle(demonName)
+    local nameHeight = demonNameFont:getHeight()
+    local subtitleHeight = 0
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        subtitleHeight = subtitleFont:getHeight()
+    end
+    local textBlockHeight = nameHeight + subtitleHeight
+
+    -- Calculate icon height and vertical offset to center text block
+    local iconHeight = formulaScoreFont:getHeight() * 1.3
+    local verticalOffset = (iconHeight - textBlockHeight) / 2
+    local nameY = leftY + verticalOffset
 
     -- Draw demon icon first (if available)
     if demonIconSprites and demonName ~= "" then
@@ -1342,11 +1358,10 @@ function UI.Renderer.drawScore(score)
 
         -- Draw the icon sprite with shadow and wave animation
         if iconSprite then
-            -- Match font height exactly, then scale up by 1.3x
-            local fontHeight = font:getHeight()
-            local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+            -- Keep original icon size: scale to formulaScore font height, then scale up by 1.3x
+            local iconFontHeight = formulaScoreFont:getHeight()
+            local iconScale = (iconFontHeight / iconSprite:getHeight()) * 1.3
             local iconWidth = iconSprite:getWidth() * iconScale
-            local iconHeight = iconSprite:getHeight() * iconScale
 
             -- Wave animation for icon (matches first character's animation)
             local phase = time * 2.5
@@ -1365,10 +1380,10 @@ function UI.Renderer.drawScore(score)
         end
     end
 
-    -- Draw demon name with wave animation (left-aligned)
+    -- Draw demon name with wave animation (vertically centered with subtitle)
     for i = 1, #demonName do
         local char = demonName:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = demonNameFont:getWidth(char)
 
         -- Wave animation: same as score digits
         local phase = time * 2.5 + (i - 1) * 0.4
@@ -1381,19 +1396,18 @@ function UI.Renderer.drawScore(score)
             shake = 0
         }
 
-        UI.Fonts.drawAnimatedText(char, currentX, leftY + waveOffset, "demonName", roundColor, "left", animProps)
+        UI.Fonts.drawAnimatedText(char, currentX, nameY + waveOffset, "demonName", roundColor, "left", animProps)
 
         currentX = currentX + charWidth
     end
 
     -- Draw demon subtitle below demon name
-    local subtitle = DemonData.getSubtitle(demonName)
     if subtitle ~= "" then
         local subtitleFont = UI.Fonts.get("large")
         local subtitleColor = UI.Colors.FONT_PINK
-        local subtitleY = leftY + font:getHeight() - UI.Layout.scale(5)
+        local subtitleY = nameY + nameHeight - UI.Layout.scale(5)
 
-        -- Calculate icon width to position subtitle after icon
+        -- Calculate icon width to position subtitle after icon (icon uses formulaScore size)
         local iconWidth = 0
         if demonIconSprites and demonName ~= "" then
             local iconSprite = nil
@@ -1416,8 +1430,8 @@ function UI.Renderer.drawScore(score)
                 iconSprite = demonIconSprites.NOT_FOUND
             end
             if iconSprite then
-                local fontHeight = font:getHeight()
-                local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                local iconFontHeight = formulaScoreFont:getHeight()
+                local iconScale = (iconFontHeight / iconSprite:getHeight()) * 1.3
                 iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
             end
         end
@@ -1447,12 +1461,11 @@ function UI.Renderer.drawScore(score)
 
     -- Draw challenge counters below demon icon
     local bigScoreFont = UI.Fonts.get("bigScore")
-    local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
     local counterFont = UI.Fonts.get("formulaScore")
 
-    -- Calculate icon dimensions and center point
-    local iconHeight = demonFont:getHeight() * 1.3  -- Icon is 1.3x demonName font height
-    local iconWidth = demonFont:getHeight() * 1.3  -- Assume square icon for centering
+    -- Calculate icon dimensions and center point (icon scaled to formulaScore size)
+    local iconHeight = formulaScoreFont:getHeight() * 1.3  -- Icon is 1.3x formulaScore font height
+    local iconWidth = formulaScoreFont:getHeight() * 1.3  -- Assume square icon for centering
     local iconCenterX = leftX + iconWidth / 2  -- Center point of icon
 
     -- Account for subtitle height when positioning counters

@@ -17,7 +17,7 @@ function UI.Fonts.load()
         title = math.max(40 * baseScale, 30), 
         score = math.max(20 * baseScale, 16),
         bigScore = math.max(96 * baseScale, 72), 
-        demonName = math.max(65 * baseScale, 50),
+        demonName = math.max(60 * baseScale, 45),
         formulaScore = math.max(72 * baseScale, 54),
         button = math.max(12 * baseScale, 10)
     }

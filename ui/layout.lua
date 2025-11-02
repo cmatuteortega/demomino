@@ -205,7 +205,12 @@ function UI.Layout.getSettingsButtonPosition()
     local handArea = UI.Layout.getHandArea()
     local buttonHeight = UI.Layout.getButtonSize()
 
-    local x = leftMargin
+    -- Center button under demon icon (like challenge counters)
+    local formulaScoreFont = UI.Fonts.get("formulaScore")
+    local iconWidth = formulaScoreFont:getHeight() * 1.3  -- Icon is 1.3x formulaScore font height
+    local iconCenterX = leftMargin + iconWidth / 2  -- Center point of icon
+
+    local x = iconCenterX - buttonSize / 2  -- Center button under icon
     local y = handArea.y + handArea.height + UI.Layout.scale(15)  -- Same vertical position as play/discard/sort buttons (bottom)
 
     return x, y, buttonSize
@@ -214,13 +219,13 @@ end
 function UI.Layout.getCoinDisplayPosition()
     local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
 
-    -- Position coin counter 20 scaled px above settings button
+    -- Position coin counter 80 scaled px above settings button
     local textX = settingsX
-    local textY = settingsY - UI.Layout.scale(60)
+    local textY = settingsY - UI.Layout.scale(65)
 
     -- Position for coin stack relative to coin counter text
     local stackX = settingsX + settingsSize / 2 + UI.Layout.scale(20)
-    local stackY = textY - UI.Layout.scale(50)
+    local stackY = textY - UI.Layout.scale(30)
 
     return textX, textY, stackX, stackY
 end
