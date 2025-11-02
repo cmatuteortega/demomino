@@ -2670,6 +2670,17 @@ function Touch.enterSelectedNode()
         end
 
         gameState.gamePhase = "tiles_menu"
+
+        -- Trigger welcome greeting dialogue
+        local greetingText = Dialogue.getRandomPhrase("tiles_menu", "greetings")
+        if greetingText then
+            Dialogue.show(greetingText, {
+                category = "greeting",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
+        end
     elseif nodeType == "alchemy" then
         -- ALCHEMY node - fusion interface
         gameState.currentTilesNodeType = "alchemy"
@@ -3624,6 +3635,17 @@ function Touch.purchaseShopPlacedTile()
         gameState.shopPlacedTiles = {}
     end)
 
+    -- Trigger purchase dialogue
+    local purchaseText = Dialogue.getRandomPhrase("tiles_menu", "purchase")
+    if purchaseText then
+        Dialogue.show(purchaseText, {
+            category = "purchase",
+            skipDelay = true,
+            requiresAction = false,
+            autoDissmissTime = 10.0
+        })
+    end
+
     -- Show success message
     local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
@@ -3744,6 +3766,17 @@ function Touch.rerollShopTiles()
 
     -- Play discard sound
     UI.Audio.playDiscardButton()
+
+    -- Trigger reroll dialogue
+    local rerollText = Dialogue.getRandomPhrase("tiles_menu", "actions")
+    if rerollText then
+        Dialogue.show(rerollText, {
+            category = "reroll",
+            skipDelay = true,
+            requiresAction = false,
+            autoDissmissTime = 10.0
+        })
+    end
 
     -- Return placed tile to hand first (if any)
     if gameState.shopPlacedTiles and #gameState.shopPlacedTiles > 0 then

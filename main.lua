@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 100  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -332,6 +332,16 @@ function love.load()
     gameState.dialogueContent.playing.score = demonDialoguePlayerScores
     gameState.dialogueContent.playing.win = demonDialoguePlayerWins
     gameState.dialogueContent.playing.witty = demonDialogueWittyRemarks
+
+    -- Initialize tile shop dialogue
+    gameState.dialogueContent.tiles_menu.greetings = {"Welcome to my shop"}
+    gameState.dialogueContent.tiles_menu.purchase = {"Enjoy it"}
+    gameState.dialogueContent.tiles_menu.idle = {
+        "Cant decide?",
+        "You should know your worth",
+        "Go watch Hereditary"
+    }
+    gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
 
     -- Start background music
     UI.Audio.playMusic()
@@ -1860,6 +1870,29 @@ function love.update(dt)
             updateFormulaCountAnimation(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
+        -- Update dialogue for shop screens
+        Dialogue.update(dt)
+
+        -- Handle idle timer for shop flavour text
+        local dialogue = gameState.dialogueAnimation
+        if not dialogue.isActive and gameState.gamePhase == "tiles_menu" then
+            dialogue.idleTimer = dialogue.idleTimer + dt
+
+            -- Trigger random idle remark after 10 seconds
+            if dialogue.idleTimer >= 10.0 then
+                local idleText = Dialogue.getRandomPhrase("tiles_menu", "idle")
+                if idleText then
+                    Dialogue.show(idleText, {
+                        category = "idle",
+                        skipDelay = false,
+                        requiresAction = false,
+                        autoDissmissTime = 10.0
+                    })
+                end
+                dialogue.idleTimer = 0
+            end
+        end
+
         -- Dampen map ambiance when inside node menus
         if UI.Audio.isMapAmbiancePlaying() then
             UI.Audio.dampenMapAmbiance()
@@ -1969,23 +2002,28 @@ function love.draw()
         end
     elseif gameState.gamePhase == "map" then
         UI.Renderer.drawMap()
+        UI.Renderer.drawDialogue()  -- Draw dialogue on map screen
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "node_confirmation" then
         UI.Renderer.drawMap()  -- Draw map background
         UI.Renderer.drawNodeConfirmation()  -- Draw confirmation dialog on top
+        UI.Renderer.drawDialogue()  -- Draw dialogue on node confirmation screen
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
+        UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "artifacts_menu" then
         UI.Renderer.drawArtifactsMenu()
+        UI.Renderer.drawDialogue()  -- Draw dialogue on artifacts shop screen
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
+        UI.Renderer.drawDialogue()  -- Draw dialogue on contracts screen
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "lost" then
