@@ -607,10 +607,7 @@ function initializeCombatRound()
         gameState.tutorialState.dismissAnimating = false
         gameState.tutorialState.dismissAnimTimer = 0
         gameState.tutorialState.pendingMessage = nil
-
-        -- Show first message: "Try to score 666 points"
-        showTutorialMessage("Try to score " .. gameState.targetScore .. " points")
-        gameState.tutorialState.message1Shown = true
+        gameState.tutorialState.needsFirstMessage = true  -- Flag to show after first draw
     end
 
     -- Keep currentRound, targetScore, currentMap, tileCollection, and ownedTools unchanged
@@ -1994,6 +1991,14 @@ function love.draw()
         UI.Renderer.drawCoinSprites()  -- Draw coin sprites first
         UI.Renderer.drawCoinText()  -- Draw coin text on top
         UI.Renderer.drawVictoryPhrase()  -- Draw victory phrase in center
+
+        -- Show first tutorial message after UI is rendered (so margins are calculated correctly)
+        if gameState.tutorialState and gameState.tutorialState.needsFirstMessage then
+            showTutorialMessage("Try to score " .. gameState.targetScore .. " points")
+            gameState.tutorialState.message1Shown = true
+            gameState.tutorialState.needsFirstMessage = false
+        end
+
         UI.Renderer.drawDialogue()  -- Draw demon dialogue at top (includes tutorial when enabled)
         UI.Renderer.drawSettingsButton()
         UI.Renderer.drawSettingsMenu()
