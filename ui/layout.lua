@@ -286,39 +286,31 @@ function UI.Layout.getToolButtonPosition(index, total)
     return startX, y, buttonWidth, buttonHeight
 end
 
--- Get the base position for tool sprite stack (to the right of hand tiles)
+-- Get the base position for tool sprite stack (mirrored from settings button position on right side)
 function UI.Layout.getToolStackPosition()
     local screen = gameState.screen
 
-    -- Get coin stack position for Y reference (we want same Y level as bottom of coin stack)
+    -- Get settings button position for mirroring
+    local settingsX, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
+
+    -- Mirror the settings button X position to the right side
+    -- Settings button is at leftMargin (60) from left edge, centered
+    local leftMargin = UI.Layout.scale(120)
+    local settingsCenterX = settingsX + settingsSize / 2
+
+    -- Calculate mirrored X position from right edge (same offset as settings button from left)
+    local rightMargin = leftMargin
+    local x = screen.width - rightMargin
+
+    -- Get coin stack position for Y reference
     local _, _, coinStackX, coinStackY = UI.Layout.getCoinDisplayPosition()
-
-    -- Calculate where the hand tiles end
-    local minScale = math.min(screen.width / 800, screen.height / 600)
-    -- Tool sprites use smaller scale than domino tiles (1.5x)
-    local spriteScale = minScale * 1.75
-
-    -- Get sprite width for calculation
-    local sampleSpriteData = dominoSprites and dominoSprites["00"]
-    local spriteWidth
-    if sampleSpriteData and sampleSpriteData.sprite then
-        spriteWidth = sampleSpriteData.sprite:getWidth() * spriteScale
-    else
-        spriteWidth = UI.Layout.scale(60)
-    end
-
-    -- Use MAXIMUM hand size (7 tiles) for fixed X position
-    -- This ensures tool stack doesn't move when hand size changes
-    local maxHandSize = 7
-    local totalHandWidth = maxHandSize * spriteWidth
-    local handEndX = (screen.width + totalHandWidth) / 2
-
-    -- Position halfway between max hand end and right screen edge
-    -- This position remains constant regardless of current hand size
-    local x = handEndX + (screen.width - handEndX) / 2 + UI.Layout.scale(30)  -- +30px right adjustment
 
     -- Use same Y as coin stack (bottom of coin stack) with upward offset
     local y = coinStackY - UI.Layout.scale(20)  -- -40px upward adjustment
+
+    -- Calculate scale for tool sprites
+    local minScale = math.min(screen.width / 800, screen.height / 600)
+    local spriteScale = minScale * 1.75
 
     return x, y, spriteScale
 end
