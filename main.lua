@@ -140,6 +140,15 @@ function love.load()
         tilesMenuMode = "shop",  -- "shop" or "fusion"
         fusionHand = {},  -- 7-tile hand for fusion mode
         fusionSlotTiles = {},  -- {tile1, tile2} - actual tiles in fusion slots
+        fusionDialogueState = {  -- Track fusion dialogue triggers
+            enteredScreen = false,
+            shownDragPrompt = false,
+            shownTapPrompt = false,
+            shownDoubleTapPrompt = false,
+            shownFusionPrompt = false,
+            idleTimer = 0,
+            idleTriggerTime = 8.0  -- Show idle dialogue after 8s
+        },
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
         challengeStates = {},  -- State data for each challenge
@@ -1604,6 +1613,54 @@ function updateDialogue(dt)
     Dialogue.update(dt)
 end
 
+-- Fusion dialogue system - shows context-specific messages during fusion
+function updateFusionDialogue(dt)
+    local fusionState = gameState.fusionDialogueState
+    local dialogue = gameState.dialogueAnimation
+
+    -- Only run during fusion menu
+    if gameState.gamePhase ~= "tiles_menu" or gameState.currentTilesNodeType ~= "alchemy" then
+        return
+    end
+
+    -- 1. Show initial drag prompt 1s after entering screen
+    if not fusionState.enteredScreen then
+        fusionState.idleTimer = fusionState.idleTimer + dt
+        if fusionState.idleTimer >= 1.0 and not dialogue.isActive then
+            Dialogue.show("Drag tiles to fuse them", {
+                category = "fusion",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
+            fusionState.enteredScreen = true
+            fusionState.idleTimer = 0
+        end
+        return
+    end
+
+    -- Increment idle timer when no dialogue is active
+    if not dialogue.isActive then
+        fusionState.idleTimer = fusionState.idleTimer + dt
+
+        -- BONUS: Show random idle messages after idle time
+        if fusionState.idleTimer >= fusionState.idleTriggerTime then
+            local idleMessages = {"Welcome to sin", "Make a choice", "Lust is a must"}
+            local msg = idleMessages[love.math.random(1, #idleMessages)]
+            Dialogue.show(msg, {
+                category = "fusion_idle",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
+            fusionState.idleTimer = 0
+        end
+    end
+
+    -- Use centralized dialogue update for animation logic
+    Dialogue.update(dt)
+end
+
 
 function updateIntroDialogue(dt)
     local intro = gameState.introDialogueAnimation
@@ -1868,26 +1925,31 @@ function love.update(dt)
             updateFormulaCountAnimation(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
-        -- Update dialogue for shop screens
-        Dialogue.update(dt)
+        -- Handle fusion-specific dialogue when in alchemy mode
+        if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+            updateFusionDialogue(dt)
+        else
+            -- Update dialogue for regular shop screens
+            Dialogue.update(dt)
 
-        -- Handle idle timer for shop flavour text
-        local dialogue = gameState.dialogueAnimation
-        if not dialogue.isActive and gameState.gamePhase == "tiles_menu" then
-            dialogue.idleTimer = dialogue.idleTimer + dt
+            -- Handle idle timer for shop flavour text
+            local dialogue = gameState.dialogueAnimation
+            if not dialogue.isActive and gameState.gamePhase == "tiles_menu" then
+                dialogue.idleTimer = dialogue.idleTimer + dt
 
-            -- Trigger random idle remark after 10 seconds
-            if dialogue.idleTimer >= 10.0 then
-                local idleText = Dialogue.getRandomPhrase("tiles_menu", "idle")
-                if idleText then
-                    Dialogue.show(idleText, {
-                        category = "idle",
-                        skipDelay = false,
-                        requiresAction = false,
-                        autoDissmissTime = 10.0
-                    })
+                -- Trigger random idle remark after 10 seconds
+                if dialogue.idleTimer >= 10.0 then
+                    local idleText = Dialogue.getRandomPhrase("tiles_menu", "idle")
+                    if idleText then
+                        Dialogue.show(idleText, {
+                            category = "idle",
+                            skipDelay = false,
+                            requiresAction = false,
+                            autoDissmissTime = 10.0
+                        })
+                    end
+                    dialogue.idleTimer = 0
                 end
-                dialogue.idleTimer = 0
             end
         end
 

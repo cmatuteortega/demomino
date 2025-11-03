@@ -1473,6 +1473,18 @@ function Touch.released(x, y, istouch, touchId)
 
             -- Position tile at its fixed fusion slot position
             Touch.positionTileInFusionSlot(tile, slotIndex)
+
+            -- Trigger dialogue: "Tap the tiles to try combinations" (after 2 tiles placed)
+            if #gameState.fusionSlotTiles == 2 and not gameState.fusionDialogueState.shownTapPrompt then
+                gameState.fusionDialogueState.shownTapPrompt = true
+                gameState.fusionDialogueState.idleTimer = 0  -- Reset idle timer
+                Dialogue.show("Tap the tiles to try combinations", {
+                    category = "fusion",
+                    skipDelay = true,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
         else
             -- Just a tap - play punch animation only (like main game)
             -- Players must DRAG to add tiles to fusion board
@@ -2909,6 +2921,17 @@ function Touch.initializeFusionHand()
 
     -- Clear fusion state
     gameState.fusionSlotTiles = {}
+
+    -- Reset fusion dialogue state
+    gameState.fusionDialogueState = {
+        enteredScreen = false,
+        shownDragPrompt = false,
+        shownTapPrompt = false,
+        shownDoubleTapPrompt = false,
+        shownFusionPrompt = false,
+        idleTimer = 0,
+        idleTriggerTime = 8.0
+    }
 end
 
 -- Handle clicks on fusion slot tiles (flip or double-tap to return)
@@ -2975,6 +2998,18 @@ function Touch.handleFusionSlotClick(slotIndex)
         -- Track this tap for potential double-tap
         touchState.lastTappedFusionSlot = slotIndex
         touchState.lastTapTime = currentTime
+
+        -- Trigger dialogue: "Double tap to return tile to hand" (first time flipping)
+        if not gameState.fusionDialogueState.shownDoubleTapPrompt then
+            gameState.fusionDialogueState.shownDoubleTapPrompt = true
+            gameState.fusionDialogueState.idleTimer = 0  -- Reset idle timer
+            Dialogue.show("Double tap to return tile to hand", {
+                category = "fusion",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
+        end
     end
 end
 
@@ -3075,6 +3110,19 @@ function Touch.confirmFusion()
         bounce = true,
         easing = "easeOutBack"
     })
+
+    -- Trigger dialogue: "What an abomination" (after fusion)
+    if not gameState.fusionDialogueState.shownFusionPrompt then
+        gameState.fusionDialogueState.shownFusionPrompt = true
+        gameState.fusionDialogueState.idleTimer = 0  -- Reset idle timer
+        Dialogue.show("What an abomination", {
+            category = "fusion",
+            skipDelay = false,
+            delayDuration = 1.5,  -- Delay slightly to let animation play
+            requiresAction = false,
+            autoDissmissTime = 10.0
+        })
+    end
 
     -- Clear fusion state
     gameState.fusionSlotButtons = {}
