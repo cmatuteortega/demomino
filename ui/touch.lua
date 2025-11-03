@@ -1204,6 +1204,13 @@ function Touch.released(x, y, istouch, touchId)
                 return
             end
 
+            -- Handle REROLL button
+            if gameState.fusionRerollButton and isPointInRect(x, y, gameState.fusionRerollButton) and gameState.fusionRerollButton.enabled then
+                Touch.rerollFusionHand()
+                touchState.isPressed = false
+                return
+            end
+
             -- Handle NEXT> button release for fusion mode
             if touchState.fusionNextButtonPressed and gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
                 -- Play release sound
@@ -2721,6 +2728,16 @@ function Touch.enterSelectedNode()
         -- Initialize fusion hand using the existing function
         Touch.initializeFusionHand()
 
+        -- Always reset button animations when entering fusion (ensures visibility on every visit)
+        gameState.buttonAnimations = {
+            playButton = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+
+        -- Animate tiles drawing in from right (like combat screen)
+        Hand.animateTilesDraw(gameState.fusionHand, 0)
+
         gameState.gamePhase = "tiles_menu"
     elseif nodeType == "tiles" then
         -- Legacy "tiles" node type - default to trade for backward compatibility
@@ -2900,24 +2917,22 @@ end
 -- Initialize fusion hand by drawing 7 tiles from deck
 function Touch.initializeFusionHand()
     -- Always re-draw fusion hand when entering fusion mode
-    -- First, return any existing fusion hand tiles back to deck
-    if gameState.fusionHand and #gameState.fusionHand > 0 then
-        for i = #gameState.fusionHand, 1, -1 do
-            local tile = table.remove(gameState.fusionHand, i)
-            table.insert(gameState.deck, 1, tile)
-        end
-    end
+    -- Discard any existing fusion hand tiles (don't return to deck)
+    gameState.fusionHand = {}
 
-    -- Return any tiles from fusion slots back to deck
-    if gameState.fusionSlotTiles and #gameState.fusionSlotTiles > 0 then
-        for i = #gameState.fusionSlotTiles, 1, -1 do
-            local tile = table.remove(gameState.fusionSlotTiles, i)
-            table.insert(gameState.deck, 1, tile)
-        end
-    end
+    -- Discard any tiles from fusion slots (don't return to deck)
+    gameState.fusionSlotTiles = {}
+
+    -- Refresh deck from collection (like we do after fusion)
+    -- This ensures we start with a clean deck based on current collection
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
 
     -- Draw fresh 7 tiles from deck
     gameState.fusionHand = Hand.drawTiles(gameState.deck, 7)
+
+    -- Note: Hand.drawTiles() already removes tiles from deck via table.remove(),
+    -- so the 7 drawn tiles are no longer in the deck pool for rerolling
 
     -- Clear fusion state
     gameState.fusionSlotTiles = {}
@@ -3095,6 +3110,17 @@ function Touch.confirmFusion()
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
 
+    -- Remove tiles currently in fusion hand from deck (so they can't be drawn during reroll)
+    for i = #gameState.deck, 1, -1 do
+        local deckTile = gameState.deck[i]
+        for _, handTile in ipairs(gameState.fusionHand) do
+            if deckTile.left == handTile.left and deckTile.right == handTile.right then
+                table.remove(gameState.deck, i)
+                break
+            end
+        end
+    end
+
     -- Show success animation
     local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
@@ -3127,6 +3153,40 @@ function Touch.confirmFusion()
     -- Clear fusion state
     gameState.fusionSlotButtons = {}
     touchState.lastTappedFusionSlot = nil
+end
+
+--- Reroll fusion hand (costs 1 coin)
+function Touch.rerollFusionHand()
+    -- Validate
+    if gameState.coins < 1 then
+        return
+    end
+
+    -- Check if deck has enough tiles (need at least 7 remaining in deck)
+    if #gameState.deck < 7 then
+        return
+    end
+
+    -- Deduct coin
+    updateCoins(gameState.coins - 1, {hasBonus = false})
+
+    -- Play button release sound
+    UI.Audio.playButtonRelease()
+
+    -- Animate all tiles discarding (falling down off screen)
+    Hand.animateAllHandDiscard(gameState.fusionHand, function()
+        -- Discard old tiles permanently (do NOT return to deck)
+        gameState.fusionHand = {}
+
+        -- Clear fusion slots (tiles discarded permanently)
+        gameState.fusionSlotTiles = {}
+
+        -- Draw 7 new tiles from remaining deck pool
+        gameState.fusionHand = Hand.drawTiles(gameState.deck, 7)
+
+        -- Animate new tiles drawing in from right
+        Hand.animateTilesDraw(gameState.fusionHand, 0)
+    end)
 end
 
 -- Sort hand tiles with satisfying arc animation

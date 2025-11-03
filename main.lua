@@ -1961,10 +1961,12 @@ function love.update(dt)
         if gameState.gamePhase == "tiles_menu" then
             local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
             if isFusionMode then
-                -- Update fusion hand using regular Hand.update logic
+                -- Update fusion hand with all animations (like combat/shop hand)
                 if gameState.fusionHand then
                     Hand.updatePositions(gameState.fusionHand)
-                    Hand.updateIdleAnimations(gameState.fusionHand, dt)
+                    Hand.updateDrawAnimations(gameState.fusionHand, dt)  -- Draw animation (tiles sliding in from right)
+                    Hand.updateDiscardAnimations(gameState.fusionHand, dt)  -- Discard animation (tiles falling down)
+                    Hand.updateIdleAnimations(gameState.fusionHand, dt)  -- Idle floating/rotation
                 end
             else
                 -- Update shop hand tiles with all animations (like combat hand)

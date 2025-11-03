@@ -2564,43 +2564,6 @@ function UI.Renderer.drawDialogue()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
-    -- DEBUG: Draw boundary lines and info (TOGGLED OFF)
-    local showDebug = false  -- Set to true to enable debug visualization
-    if showDebug and dialogue.leftBoundary and dialogue.rightBoundary then
-        love.graphics.setColor(1, 0, 0, 0.5)  -- Red, semi-transparent
-        love.graphics.setLineWidth(2)
-        -- Left boundary line
-        love.graphics.line(dialogue.leftBoundary, 0, dialogue.leftBoundary, screenHeight)
-        -- Right boundary line
-        love.graphics.line(dialogue.rightBoundary, 0, dialogue.rightBoundary, screenHeight)
-        -- Center line (green)
-        if dialogue.centerX then
-            love.graphics.setColor(0, 1, 0, 0.5)  -- Green, semi-transparent
-            love.graphics.line(dialogue.centerX, 0, dialogue.centerX, screenHeight)
-        end
-        love.graphics.setLineWidth(1)
-
-        -- Draw debug text at bottom of screen
-        local debugFont = love.graphics.getFont()
-        local debugText = string.format("Phase: %s | L: %.0f | R: %.0f | C: %.0f | W: %.0f",
-            dialogue.currentPhase or "nil",
-            dialogue.leftBoundary,
-            dialogue.rightBoundary,
-            dialogue.centerX or 0,
-            dialogue.rightBoundary - dialogue.leftBoundary)
-
-        -- Add fallback warning if used
-        if dialogue.debugFallback then
-            debugText = debugText .. "\nFALLBACK! " .. (dialogue.debugReason or "unknown")
-            love.graphics.setColor(1, 0, 0, 1)  -- Red warning
-        else
-            love.graphics.setColor(1, 1, 0, 1)  -- Yellow
-        end
-
-        love.graphics.print(debugText, 10, screenHeight - 50)
-
-        love.graphics.setColor(1, 1, 1, 1)
-    end
 
     -- Use "large" font with color based on press state
     local font = UI.Fonts.get("large")
@@ -4689,6 +4652,14 @@ function UI.Renderer.drawFusionMode()
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
 
+    -- Draw full background (dark + lighter hand area)
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
     -- Draw node title and demon name in top corners
     local rightX = screenWidth - UI.Layout.scale(40)
     local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
@@ -4813,10 +4784,6 @@ function UI.Renderer.drawFusionMode()
         end
     end
 
-    -- Draw instructions
-    local instructionColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText("Select 2 tiles from your hand to fuse", centerX, UI.Layout.scale(120), "medium", instructionColor, "center")
-
     -- Draw fusion area (shows selected tiles and result)
     UI.Renderer.drawFusionArea()
 
@@ -4825,8 +4792,30 @@ function UI.Renderer.drawFusionMode()
         UI.Renderer.drawHand(gameState.fusionHand)
     end
 
+    -- Draw coin display (sprites and text)
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+
+    -- Draw tiles remaining counter (bottom-right corner)
+    local tilesLeft = #gameState.deck
+    local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
+    local tilesText = "Tiles: " .. tilesLeft .. "/" .. totalTiles
+    local tilesColor = UI.Colors.FONT_WHITE
+
+    local margin = UI.Layout.scale(40)
+    local bottomRightX = screenWidth - margin
+    local bottomRightY = screenHeight - margin
+
+    UI.Fonts.drawAnimatedText(tilesText, bottomRightX, bottomRightY, "large", tilesColor, "right", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3)
+    })
+
     -- Draw FUSE button
     UI.Renderer.drawFuseButton()
+
+    -- Draw REROLL button
+    UI.Renderer.drawFusionRerollButton()
 
     -- Draw NEXT> button
     UI.Renderer.drawFusionNextButton()
@@ -4841,14 +4830,8 @@ function UI.Renderer.drawFusionArea()
     local areaY = UI.Layout.scale(170)
     local areaHeight = UI.Layout.scale(200)
 
-    -- Draw section background
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", 0, areaY, screenWidth, areaHeight)
-
     -- Only draw if we have tiles in fusion slots
     if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles == 0 then
-        local instructionColor = UI.Colors.FONT_WHITE
-        UI.Fonts.drawText("Drag tiles from your hand to fuse", centerX, areaY + areaHeight/2, "medium", instructionColor, "center")
         return
     end
 
@@ -4935,10 +4918,6 @@ function UI.Renderer.drawFusionArea()
         -- Draw result tile (vertical)
         UI.Renderer.drawFusionResult(resultX, centerY, verticalWidth, verticalHeight)
     end
-
-    -- Draw instruction text at top of area
-    local instructionColor = UI.Colors.FONT_WHITE
-    UI.Fonts.drawText("Click tile: Flip   Click again: Deselect", centerX, areaY + UI.Layout.scale(15), "small", instructionColor, "center")
 end
 
 
@@ -4963,42 +4942,77 @@ end
 function UI.Renderer.drawFuseButton()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local centerX = screenWidth / 2
 
-    local buttonWidth = UI.Layout.scale(150)
-    local buttonHeight = UI.Layout.scale(50)
-    local buttonX = centerX - buttonWidth/2
-    local buttonY = screenHeight - UI.Layout.scale(80)  -- Lower to match BUY button position
+    -- Use standard layout positioning (same as shop PURCHASE button)
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale = buttonAnim and buttonAnim.scale or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
 
     local hasEnoughTiles = gameState.fusionSlotTiles and #gameState.fusionSlotTiles == 2
-    local canAfford = gameState.coins >= 1
+    local fuseCost = 1
+    local canAfford = gameState.coins >= fuseCost
     local canFuse = hasEnoughTiles and canAfford
 
     -- Button background
-    if canFuse then
-        UI.Colors.setFontPink()
-    else
-        UI.Colors.setBackground()
-    end
-    love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    local buttonColor = canFuse and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
 
     -- Button border
     UI.Colors.setOutline()
-    love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
 
     -- Button text
-    local buttonText = "FUSE (1$)"
-    if not hasEnoughTiles then
-        buttonText = "SELECT 2 TILES"
-    elseif not canAfford then
+    local textColor = canFuse and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = hasEnoughTiles and ("FUSE (" .. fuseCost .. "$)") or "SELECT 2 TILES"
+    if hasEnoughTiles and not canAfford then
         buttonText = "NOT ENOUGH $"
     end
-
-    local textColor = canFuse and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(buttonText, centerX, buttonY + buttonHeight/2, "button", textColor, "center")
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center")
 
     -- Store button bounds
-    gameState.fuseButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = canFuse}
+    gameState.fuseButton = {x = playX, y = playY + yOffset, width = buttonWidth * scale, height = buttonHeight * scale, enabled = canFuse}
+end
+
+-- Draw REROLL button for fusion mode
+function UI.Renderer.drawFusionRerollButton()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Use standard layout positioning (same as shop REROLL button)
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+
+    local discardAnim = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local discardScale = discardAnim and discardAnim.scale or 1.0
+    local discardYOffset = discardAnim and discardAnim.yOffset or 0
+
+    local rerollCost = 1
+    local hasEnoughCoins = gameState.coins >= rerollCost
+    local hasEnoughTiles = gameState.deck and #gameState.deck >= 7
+    local canReroll = hasEnoughCoins and hasEnoughTiles
+
+    local discardButtonColor = canReroll and UI.Colors.BACKGROUND_LIGHT or {UI.Colors.BACKGROUND_LIGHT[1] * 0.5, UI.Colors.BACKGROUND_LIGHT[2] * 0.5, UI.Colors.BACKGROUND_LIGHT[3] * 0.5, 0.5}
+    love.graphics.setColor(discardButtonColor)
+    love.graphics.rectangle("fill", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    local discardTextColor = canReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = "REROLL (" .. rerollCost .. "$)"
+    if not hasEnoughTiles then
+        buttonText = "NO TILES LEFT"
+    elseif not hasEnoughCoins then
+        buttonText = "NOT ENOUGH $"
+    end
+    UI.Fonts.drawText(buttonText, discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOffset, "button", discardTextColor, "center")
+
+    -- Store button bounds
+    gameState.fusionRerollButton = {x = discardX, y = discardY + discardYOffset, width = buttonWidth * discardScale, height = buttonHeight * discardScale, enabled = canReroll}
 end
 
 -- Draw settled dice on the board (persistent after tool use)
