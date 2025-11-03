@@ -1187,7 +1187,8 @@ function Touch.released(x, y, istouch, touchId)
             -- Clicking hand tiles has no effect (like main game)
 
             -- Handle fusion slot clicks (flip or deselect)
-            if gameState.fusionSlotButtons then
+            -- Only register clicks if we didn't drag a tile from hand
+            if gameState.fusionSlotButtons and not (touchState.draggedTile and touchState.draggedFrom == "fusionHand") then
                 for slotIndex, button in ipairs(gameState.fusionSlotButtons) do
                     if isPointInRect(x, y, button) then
                         Touch.handleFusionSlotClick(slotIndex)
@@ -1452,45 +1453,40 @@ function Touch.released(x, y, istouch, touchId)
 
     if touchState.draggedTile and touchState.draggedFrom == "fusionHand" then
         if Touch.isDragging() then
-            -- Dragged - add to fusion selection and remove from hand
             local tile = touchState.draggedTile
 
-            -- Add tile to fusion slots (max 2)
+            -- Initialize fusion slot tiles if needed
             if not gameState.fusionSlotTiles then
                 gameState.fusionSlotTiles = {}
             end
 
-            local slotIndex
-            if #gameState.fusionSlotTiles < 2 then
+            -- Check if dropped in fusion area AND there's room for the tile (max 2)
+            if Touch.isInFusionArea(x, y) and #gameState.fusionSlotTiles < 2 then
                 -- Add to next available slot
                 table.insert(gameState.fusionSlotTiles, tile)
-                slotIndex = #gameState.fusionSlotTiles
+                local slotIndex = #gameState.fusionSlotTiles
+
+                -- Remove tile from fusion hand
+                table.remove(gameState.fusionHand, touchState.draggedIndex)
+                Hand.updatePositions(gameState.fusionHand)
+
+                -- Position tile at its fixed fusion slot position
+                Touch.positionTileInFusionSlot(tile, slotIndex)
+
+                -- Trigger dialogue: "Tap the tiles to try combinations" (after 2 tiles placed)
+                if #gameState.fusionSlotTiles == 2 and not gameState.fusionDialogueState.shownTapPrompt then
+                    gameState.fusionDialogueState.shownTapPrompt = true
+                    gameState.fusionDialogueState.idleTimer = 0  -- Reset idle timer
+                    Dialogue.show("Tap the tiles to try combinations", {
+                        category = "fusion",
+                        skipDelay = true,
+                        requiresAction = false,
+                        autoDissmissTime = 10.0
+                    })
+                end
             else
-                -- Replace first tile if 2 already selected
-                -- Return first tile back to hand
-                local returnedTile = gameState.fusionSlotTiles[1]
-                table.insert(gameState.fusionHand, returnedTile)
-                gameState.fusionSlotTiles[1] = tile
-                slotIndex = 1
-            end
-
-            -- Remove tile from fusion hand
-            table.remove(gameState.fusionHand, touchState.draggedIndex)
-            Hand.updatePositions(gameState.fusionHand)
-
-            -- Position tile at its fixed fusion slot position
-            Touch.positionTileInFusionSlot(tile, slotIndex)
-
-            -- Trigger dialogue: "Tap the tiles to try combinations" (after 2 tiles placed)
-            if #gameState.fusionSlotTiles == 2 and not gameState.fusionDialogueState.shownTapPrompt then
-                gameState.fusionDialogueState.shownTapPrompt = true
-                gameState.fusionDialogueState.idleTimer = 0  -- Reset idle timer
-                Dialogue.show("Tap the tiles to try combinations", {
-                    category = "fusion",
-                    skipDelay = true,
-                    requiresAction = false,
-                    autoDissmissTime = 10.0
-                })
+                -- Dropped outside fusion area OR already 2 tiles - animate back to hand
+                Touch.animateTileToHand(tile, touchState.draggedIndex, gameState.fusionHand)
             end
         else
             -- Just a tap - play punch animation only (like main game)
@@ -1884,6 +1880,11 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                     -- Not hovering over hand
                     touchState.hoverInsertIndex = nil
                 end
+            -- Handle fusion hand dragging - set drag state when threshold exceeded
+            elseif touchState.draggedFrom == "fusionHand" and Touch.isDragging() and not touchState.draggedTile.isDragging then
+                touchState.draggedTile.isDragging = true
+                touchState.draggedTile.dragScale = 1.08
+                touchState.draggedTile.dragOpacity = 0.95
             end
         end
 

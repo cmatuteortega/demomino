@@ -1909,10 +1909,11 @@ function UI.Renderer.drawCoinText()
     local coinTextWidth = coinFont:getWidth(text)
 
     -- Draw coin breakdown to the right of money counter (vertical list)
-    -- Skip breakdown in shop menu and artifacts menu (only show in combat)
+    -- Skip breakdown in shop menu, artifacts menu, and fusion menu (only show in combat)
     local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
     local isArtifactsMenu = gameState.gamePhase == "artifacts_menu"
-    if not isShopMode and not isArtifactsMenu and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
+    local isFusionMode = gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy"
+    if not isShopMode and not isArtifactsMenu and not isFusionMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
         local lineHeight = font:getHeight() + UI.Layout.scale(5)
         -- Position breakdown to the right of coin counter text, with spacing
@@ -5048,6 +5049,45 @@ function UI.Renderer.drawActiveDieSprites()
             love.graphics.draw(sprite, 0, 0, 0, die.scale, die.scale, sprite:getWidth() / 2, sprite:getHeight() / 2)
             love.graphics.pop()
         end
+    end
+end
+
+--- DEBUG: Draw fusion drag state information
+function UI.Renderer.drawFusionDebugInfo()
+    local Touch = require("ui.touch")
+    local touchState = Touch.getTouchState()
+
+    if not touchState then return end
+
+    local debugY = UI.Layout.scale(120)
+    local debugX = UI.Layout.scale(20)
+    local lineHeight = UI.Layout.scale(20)
+
+    -- Draw debug info for dragged tile
+    if touchState.draggedTile then
+        local tile = touchState.draggedTile
+        local info = string.format("DRAG STATE:")
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+        debugY = debugY + lineHeight
+
+        info = string.format("From: %s", touchState.draggedFrom or "nil")
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+        debugY = debugY + lineHeight
+
+        info = string.format("isDragging: %s", tostring(tile.isDragging))
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+        debugY = debugY + lineHeight
+
+        info = string.format("Touch.isDragging(): %s", tostring(Touch.isDragging()))
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+        debugY = debugY + lineHeight
+
+        info = string.format("dragScale: %.2f", tile.dragScale or 1.0)
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
+        debugY = debugY + lineHeight
+
+        info = string.format("Slots filled: %d/2", gameState.fusionSlotTiles and #gameState.fusionSlotTiles or 0)
+        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
     end
 end
 
