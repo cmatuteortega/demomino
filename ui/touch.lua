@@ -192,8 +192,9 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
-    -- Handle dialogue press (only in upper third of screen when dialogue is waiting)
-    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
+    -- Handle dialogue press (in upper third of screen during typing or waiting)
+    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and
+       (gameState.dialogueAnimation.phase == "waiting" or gameState.dialogueAnimation.phase == "typing") then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
 
@@ -759,9 +760,10 @@ function Touch.released(x, y, istouch, touchId)
         touchState.touchId = nil
     end
 
-    -- Handle dialogue release (only in upper third of screen) - DISMISS dialogue
-    -- Only if NOT dragging tiles or tools AND dialogue was pressed
-    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and gameState.dialogueAnimation.phase == "waiting" then
+    -- Handle dialogue release (only in upper third of screen)
+    -- Instantly complete typing OR dismiss dialogue
+    if gameState.dialogueAnimation and gameState.dialogueAnimation.isActive and
+       (gameState.dialogueAnimation.phase == "waiting" or gameState.dialogueAnimation.phase == "typing") then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
 
@@ -770,18 +772,27 @@ function Touch.released(x, y, istouch, touchId)
         local isDraggingTool = touchState.draggedTool ~= nil
         local isTutorial = gameState.currentRound == 1 and gameState.tutorialEnabled
 
-        -- Only dismiss if released in upper third AND dialogue was pressed AND not dragging
+        -- Only act if released in upper third AND dialogue was pressed AND not dragging
         if y <= upperThirdHeight and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
-            -- For tutorial, use special dismiss function
-            if isTutorial then
-                dismissTutorialDialogue()
-            else
-                -- Regular combat dialogue: trigger pink flash animation
-                UI.Audio.playDismissDialogue()
-                gameState.dialogueAnimation.phase = "dismissing"
-                gameState.dialogueAnimation.dismissTimer = 0
-                gameState.dialogueAnimation.idleTimer = 0
-                -- Keep isPressed = true to show pink/asterisk during animation
+            if gameState.dialogueAnimation.phase == "typing" then
+                -- Skip to end of typing animation - show full message instantly
+                gameState.dialogueAnimation.currentCharIndex = #gameState.dialogueAnimation.text
+                gameState.dialogueAnimation.phase = "waiting"
+                gameState.dialogueAnimation.showPrompt = true
+                gameState.dialogueAnimation.waitingTimer = 0
+                gameState.dialogueAnimation.isPressed = false  -- Reset pressed state to show white/~
+            elseif gameState.dialogueAnimation.phase == "waiting" then
+                -- For tutorial, use special dismiss function
+                if isTutorial then
+                    dismissTutorialDialogue()
+                else
+                    -- Regular combat dialogue: trigger pink flash animation
+                    UI.Audio.playDismissDialogue()
+                    gameState.dialogueAnimation.phase = "dismissing"
+                    gameState.dialogueAnimation.dismissTimer = 0
+                    gameState.dialogueAnimation.idleTimer = 0
+                    -- Keep isPressed = true to show pink/asterisk during animation
+                end
             end
 
             touchState.isPressed = false
