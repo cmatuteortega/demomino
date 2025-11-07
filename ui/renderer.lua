@@ -5091,4 +5091,65 @@ function UI.Renderer.drawFusionDebugInfo()
     end
 end
 
+function UI.Renderer.drawCombatCandles()
+    -- Only draw during combat phase
+    if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
+        return
+    end
+
+    -- Check if candle sprites are loaded
+    if not candleSprites or #candleSprites == 0 then
+        return
+    end
+
+    -- Get screen dimensions
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    -- Position candles at 25% from each vertical border, in the hand tile area
+    local handAreaY = screenHeight * 0.7  -- Hand area is in bottom portion
+    local leftCandleX = screenWidth * 0.25
+    local rightCandleX = screenWidth * 0.75
+
+    -- Use first candle sprite
+    local candleSprite = candleSprites[1]
+    local spriteWidth = candleSprite:getWidth()
+    local spriteHeight = candleSprite:getHeight()
+
+    -- Scale up candles (4x scale for visibility, was 2x)
+    local scale = 4.0
+
+    -- Move candles 20 scaled pixels closer to screen edges
+    local edgeOffset = 1 * scale
+    leftCandleX = leftCandleX - edgeOffset
+    rightCandleX = rightCandleX + edgeOffset
+
+    -- Draw left candle
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(
+        candleSprite,
+        leftCandleX,
+        handAreaY,
+        0,  -- rotation
+        scale,
+        scale,
+        spriteWidth / 2,  -- origin X (center)
+        spriteHeight / 2   -- origin Y (center)
+    )
+
+    -- Draw right candle
+    love.graphics.draw(
+        candleSprite,
+        rightCandleX,
+        handAreaY,
+        0,  -- rotation
+        scale,
+        scale,
+        spriteWidth / 2,  -- origin X (center)
+        spriteHeight / 2   -- origin Y (center)
+    )
+
+    love.graphics.setColor(1, 1, 1, 1)  -- Reset color
+end
+
 return UI.Renderer

@@ -2044,6 +2044,7 @@ function love.draw()
         UI.Renderer.drawRoundIntro()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
+        UI.Renderer.drawCombatCandles()  -- Draw candles in hand area
         UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Animation.drawDiePhysics()  -- Draw flying/settling dice
