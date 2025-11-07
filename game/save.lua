@@ -28,6 +28,10 @@ function Save.saveGame(gameState)
         -- Tools/Artifacts (player's owned tools)
         ownedTools = gameState.ownedTools or {},
 
+        -- Contracts (player's active contracts)
+        activeContracts = gameState.activeContracts or {},
+        offeredContracts = gameState.offeredContracts or {},
+
         -- Map state
         mapData = nil,
         isBossRound = gameState.isBossRound or false,

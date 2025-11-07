@@ -469,6 +469,10 @@ function UI.TitleScreen.continueGame()
     -- Restore owned tools
     gameState.ownedTools = saveData.ownedTools or {}
 
+    -- Restore contracts
+    gameState.activeContracts = saveData.activeContracts or {}
+    gameState.offeredContracts = saveData.offeredContracts or {}
+
     -- Restore tile collection
     gameState.tileCollection = {}
     if saveData.tileCollection then

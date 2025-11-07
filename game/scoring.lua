@@ -47,10 +47,13 @@ function Scoring.getScoreBreakdown(tiles)
         return {
             baseValue = 0,
             multiplier = 1,
-            total = 0
+            total = 0,
+            contractTilePipBonus = 0,
+            contractBaseBonus = 0,
+            contractMultBonus = 0
         }
     end
-    
+
     -- Calculate base value (sum of all tile values + 10 per double)
     local tileValues = 0
     local doubleCount = 0
@@ -69,16 +72,39 @@ function Scoring.getScoreBreakdown(tiles)
 
     local baseValue = tileValues + (doubleCount * 10)
 
-    -- Calculate multiplier (number of tiles on board + 1 per obsidian tile)
-    local multiplier = #tiles + obsidianCount
+    -- Apply contract bonuses (only if gameState exists and has activeContracts)
+    local contractBaseBonus = 0
+    local contractMultBonus = 0
+    local contractTilePipBonus = 0
+
+    if gameState and gameState.activeContracts then
+        -- Add "Lucky Five" tile pip bonuses (per-tile bonuses like +25 per 5 pip)
+        for _, tile in ipairs(tiles) do
+            contractTilePipBonus = contractTilePipBonus + Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+        end
+
+        -- Add "Greedy" final base bonus
+        contractBaseBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
+
+        -- Add "Perfect Loop" multiplier bonus
+        contractMultBonus = Contracts.calculateMultiplierBonus(tiles, gameState.activeContracts)
+    end
+
+    baseValue = baseValue + contractTilePipBonus + contractBaseBonus
+
+    -- Calculate multiplier (number of tiles on board + 1 per obsidian tile + contract bonus)
+    local multiplier = #tiles + obsidianCount + contractMultBonus
     local total = baseValue * multiplier
-    
+
     return {
         baseValue = baseValue,
         tileValues = tileValues,
         doubleBonus = doubleCount * 10,
         multiplier = multiplier,
         obsidianBonus = obsidianCount,  -- Track obsidian multiplier bonus
+        contractTilePipBonus = contractTilePipBonus,  -- Track contract tile pip bonus (Lucky Five)
+        contractBaseBonus = contractBaseBonus,  -- Track contract base bonus (Greedy)
+        contractMultBonus = contractMultBonus,  -- Track contract multiplier bonus (Perfect Loop)
         total = total
     }
 end

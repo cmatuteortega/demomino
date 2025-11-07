@@ -28,6 +28,7 @@ function love.load()
     require("game.map")
     require("game.save")
     require("game.tools")
+    require("game.contracts")
     require("game.dialogue")
     require("ui.touch")
     require("ui.layout")
@@ -171,6 +172,9 @@ function love.load()
         -- Tools/Artifacts system
         ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
+        -- Contracts system
+        activeContracts = {},  -- Currently active contracts (max 2)
+        offeredContracts = {},  -- Contracts being offered in shop (always 3)
         obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
@@ -276,8 +280,26 @@ function love.load()
                 actions = {}
             },
             contracts_menu = {  -- Contracts node
-                greetings = {},
-                idle = {},
+                greetings = {
+                    "Welcome, mortal...",
+                    "Ah, another soul seeking power...",
+                    "You dare make a deal?",
+                    "What price are you willing to pay?"
+                },
+                idle = {
+                    "Choose wisely...",
+                    "These contracts are binding...",
+                    "Power comes at a cost...",
+                    "Two contracts maximum...",
+                    "Your soul is valuable..."
+                },
+                purchase = {
+                    "The pact is sealed!",
+                    "Your fate is bound now...",
+                    "Excellent choice, mortal...",
+                    "The contract is yours...",
+                    "Power flows through you..."
+                },
                 actions = {}
             }
         },
@@ -387,6 +409,10 @@ function resetGameToFresh()
 
     -- Reset tools/artifacts
     gameState.ownedTools = {}
+
+    -- Reset contracts
+    gameState.activeContracts = {}
+    gameState.offeredContracts = {}
 
     -- Reset coin animation state
     gameState.coinsAnimation = {
@@ -1270,11 +1296,14 @@ function startScoringSequence(tiles)
         accumulatedValue = 0,
         showingMultiplier = false,
         showingFinal = false,
-        phase = "scoring_tiles",  -- "scoring_tiles", "multiplying", "final", "transferring"
+        phase = "scoring_tiles",  -- "scoring_tiles", "contract_bonuses", "show_multiplier", "multiplying", "final", "transferring"
         timer = 0,
         tileAnimDelay = 0.4,
         finalTileAnimating = false,
-        waitingForFinalTile = false
+        waitingForFinalTile = false,
+        contractBonusIndex = 1,  -- Track which contract bonus to animate
+        contractBonuses = {},  -- Will be populated with individual contract bonuses
+        waitingForCounterToReach = false
     }
 
     -- Initialize formula display at 0
@@ -1304,11 +1333,32 @@ function updateScoringSequence(dt)
     if seq.phase == "scoring_tiles" then
         -- Check if we're waiting for final tile to finish
         if seq.waitingForFinalTile and not seq.finalTileAnimating then
-            -- Final tile finished, move to multiplier phase
-            seq.phase = "multiplying"
-            seq.showingMultiplier = true
-            seq.timer = 0
-            seq.waitingForFinalTile = false
+            -- Final tile finished, prepare contract bonuses
+            seq.contractBonuses = {}
+
+            -- Add Greedy bonus if active
+            local greedyBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
+            if greedyBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "GREEDY",
+                    value = greedyBonus,
+                    color = {1, 0.9, 0.3, 1}  -- Gold
+                })
+            end
+
+            -- Check if we have any contract bonuses to animate
+            if #seq.contractBonuses > 0 then
+                seq.phase = "contract_bonuses"
+                seq.contractBonusIndex = 1
+                seq.timer = 0
+                seq.waitingForFinalTile = false
+                seq.waitingForCounterToReach = false
+            else
+                -- No contract bonuses, pause then show multiplier
+                seq.phase = "show_multiplier"
+                seq.timer = 0
+                seq.waitingForFinalTile = false
+            end
         else
             -- Check if it's time to animate the next tile
             local tileDelay = (seq.currentTileIndex - 1) * seq.tileAnimDelay
@@ -1321,6 +1371,11 @@ function updateScoringSequence(dt)
                     local tileValue = Domino.getValue(tile)
                     local isDouble = Domino.isDouble(tile)
                     local addedValue = tileValue + (isDouble and 10 or 0)
+
+                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip)
+                    local contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                    addedValue = addedValue + contractBonus
+
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 
                     -- Set formula target and trigger counting animation
@@ -1337,24 +1392,59 @@ function updateScoringSequence(dt)
                 end
             end
         end
-    elseif seq.phase == "multiplying" then
-        -- Wait for formula to reach accumulated value, then show multiplier
-        if gameState.formulaDisplayValue >= seq.accumulatedValue - 1 then
-            -- Show multiplier and calculate final score
-            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-            local finalScore = breakdown.total
+    elseif seq.phase == "contract_bonuses" then
+        -- Animate contract bonuses one at a time, like individual tiles
+        if seq.contractBonusIndex <= #seq.contractBonuses then
+            local bonus = seq.contractBonuses[seq.contractBonusIndex]
+            local bonusDelay = (seq.contractBonusIndex - 1) * seq.tileAnimDelay
 
-            -- Animate to final multiplied value
-            gameState.formulaTargetValue = finalScore
-            gameState.formulaCountSpeed = math.max(150, (finalScore - seq.accumulatedValue) * 2)
+            if seq.timer >= bonusDelay then
+                if not seq.waitingForCounterToReach then
+                    -- Trigger this bonus animation
+                    seq.accumulatedValue = seq.accumulatedValue + bonus.value
+                    gameState.formulaTargetValue = seq.accumulatedValue
+                    gameState.formulaCountSpeed = math.max(150, bonus.value * 2)
 
-            -- Change color to pink for multiplication
-            gameState.formulaAnimation.color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+                    -- Set color for this bonus
+                    gameState.formulaAnimation.color = bonus.color
 
-            seq.phase = "final"
-            seq.showingFinal = true
+                    seq.waitingForCounterToReach = true
+                else
+                    -- Wait for counter to reach target before moving to next bonus
+                    if gameState.formulaDisplayValue >= seq.accumulatedValue - 1 then
+                        seq.contractBonusIndex = seq.contractBonusIndex + 1
+                        seq.waitingForCounterToReach = false
+                        seq.timer = 0
+                    end
+                end
+            end
+        else
+            -- All contract bonuses animated, pause then show multiplier
+            seq.phase = "show_multiplier"
             seq.timer = 0
         end
+    elseif seq.phase == "show_multiplier" then
+        -- Pause for 0.5s before showing multiplier
+        if seq.timer >= 0.5 then
+            seq.phase = "multiplying"
+            seq.showingMultiplier = true
+            seq.timer = 0
+        end
+    elseif seq.phase == "multiplying" then
+        -- Show multiplier and calculate final score immediately
+        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+        local finalScore = breakdown.total
+
+        -- Animate to final multiplied value
+        gameState.formulaTargetValue = finalScore
+        gameState.formulaCountSpeed = math.max(150, (finalScore - seq.accumulatedValue) * 2)
+
+        -- Change color to pink for multiplication
+        gameState.formulaAnimation.color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+
+        seq.phase = "final"
+        seq.showingFinal = true
+        seq.timer = 0
     elseif seq.phase == "final" then
         -- Wait for formula to reach final value, then transfer
         local breakdown = Scoring.getScoreBreakdown(seq.tiles)

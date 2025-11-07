@@ -1337,14 +1337,49 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "contracts_menu" then
-        -- Handle menu screen interactions - only Return to Map button for now
+        -- Check if Return to Map button was clicked
         if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
-            -- Clear any thrown tool sprites before returning to map
-            UI.Animation.clearAllDiePhysics()
             -- Clear dialogue when returning to map
             Dialogue.clear()
             gameState.gamePhase = "map"
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
         end
+
+        -- Check if Settings button was clicked
+        if gameState.settingsButtonBounds and isPointInRect(x, y, gameState.settingsButtonBounds) then
+            gameState.settingsMenuOpen = not gameState.settingsMenuOpen
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+
+        -- Check if a contract card was clicked
+        local screenWidth = gameState.screen.width
+        local screenHeight = gameState.screen.height
+        local centerX = screenWidth / 2
+        local centerY = screenHeight / 2
+
+        local cardWidth = UI.Layout.scale(180)
+        local cardHeight = UI.Layout.scale(140)
+        local cardSpacing = UI.Layout.scale(20)
+        local totalCardsWidth = (#gameState.offeredContracts * cardWidth) + ((#gameState.offeredContracts - 1) * cardSpacing)
+        local startX = centerX - (totalCardsWidth / 2)
+        local cardY = centerY - (cardHeight / 2)
+
+        for i, contract in ipairs(gameState.offeredContracts) do
+            local cardX = startX + ((i - 1) * (cardWidth + cardSpacing))
+
+            -- Check if click is within this card's bounds
+            if x >= cardX and x <= cardX + cardWidth and y >= cardY and y <= cardY + cardHeight then
+                Touch.purchaseContract(contract)
+                touchState.isPressed = false
+                touchState.touchId = nil
+                return
+            end
+        end
+
         touchState.isPressed = false
         touchState.touchId = nil
         return
@@ -2832,6 +2867,10 @@ function Touch.enterSelectedNode()
 
         gameState.gamePhase = "artifacts_menu"
     elseif nodeType == "contracts" then
+        -- Generate contracts for shop if not already generated
+        if #gameState.offeredContracts == 0 then
+            gameState.offeredContracts = Contracts.generateShopContracts()
+        end
         gameState.gamePhase = "contracts_menu"
     else
         -- Unknown node type, return to map
@@ -3793,6 +3832,104 @@ function Touch.purchaseShopPlacedTile()
     local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
     UI.Animation.createFloatingText("TILE PURCHASED!", centerX, centerY, {
+        color = {0.2, 0.9, 0.3, 1},
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 60,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
+-- Purchase a contract from the contracts shop
+function Touch.purchaseContract(contract)
+    -- Check if player can afford
+    if gameState.coins < contract.cost then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Check if player has space for more contracts (max 2)
+    if #gameState.activeContracts >= 2 then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("MAX 2 CONTRACTS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Check if player already owns this contract
+    if Contracts.isActive(contract.id, gameState.activeContracts) then
+        local centerX = gameState.screen.width / 2
+        local centerY = gameState.screen.height / 2
+
+        UI.Animation.createFloatingText("ALREADY OWNED!", centerX, centerY, {
+            color = UI.Colors.FONT_RED,
+            fontSize = "large",
+            duration = 1.5,
+            riseDistance = 40,
+            startScale = 0.8,
+            endScale = 1.2,
+            shake = 3,
+            easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Deduct coins
+    updateCoins(gameState.coins - contract.cost, {hasBonus = false})
+
+    -- Play purchase sound
+    UI.Audio.playPlayButton()
+
+    -- Add contract to active contracts
+    table.insert(gameState.activeContracts, {
+        id = contract.id,
+        name = contract.name,
+        description = contract.description,
+        effectType = contract.effectType,
+        effectValue = contract.effectValue,
+        triggerPip = contract.triggerPip  -- For Lucky Five contract
+    })
+
+    -- Trigger purchase dialogue
+    local purchaseText = Dialogue.getRandomPhrase("contracts_menu", "purchase")
+    if purchaseText then
+        Dialogue.show(purchaseText, {
+            category = "purchase",
+            skipDelay = true,
+            requiresAction = false,
+            autoDissmissTime = 10.0
+        })
+    end
+
+    -- Show success message
+    local centerX = gameState.screen.width / 2
+    local centerY = gameState.screen.height / 2
+    UI.Animation.createFloatingText(contract.name .. " ACQUIRED!", centerX, centerY, {
         color = {0.2, 0.9, 0.3, 1},
         fontSize = "large",
         duration = 1.5,
