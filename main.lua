@@ -1342,7 +1342,7 @@ function updateScoringSequence(dt)
                 table.insert(seq.contractBonuses, {
                     name = "GREEDY",
                     value = greedyBonus,
-                    color = {1, 0.9, 0.3, 1}  -- Gold
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
                 })
             end
 
