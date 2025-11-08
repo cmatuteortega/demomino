@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -108,11 +108,14 @@ function love.load()
         formulaDisplayValue = 0,  -- Currently displayed formula value (for counting animation)
         formulaTargetValue = 0,  -- Target value to count toward
         formulaCountSpeed = 0,  -- Speed of formula counting (points per second)
+        multiplierDisplayValue = 0,  -- Currently displayed multiplier value (for two-line display)
+        multiplierTargetValue = 0,  -- Target multiplier value
         formulaAnimation = {  -- Animation properties for formula display
             scale = 1.0,
             shake = 0,
             opacity = 1.0,
             yOffset = 0,  -- For transfer animation
+            fusionProgress = 0,  -- For multiplier fusion animation (0 = separated, 1 = fused)
             color = {1, 0.8, 0.2, 1}  -- Gold by default
         },
         -- Currency system
@@ -939,6 +942,15 @@ function updateFormulaCountAnimation(dt)
             gameState.formulaCountSpeed = 0
         end
     end
+
+    -- Animate multiplier display value (counts up by whole numbers)
+    if gameState.multiplierDisplayValue < gameState.multiplierTargetValue then
+        -- Count up (instant increment by 1 per tile)
+        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+    elseif gameState.multiplierDisplayValue > gameState.multiplierTargetValue then
+        -- Count down if needed
+        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+    end
 end
 
 function updateScore(newScore, bonusInfo)
@@ -1294,6 +1306,7 @@ function startScoringSequence(tiles)
         tiles = tiles,
         currentTileIndex = 1,
         accumulatedValue = 0,
+        accumulatedMultiplier = 0,  -- Track multiplier as it builds
         showingMultiplier = false,
         showingFinal = false,
         phase = "scoring_tiles",  -- "scoring_tiles", "contract_bonuses", "show_multiplier", "multiplying", "final", "transferring"
@@ -1315,8 +1328,13 @@ function startScoringSequence(tiles)
         shake = 0,
         opacity = 1.0,
         yOffset = 0,
+        fusionProgress = 0,  -- For multiplier fusion animation
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}  -- White for summing phase
     }
+
+    -- Initialize multiplier display
+    gameState.multiplierDisplayValue = 0
+    gameState.multiplierTargetValue = 0
 
     -- Sort tiles from left to right for visual consistency
     table.sort(gameState.scoringSequence.tiles, function(a, b)
@@ -1342,6 +1360,18 @@ function updateScoringSequence(dt)
                 table.insert(seq.contractBonuses, {
                     name = "GREEDY",
                     value = greedyBonus,
+                    multiplierBonus = 0,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Add Perfect Loop multiplier bonus if active
+            local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
+            if perfectLoopBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "PERFECT LOOP",
+                    value = 0,  -- Doesn't add to base
+                    multiplierBonus = perfectLoopBonus,
                     color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
                 })
             end
@@ -1378,6 +1408,14 @@ function updateScoringSequence(dt)
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 
+                    -- Increment multiplier counter (1 for regular tile, +1 for obsidian)
+                    local multiplierIncrement = 1
+                    if tile.tileType == "obsidian" then
+                        multiplierIncrement = multiplierIncrement + 1  -- Obsidian adds extra +1 to multiplier
+                    end
+                    seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
+                    gameState.multiplierTargetValue = seq.accumulatedMultiplier
+
                     -- Set formula target and trigger counting animation
                     gameState.formulaTargetValue = seq.accumulatedValue
                     gameState.formulaCountSpeed = math.max(100, addedValue * 3)  -- Speed based on added value
@@ -1405,13 +1443,22 @@ function updateScoringSequence(dt)
                     gameState.formulaTargetValue = seq.accumulatedValue
                     gameState.formulaCountSpeed = math.max(150, bonus.value * 2)
 
+                    -- Add multiplier bonus if present
+                    if bonus.multiplierBonus and bonus.multiplierBonus > 0 then
+                        seq.accumulatedMultiplier = seq.accumulatedMultiplier + bonus.multiplierBonus
+                        gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                    end
+
                     -- Set color for this bonus
                     gameState.formulaAnimation.color = bonus.color
 
                     seq.waitingForCounterToReach = true
                 else
                     -- Wait for counter to reach target before moving to next bonus
-                    if gameState.formulaDisplayValue >= seq.accumulatedValue - 1 then
+                    local baseReached = (bonus.value == 0 or gameState.formulaDisplayValue >= seq.accumulatedValue - 1)
+                    local multReached = (bonus.multiplierBonus == 0 or gameState.multiplierDisplayValue >= seq.accumulatedMultiplier - 0.5)
+
+                    if baseReached and multReached then
                         seq.contractBonusIndex = seq.contractBonusIndex + 1
                         seq.waitingForCounterToReach = false
                         seq.timer = 0
@@ -1431,37 +1478,47 @@ function updateScoringSequence(dt)
             seq.timer = 0
         end
     elseif seq.phase == "multiplying" then
-        -- Show multiplier and calculate final score immediately
-        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-        local finalScore = breakdown.total
+        -- Substage 1: Animate multiplier moving up to score position
+        if not seq.multiplierFusing then
+            seq.multiplierFusing = true
 
-        -- Animate to final multiplied value
-        gameState.formulaTargetValue = finalScore
-        gameState.formulaCountSpeed = math.max(150, (finalScore - seq.accumulatedValue) * 2)
+            -- Animate multiplier fusion (move up to score position over 0.6 seconds, then disappear)
+            UI.Animation.animateTo(gameState.formulaAnimation, {fusionProgress = 1}, 0.6, "easeOutQuart", function()
+                -- When multiplier reaches score and disappears, start counting score up
+                seq.multiplierFused = true
 
-        -- Change color to pink for multiplication
-        gameState.formulaAnimation.color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+                local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+                local finalScore = breakdown.total
 
-        seq.phase = "final"
-        seq.showingFinal = true
-        seq.timer = 0
-    elseif seq.phase == "final" then
-        -- Wait for formula to reach final value, then transfer
-        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-        if gameState.formulaDisplayValue >= breakdown.total - 1 then
-            -- Brief wait before transferring
-            if seq.timer >= 0.2 then
-                seq.phase = "transferring"
-                seq.timer = 0
+                -- Start animating score from base to final multiplied value
+                gameState.formulaTargetValue = finalScore
+                gameState.formulaCountSpeed = math.max(150, (finalScore - gameState.formulaDisplayValue) * 2)
+            end)
+        end
 
-                -- Start transfer animation: move formula up and fade out (faster)
-                UI.Animation.animateTo(gameState.formulaAnimation, {yOffset = -50, opacity = 0}, 0.5, "easeOutQuart", function()
-                    -- Transfer complete, update score
-                    completeScoringSequence()
-                end)
+        -- Substage 2: Wait for score to finish counting up
+        if seq.multiplierFused then
+            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
+            if gameState.formulaDisplayValue >= breakdown.total - 1 then
+                -- Score finished counting, wait 0.5s then transfer
+                if not seq.waitingForTransfer then
+                    seq.waitingForTransfer = true
+                    seq.timer = 0
+                end
 
-                -- Change color to black (outline) for transfer
-                gameState.formulaAnimation.color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1}
+                if seq.timer >= 0.5 then
+                    seq.phase = "transferring"
+                    seq.timer = 0
+
+                    -- Start transfer animation: move formula up and fade out
+                    UI.Animation.animateTo(gameState.formulaAnimation, {yOffset = -50, opacity = 0}, 0.5, "easeOutQuart", function()
+                        -- Transfer complete, update score
+                        completeScoringSequence()
+                    end)
+
+                    -- Change color to black (outline) for transfer
+                    gameState.formulaAnimation.color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1}
+                end
             end
         end
     elseif seq.phase == "transferring" then

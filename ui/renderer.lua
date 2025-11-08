@@ -1633,12 +1633,12 @@ function UI.Renderer.drawScore(score)
         local breakdown = Scoring.getScoreBreakdown(seq.tiles)
         local displayValue = math.floor(gameState.formulaDisplayValue)
 
-        if seq.phase == "scoring_tiles" then
-            -- Show counting value with wave animation per digit
+        if seq.phase == "scoring_tiles" or seq.phase == "contract_bonuses" or seq.phase == "show_multiplier" then
+            -- Two-line display: base score on top, multiplier below in pink
             local valueText = tostring(displayValue)
             local formulaFont = UI.Fonts.get("formulaScore")
 
-            -- Calculate total width for right alignment
+            -- Line 1: Base score value with wave animation
             local formulaTotalWidth = 0
             for i = 1, #valueText do
                 local digit = valueText:sub(i, i)
@@ -1661,12 +1661,29 @@ function UI.Renderer.drawScore(score)
                 currentX = currentX + digitWidth * formulaScale
             end
 
-        elseif seq.phase == "contract_bonuses" or seq.phase == "show_multiplier" then
-            -- Show counting value with contract bonuses being added (uses contract color)
+            -- Line 2: Multiplier display in pink (×N) - only if multiplier > 0
+            if gameState.multiplierDisplayValue and gameState.multiplierDisplayValue > 0 then
+                local multiplierText = "×" .. math.floor(gameState.multiplierDisplayValue)
+                local multiplierColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], formulaOpacity}
+
+                -- Right-indent the multiplier text
+                local multiplierWidth = formulaFont:getWidth(multiplierText) * formulaScale
+                local multiplierX = rightX - multiplierWidth
+                local multiplierY = formulaY + UI.Layout.scale(70)  -- Below the base score (increased from 40 to avoid overlap)
+
+                UI.Fonts.drawAnimatedText(multiplierText, multiplierX, multiplierY, "formulaScore", multiplierColor, "left", {
+                    scale = formulaScale,
+                    shadow = true,
+                    shadowOffset = UI.Layout.scale(3)
+                })
+            end
+
+        elseif seq.phase == "multiplying" then
+            -- Two-line display with both values animating up, multiplier fusing into score
             local valueText = tostring(displayValue)
             local formulaFont = UI.Fonts.get("formulaScore")
 
-            -- Calculate total width for right alignment
+            -- Line 1: Score value counting up to final value with wave animation
             local formulaTotalWidth = 0
             for i = 1, #valueText do
                 local digit = valueText:sub(i, i)
@@ -1689,43 +1706,32 @@ function UI.Renderer.drawScore(score)
                 currentX = currentX + digitWidth * formulaScale
             end
 
-        elseif seq.phase == "multiplying" or seq.phase == "final" then
-            -- Show value with multiplier
-            local valueText = tostring(displayValue)
-            local multiplierText = " × " .. breakdown.multiplier
-            local formulaFont = UI.Fonts.get("formulaScore")
+            -- Line 2: Multiplier display in pink (×N) with fusion animation
+            if gameState.multiplierDisplayValue and gameState.multiplierDisplayValue > 0 then
+                local multiplierText = "×" .. math.floor(gameState.multiplierDisplayValue)
 
-            -- Calculate total width for right alignment
-            local formulaTotalWidth = 0
-            for i = 1, #valueText do
-                local digit = valueText:sub(i, i)
-                formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(digit) * formulaScale
+                -- Get fusion animation progress from formulaAnimation
+                local fusionProgress = gameState.formulaAnimation.fusionProgress or 0
+
+                -- Only show multiplier if it hasn't fully fused yet (instant disappearance at fusionProgress = 1)
+                if fusionProgress < 0.99 then
+                    local fusionYOffset = -fusionProgress * UI.Layout.scale(70)  -- Move up to merge with score
+                    local fusionOpacity = (1 - fusionProgress) * formulaOpacity  -- Fade out as it fuses
+
+                    local multiplierColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], fusionOpacity}
+
+                    -- Right-indent the multiplier text
+                    local multiplierWidth = formulaFont:getWidth(multiplierText) * formulaScale
+                    local multiplierX = rightX - multiplierWidth
+                    local multiplierY = formulaY + UI.Layout.scale(75) + fusionYOffset
+
+                    UI.Fonts.drawAnimatedText(multiplierText, multiplierX, multiplierY, "formulaScore", multiplierColor, "left", {
+                        scale = formulaScale,
+                        shadow = true,
+                        shadowOffset = UI.Layout.scale(3)
+                    })
+                end
             end
-            formulaTotalWidth = formulaTotalWidth + formulaFont:getWidth(multiplierText) * formulaScale + UI.Layout.scale(5)
-
-            -- Draw value with wave animation
-            currentX = rightX - formulaTotalWidth
-            for i = 1, #valueText do
-                local digit = valueText:sub(i, i)
-                local digitWidth = formulaFont:getWidth(digit)
-                local phase = time * 2.5 + (i - 1) * 0.4
-                local waveOffset = math.sin(phase) * 2
-
-                UI.Fonts.drawAnimatedText(digit, currentX, formulaY + waveOffset, "formulaScore", displayColor, "left", {
-                    scale = formulaScale,
-                    shadow = true,
-                    shadowOffset = UI.Layout.scale(3)
-                })
-
-                currentX = currentX + digitWidth * formulaScale
-            end
-
-            -- Draw multiplier
-            UI.Fonts.drawAnimatedText(multiplierText, currentX + UI.Layout.scale(5), formulaY, "formulaScore", displayColor, "left", {
-                scale = formulaScale,
-                shadow = true,
-                shadowOffset = UI.Layout.scale(3)
-            })
 
         elseif seq.phase == "transferring" then
             -- Show final value moving up and fading
