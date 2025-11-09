@@ -86,8 +86,14 @@ function Scoring.getScoreBreakdown(tiles)
         -- Add "Greedy" final base bonus
         contractBaseBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
 
+        -- Add "Low Stakes" conditional base bonus
+        contractBaseBonus = contractBaseBonus + Contracts.calculateConditionalBaseBonus(tiles, gameState.activeContracts)
+
         -- Add "Perfect Loop" multiplier bonus
         contractMultBonus = Contracts.calculateMultiplierBonus(tiles, gameState.activeContracts)
+
+        -- Add "Small Hand" conditional multiplier bonus
+        contractMultBonus = contractMultBonus + Contracts.calculateConditionalMultiplier(tiles, gameState.activeContracts)
     end
 
     baseValue = baseValue + contractTilePipBonus + contractBaseBonus

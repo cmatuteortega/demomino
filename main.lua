@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -1365,6 +1365,17 @@ function updateScoringSequence(dt)
                 })
             end
 
+            -- Add Low Stakes conditional base bonus if active
+            local lowStakesBonus = Contracts.calculateConditionalBaseBonus(seq.tiles, gameState.activeContracts)
+            if lowStakesBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "LOW STAKES",
+                    value = lowStakesBonus,
+                    multiplierBonus = 0,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
             -- Add Perfect Loop multiplier bonus if active
             local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
             if perfectLoopBonus > 0 then
@@ -1372,6 +1383,17 @@ function updateScoringSequence(dt)
                     name = "PERFECT LOOP",
                     value = 0,  -- Doesn't add to base
                     multiplierBonus = perfectLoopBonus,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Add Small Hand conditional multiplier bonus if active
+            local smallHandBonus = Contracts.calculateConditionalMultiplier(seq.tiles, gameState.activeContracts)
+            if smallHandBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "SMALL HAND",
+                    value = 0,  -- Doesn't add to base
+                    multiplierBonus = smallHandBonus,
                     color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
                 })
             end
@@ -1405,6 +1427,14 @@ function updateScoringSequence(dt)
                     -- Apply "Lucky Five" contract bonus (per tile with 5 pip)
                     local contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
                     addedValue = addedValue + contractBonus
+
+                    -- Check for coin rewards from "One Dollar" contract
+                    local coinReward = Contracts.calculateCoinReward(tile, gameState.activeContracts)
+                    if coinReward > 0 then
+                        -- Award coins immediately
+                        gameState.coins = gameState.coins + coinReward
+                        -- TODO: Add visual coin animation if desired
+                    end
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 

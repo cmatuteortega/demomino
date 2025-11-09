@@ -3912,7 +3912,9 @@ function Touch.purchaseContract(contract)
         description = contract.description,
         effectType = contract.effectType,
         effectValue = contract.effectValue,
-        triggerPip = contract.triggerPip  -- For Lucky Five contract
+        triggerPip = contract.triggerPip,  -- For Lucky Five and One Dollar contracts
+        condition = contract.condition,  -- For conditional contracts (Small Hand, Low Stakes)
+        conditionValue = contract.conditionValue  -- For conditional contracts
     })
 
     -- Trigger purchase dialogue
