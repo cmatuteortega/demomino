@@ -1431,9 +1431,9 @@ function updateScoringSequence(dt)
                     -- Check for coin rewards from "One Dollar" contract
                     local coinReward = Contracts.calculateCoinReward(tile, gameState.activeContracts)
                     if coinReward > 0 then
-                        -- Award coins immediately
-                        gameState.coins = gameState.coins + coinReward
-                        -- TODO: Add visual coin animation if desired
+                        -- Award coins with falling animation
+                        local currentTarget = gameState.coinsAnimation.targetCoins or gameState.coins
+                        updateCoins(currentTarget + coinReward, {hasBonus = false})
                     end
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
