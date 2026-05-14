@@ -499,7 +499,6 @@ function UI.TitleScreen.continueGame()
     -- Initialize combat-specific state (in case player was mid-combat)
     gameState.deck = {}
     gameState.hand = {}
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.score = 0
     gameState.gamePhase = "playing"

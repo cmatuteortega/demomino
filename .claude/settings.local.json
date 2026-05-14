@@ -9,7 +9,8 @@
       "Bash(done)",
       "Bash(rm:*)",
       "Bash(find:*)",
-      "Bash(luac:*)"
+      "Bash(luac:*)",
+      "Bash(xargs -n1 basename)"
     ],
     "deny": []
   }

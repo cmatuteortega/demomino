@@ -1,70 +1,7 @@
 Board = {}
 
-function Board.new()
-    return {
-        tiles = {},
-        chains = {},
-        centerX = 0,
-        centerY = 0
-    }
-end
-
-function Board.canPlaceTiles(tiles)
-    if #tiles == 0 then
-        return false
-    end
-    
-    return Validation.canConnectTiles(tiles)
-end
-
-function Board.placeTiles(tiles)
-    if not Board.canPlaceTiles(tiles) then
-        return false
-    end
-    
-    local chain = Validation.createDominoChain(tiles)
-    if not chain then
-        return false
-    end
-    
-    local centerX, centerY = UI.Layout.getBoardCenter()
-    Board.arrangeTilesInChain(chain, centerX, centerY)
-    
-    for _, tile in ipairs(chain) do
-        tile.placed = true
-        table.insert(gameState.board, tile)
-    end
-    
-    return true
-end
-
-function Board.arrangeTilesInChain(chain, centerX, centerY)
-    if #chain == 0 then
-        return
-    end
-    
-    local tileWidth, tileHeight = UI.Layout.getTileSize()
-    
-    -- Calculate total width by summing each tile's display width
-    local totalWidth = 0
-    for i, tile in ipairs(chain) do
-        totalWidth = totalWidth + Board.getTileDisplayWidth(tile)
-    end
-    
-    local startX = centerX - totalWidth / 2
-    local currentX = startX
-    
-    for i, tile in ipairs(chain) do
-        local tileDisplayWidth = Board.getTileDisplayWidth(tile)
-        
-        -- Position tile center at current position plus half its width
-        tile.x = currentX + tileDisplayWidth / 2
-        tile.y = centerY
-        
-        -- Move currentX to the right edge of this tile for the next tile
-        currentX = currentX + tileDisplayWidth
-    end
-end
+-- gameState.placedTiles is the live array for all gameplay: drag-to-board, rendering,
+-- scoring, and layout all read/write it directly. gameState.board is not used in gameplay.
 
 function Board.calculateDynamicScale()
     if #gameState.placedTiles == 0 then
@@ -128,22 +65,22 @@ function Board.getTileDisplayWidth(tile, dynamicScale)
         -- Use vertical sprites for hand tiles
         spriteData = dominoSprites and dominoSprites[spriteKey]
     end
-    
+
     if spriteData and spriteData.sprite then
         local sprite = spriteData.sprite
-        
+
         if sprite and sprite.getWidth and sprite.getHeight then
             -- Use same scaling as renderer
             local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
             local spriteScale = math.max(minScale * 2.0, 1.0)
-            
+
             -- Apply dynamic scale for board tiles
             spriteScale = spriteScale * dynamicScale
-            
+
             -- Calculate actual rendered dimensions
             local renderedWidth = sprite:getWidth() * spriteScale
             local renderedHeight = sprite:getHeight() * spriteScale
-            
+
             -- Return the actual width based on orientation
             if tile.orientation == "horizontal" then
                 -- For tilted sprites, width is the natural width (64px scaled)
@@ -153,13 +90,13 @@ function Board.getTileDisplayWidth(tile, dynamicScale)
             end
         end
     end
-    
+
     -- Fallback to layout system if sprite not found
     local tileWidth, tileHeight = UI.Layout.getTileSize()
     -- Apply dynamic scale to fallback dimensions
     tileWidth = tileWidth * dynamicScale
     tileHeight = tileHeight * dynamicScale
-    
+
     if tile.orientation == "horizontal" then
         return tileHeight
     else
@@ -213,53 +150,6 @@ function Board.getTileAt(x, y)
         end
     end
     return nil
-end
-
-function Board.update(dt)
-end
-
-function Board.clear()
-    gameState.board = {}
-end
-
-function Board.getTiles()
-    return gameState.board
-end
-
-function Board.isEmpty()
-    return #gameState.board == 0
-end
-
-function Board.getLastChain()
-    if #gameState.board == 0 then
-        return {}
-    end
-    
-    return gameState.board
-end
-
-function Board.calculateBounds()
-    if #gameState.board == 0 then
-        return nil
-    end
-    
-    local minX, minY = math.huge, math.huge
-    local maxX, maxY = -math.huge, -math.huge
-    
-    for _, tile in ipairs(gameState.board) do
-        local bounds = Domino.getBounds(tile)
-        minX = math.min(minX, bounds.x)
-        minY = math.min(minY, bounds.y)
-        maxX = math.max(maxX, bounds.x + bounds.width)
-        maxY = math.max(maxY, bounds.y + bounds.height)
-    end
-    
-    return {
-        x = minX,
-        y = minY,
-        width = maxX - minX,
-        height = maxY - minY
-    }
 end
 
 return Board

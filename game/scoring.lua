@@ -135,4 +135,34 @@ function Scoring.updateHighScore(score)
     return false
 end
 
+function Scoring.getTileContribution(tile, activeContracts)
+    local pipSum = Domino.getValue(tile)
+    local doubleBonus = Domino.isDouble(tile) and 10 or 0
+    local contractBonus = 0
+    local contractBonusLabel = nil
+    if activeContracts then
+        for _, c in ipairs(activeContracts) do
+            if c.effectType == "tile_pip_bonus" and c.triggerPip then
+                local lv = type(tile.left)  == "number" and tile.left  or 0
+                local rv = type(tile.right) == "number" and tile.right or 0
+                local hits = (lv == c.triggerPip and 1 or 0) + (rv == c.triggerPip and 1 or 0)
+                if hits > 0 then
+                    contractBonus = contractBonus + hits * c.effectValue
+                    contractBonusLabel = c.name
+                end
+            end
+        end
+    end
+    local multBonus = tile.tileType == "obsidian" and 1 or 0
+    return {
+        pipSum             = pipSum,
+        doubleBonus        = doubleBonus,
+        contractBonus      = contractBonus,
+        contractBonusLabel = contractBonusLabel,
+        totalSum           = pipSum + doubleBonus + contractBonus,
+        mult               = 1 + multBonus,
+        multBonus          = multBonus,
+    }
+end
+
 return Scoring

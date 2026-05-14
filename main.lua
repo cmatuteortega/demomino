@@ -57,7 +57,6 @@ function love.load()
         },
         deck = {},
         hand = {},
-        board = {},
         placedTiles = {},
         score = 0,
         gamePhase = "playing",
@@ -178,6 +177,20 @@ function love.load()
         -- Contracts system
         activeContracts = {},  -- Currently active contracts (max 2)
         offeredContracts = {},  -- Contracts being offered in shop (always 3)
+        combatCandleBounds = {},  -- [{x,y,w,h,contractIndex}] populated each frame by drawCombatCandles
+        tooltip = {
+            visible = false,
+            type = nil,     -- "tile" | "tool" | "contract"
+            data = nil,
+            x = 0, y = 0,
+            opacity = 0.0,
+            animScale = 1.0,
+            fadeIn = false,
+            fadeOut = false,
+            spriteHalfH = 0,      -- actual sprite half-height in px, set by touch
+            toolContext = nil,    -- "stack" | "shop" for tool tooltips
+            toolSpriteLeft = 0,   -- left-edge X of tool sprite (stack positioning)
+        },
         obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
@@ -468,7 +481,6 @@ function initializeGame(isNewRound)
     -- Animate initial tiles drawing from right
     Hand.animateTilesDraw(gameState.hand, 0)
 
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.score = 0
     gameState.previousScore = 0
@@ -516,7 +528,6 @@ function initializeCombatRound()
     -- Reset only combat-specific state while preserving map progress and tile collection
 
     -- STEP 1: Clear old combat state FIRST
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.hand = {}
     gameState.score = 0
@@ -2097,7 +2108,6 @@ function love.update(dt)
 
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
-            Board.update(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
@@ -2202,6 +2212,22 @@ function love.update(dt)
             UI.Audio.stopMapAmbiance()
         end
     end
+
+    -- Tooltip fade animation (no auto-dismiss; dismissed only by tap)
+    local tt = gameState.tooltip
+    if tt.fadeIn then
+        local t = math.min(1.0, tt.opacity + dt * 10)
+        tt.opacity = t
+        -- easeOutBack-ish: overshoot then settle
+        local s = t * t * (3 - 2 * t)  -- smoothstep
+        tt.animScale = 0.82 + s * 0.22  -- 0.82 → 1.04 → ~1.0 (slight overshoot via smoothstep)
+        if tt.opacity >= 1.0 then tt.fadeIn = false; tt.animScale = 1.0 end
+    elseif tt.fadeOut then
+        local t = math.max(0.0, tt.opacity - dt * 14)
+        tt.opacity = t
+        tt.animScale = 0.88 + t * 0.12  -- shrinks as it fades
+        if tt.opacity <= 0.0 then tt.fadeOut = false; tt.visible = false; tt.animScale = 1.0 end
+    end
 end
 
 function love.draw()
@@ -2222,11 +2248,10 @@ function love.draw()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
         UI.Renderer.drawCombatCandles()  -- Draw candles in hand area
-        UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Animation.drawDiePhysics()  -- Draw flying/settling dice
         UI.Renderer.drawActiveDieSprites()  -- Draw settled dice on board
-        UI.Renderer.drawToolButtons()  -- Draw tool buttons (tool stack)
+        UI.Renderer.drawToolSprites()  -- Draw tool stack
         UI.Renderer.drawHand(gameState.hand)  -- Draw hand on top of tool stack
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
@@ -2279,7 +2304,8 @@ function love.draw()
     end
     
     UI.Animation.drawFloatingTexts()
-    
+    UI.Renderer.drawTooltip()
+
     UI.Layout.finish()
     
     -- PASS 2: Apply CRT shader and render canvas to screen

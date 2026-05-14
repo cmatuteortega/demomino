@@ -19,7 +19,7 @@ function UI.Fonts.load()
         bigScore = math.max(96 * baseScale, 72), 
         demonName = math.max(60 * baseScale, 45),
         formulaScore = math.max(72 * baseScale, 54),
-        button = math.max(12 * baseScale, 10)
+        button = math.max(14 * baseScale, 12)
     }
     
     for size, pixels in pairs(sizes) do
@@ -45,31 +45,32 @@ function UI.Fonts.recalculate()
     UI.Fonts.load()
 end
 
-function UI.Fonts.drawText(text, x, y, size, color, alignment)
+function UI.Fonts.drawText(text, x, y, size, color, alignment, vcenter)
     size = size or "medium"
     color = color or UI.Colors.FONT_WHITE
     alignment = alignment or "left"
-    
+
     local font = UI.Fonts.get(size)
     local oldFont = love.graphics.getFont()
     local oldColor = {love.graphics.getColor()}
-    
+
     love.graphics.setFont(font)
-    love.graphics.setColor(color[1] or color.r or 1, 
-                          color[2] or color.g or 1, 
-                          color[3] or color.b or 1, 
+    love.graphics.setColor(color[1] or color.r or 1,
+                          color[2] or color.g or 1,
+                          color[3] or color.b or 1,
                           color[4] or color.a or 1)
-    
+
     local textWidth = font:getWidth(text)
     local drawX = x
-    
+
     if alignment == "center" then
         drawX = x - textWidth / 2
     elseif alignment == "right" then
         drawX = x - textWidth
     end
-    
-    love.graphics.print(text, drawX, y)
+
+    local drawY = vcenter and (y - font:getHeight() / 2) or y
+    love.graphics.print(text, drawX, drawY)
     
     love.graphics.setFont(oldFont)
     love.graphics.setColor(oldColor[1], oldColor[2], oldColor[3], oldColor[4])
@@ -86,6 +87,7 @@ function UI.Fonts.drawAnimatedText(text, x, y, size, color, alignment, animProps
     local shake = animProps.shake or 0
     local shadow = animProps.shadow or false
     local shadowOffset = animProps.shadowOffset or 4
+    local vcenter = animProps.vcenter or false
 
     local finalColor = color or UI.Colors.FONT_WHITE
     if type(finalColor) == "table" and #finalColor >= 3 then
@@ -101,6 +103,7 @@ function UI.Fonts.drawAnimatedText(text, x, y, size, color, alignment, animProps
 
     local drawX = x + shakeX
     local drawY = y + shakeY
+    if vcenter then drawY = drawY - textHeight / 2 end
 
     if alignment == "center" then
         drawX = drawX - textWidth / 2

@@ -17,29 +17,8 @@ function Validation.validateSequentialPlacement(tiles)
         return true
     end
 
-    -- Simple left-to-right validation with odd/even support
     for i = 1, #tiles - 1 do
-        local currentTile = tiles[i]
-        local nextTile = tiles[i + 1]
-
-        local value1 = currentTile.right
-        local value2 = nextTile.left
-
-        -- Check if values match (direct or via odd/even rules)
-        local matches = false
-        if value1 == value2 then
-            matches = true
-        elseif value1 == "odd" and Domino.isOddValue(value2) then
-            matches = true
-        elseif value2 == "odd" and Domino.isOddValue(value1) then
-            matches = true
-        elseif value1 == "even" and Domino.isEvenValue(value2) then
-            matches = true
-        elseif value2 == "even" and Domino.isEvenValue(value1) then
-            matches = true
-        end
-
-        if not matches then
+        if not Domino.canConnect(tiles[i], "right", tiles[i + 1], "left") then
             return false
         end
     end
@@ -51,23 +30,7 @@ function Validation.findValidChain(tiles)
     if #tiles <= 1 then
         return tiles
     end
-    
-    local function canConnect(tile1, side1, tile2, side2)
-        local value1 = side1 == "left" and tile1.left or tile1.right
-        local value2 = side2 == "left" and tile2.left or tile2.right
 
-        -- Direct match
-        if value1 == value2 then return true end
-
-        -- Special matching logic for odd/even tiles
-        if value1 == "odd" and Domino.isOddValue(value2) then return true end
-        if value2 == "odd" and Domino.isOddValue(value1) then return true end
-        if value1 == "even" and Domino.isEvenValue(value2) then return true end
-        if value2 == "even" and Domino.isEvenValue(value1) then return true end
-
-        return false
-    end
-    
     local function tryBuildChain(remainingTiles, currentChain, leftValue, rightValue)
         if #remainingTiles == 0 then
             return currentChain
@@ -86,22 +49,22 @@ function Validation.findValidChain(tiles)
                 table.insert(newChain, t)
             end
             
-            if canConnect({left = leftValue, right = leftValue}, "left", tile, "left") then
+            if Domino.canConnect({left = leftValue, right = leftValue}, "left", tile, "left") then
                 table.insert(newChain, 1, {tile = tile, flipped = false})
                 local result = tryBuildChain(newRemaining, newChain, tile.right, rightValue)
                 if result then return result end
                 
-            elseif canConnect({left = leftValue, right = leftValue}, "left", tile, "right") then
+            elseif Domino.canConnect({left = leftValue, right = leftValue}, "left", tile, "right") then
                 table.insert(newChain, 1, {tile = tile, flipped = true})
                 local result = tryBuildChain(newRemaining, newChain, tile.left, rightValue)
                 if result then return result end
                 
-            elseif canConnect({left = rightValue, right = rightValue}, "right", tile, "left") then
+            elseif Domino.canConnect({left = rightValue, right = rightValue}, "right", tile, "left") then
                 table.insert(newChain, {tile = tile, flipped = false})
                 local result = tryBuildChain(newRemaining, newChain, leftValue, tile.right)
                 if result then return result end
                 
-            elseif canConnect({left = rightValue, right = rightValue}, "right", tile, "right") then
+            elseif Domino.canConnect({left = rightValue, right = rightValue}, "right", tile, "right") then
                 table.insert(newChain, {tile = tile, flipped = true})
                 local result = tryBuildChain(newRemaining, newChain, leftValue, tile.left)
                 if result then return result end
