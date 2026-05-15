@@ -342,6 +342,12 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
     -- Update path visibility to show traversed paths
     Map.updatePathVisibility(map)
 
+    -- Map items are never serialized; regenerate from the restored map structure
+    Map.generateMapItems(map, map.screenWidth, map.screenHeight)
+
+    -- Populate sprites near nodes that are already unreachable at load time
+    Map.refreshDiscardedNodeSprites(map)
+
     return map
 end
 

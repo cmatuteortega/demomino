@@ -151,6 +151,8 @@ function Touch.update(dt)
 end
 
 function Touch.pressed(x, y, istouch, touchId)
+    if gameState.irisAnimation and gameState.irisAnimation.active then return end
+
     touchState.isPressed = true
     touchState.startX = x
     touchState.startY = y
@@ -677,6 +679,7 @@ function Touch.pressed(x, y, istouch, touchId)
 end
 
 function Touch.released(x, y, istouch, touchId)
+    if gameState.irisAnimation and gameState.irisAnimation.active then return end
     if not touchState.isPressed then
         return
     end
@@ -1034,8 +1037,13 @@ function Touch.released(x, y, istouch, touchId)
                 -- Clear dialogue before returning to map
                 Dialogue.clear()
 
-                -- Go directly to map (skip intro - player is mid-run)
-                gameState.gamePhase = "map"
+                if gameState.showNightIntroOnAdvance then
+                    gameState.showNightIntroOnAdvance = false
+                    initializeRoundIntro()
+                    gameState.gamePhase = "round_intro"
+                else
+                    gameState.gamePhase = "map"
+                end
                 Save.saveGame(gameState)
 
                 -- Reset victory NEXT> button color to pink for next time
@@ -2604,6 +2612,7 @@ function Touch.checkGameEnd()
             -- If this was a boss round, generate a completely new map
             if gameState.isBossRound then
                 gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
+                gameState.showNightIntroOnAdvance = true
                 gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
                 gameState.isBossRound = false
             else
@@ -2828,16 +2837,31 @@ function Touch.enterSelectedNode()
     if not gameState.selectedNode then
         return
     end
-    
+
     local node = gameState.selectedNode
+
+    -- Start iris-wipe closing animation; actual phase switch happens when fully closed
+    local ia = gameState.irisAnimation
+    ia.active        = true
+    ia.phase         = "closing"
+    ia.elapsed       = 0
+    ia.progress      = 0
+    ia.centerX       = node.x
+    ia.centerY       = node.y
+    ia.pendingAction = function()
+        Touch.executeNodeEntry(node)
+    end
+end
+
+-- Execute the actual node entry (called by iris animation when fully closed)
+function Touch.executeNodeEntry(node)
     local nodeType = node.nodeType
-    
-    -- Clear path preview animation when entering node
+
     if gameState.currentMap then
         Map.clearPreviewPath(gameState.currentMap)
         gameState.currentMap.manualCameraMode = false
     end
-    
+
     -- Move to the selected node first
     local success = Map.moveToNode(gameState.currentMap, node.id)
     if not success then

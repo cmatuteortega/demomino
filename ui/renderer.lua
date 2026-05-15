@@ -2546,16 +2546,11 @@ function UI.Renderer.drawRoundIntro()
             totalWidth = totalWidth + font:getWidth(char)
         end
 
-        -- Start position - center the text or use animated position
-        local startX = anim.currentX
-        local startY = anim.currentY
-
-        -- During typing and pausing phases, center the text properly (both X and Y)
-        if anim.phase == "typing" or anim.phase == "pausing" then
-            startX = anim.currentX - totalWidth / 2
-            -- Center Y by accounting for font height
-            startY = anim.currentY - font:getHeight() / 2
-        end
+        -- Always render from the centered position: currentX/currentY represent the
+        -- midpoint of the text, so offset by half width/height every frame.
+        -- targetX/targetY in init are pre-adjusted so the text lands at the right corner.
+        local startX = anim.currentX - totalWidth / 2
+        local startY = anim.currentY - font:getHeight() / 2
 
         -- Draw each character with wave animation (matching map screen style)
         local currentX = startX
@@ -4227,6 +4222,9 @@ function UI.Renderer.drawMapNodes(map)
     -- Draw candles (behind nodes, after paths)
     UI.Renderer.drawMapCandles(map)
 
+    -- Draw scattered map item sprites (food, misc decorations)
+    UI.Renderer.drawMapItems(map)
+
     -- Then draw node backgrounds and indicators
     UI.Renderer.drawMapNodeBackgrounds(map)
     
@@ -4271,6 +4269,8 @@ end
 
 -- Draw visual path connections between nodes
 function UI.Renderer.drawMapPaths(map)
+    local SHOW_PATH_LINES = false
+    if not SHOW_PATH_LINES then return end
     love.graphics.setLineWidth(UI.Layout.scale(3))
     
     -- Draw connections between nodes
@@ -4321,8 +4321,6 @@ function UI.Renderer.drawPathConnection(map, fromNode, toNode)
     -- Set path color based on state (no fog tinting - overlay handles that)
     if isPathCompleted then
         love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.8)
-    elseif isPathAvailable then
-        love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 0.9)
     else
         love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.6)
     end
@@ -4392,6 +4390,48 @@ function UI.Renderer.drawMapCandles(map)
     end
 
     -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Draw scattered map item sprites (food, misc, node-adjacent decorations)
+function UI.Renderer.drawMapItems(map)
+    if not map or not map.mapItems or not mapItemSprites then return end
+    local screenWidth = gameState.screen.width
+    local itemScale = UI.Layout.scale(4.0)
+
+    if mapItemPaletteShader then
+        love.graphics.setShader(mapItemPaletteShader)
+    end
+
+    for _, item in ipairs(map.mapItems) do
+        if item.visible then
+            local screenX = item.worldX - map.cameraX
+            if screenX > -60 and screenX < screenWidth + 60 then
+                local sprites, entry
+                if item.isEmpty then
+                    sprites = mapItemSprites["empty-food"]
+                    if sprites and #sprites > 0 then
+                        entry = sprites[item.emptyFoodIndex] or sprites[1]
+                    end
+                else
+                    sprites = mapItemSprites[item.category]
+                    if sprites and #sprites > 0 then
+                        entry = sprites[item.spriteIndex] or sprites[1]
+                    end
+                end
+                if entry then
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.draw(
+                        entry.image, screenX, item.worldY, 0,
+                        itemScale, itemScale,
+                        entry.image:getWidth() / 2, entry.image:getHeight() / 2
+                    )
+                end
+            end
+        end
+    end
+
+    love.graphics.setShader()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -4534,12 +4574,6 @@ function UI.Renderer.getMapTileHighlight(map, tile)
                 glow = 0,
                 color = {1, 0.9, 0.3, 1}
             }
-        elseif isAvailable then
-            -- Available nodes - bright green (no animation)
-            return {
-                glow = 0,
-                color = {0.2, 1, 0.3, 1}
-            }
         elseif isCompleted then
             -- Completed nodes - cool blue (static)
             return {
@@ -4575,12 +4609,6 @@ function UI.Renderer.getMapTileHighlight(map, tile)
                 return {
                     glow = 0.25,
                     color = {UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], 1}
-                }
-            elseif isPathAvailable then
-                -- Available path - static cyan
-                return {
-                    glow = 0.2,
-                    color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}
                 }
             elseif isPathCompleted then
                 -- Completed path - soft blue (static, no animation)
@@ -5575,6 +5603,58 @@ function UI.Renderer.drawTooltip()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setLineWidth(1)
     love.graphics.pop()
+end
+
+function UI.Renderer.drawIrisOverlay()
+    local ia = gameState.irisAnimation
+    local cx, cy = ia.centerX, ia.centerY
+
+    local t = ia.progress
+    local eased
+    if ia.phase == "closing" then
+        eased = t * t * t * t  -- easeInQuart
+    else
+        local inv = 1 - t
+        eased = 1 - inv * inv * inv * inv  -- easeOutQuart
+    end
+
+    local sw = gameState.screen.width
+    local sh = gameState.screen.height
+    local maxR = 0
+    local corners = {{0,0},{sw,0},{0,sh},{sw,sh}}
+    for _, c in ipairs(corners) do
+        local d = math.sqrt((cx - c[1])^2 + (cy - c[2])^2)
+        if d > maxR then maxR = d end
+    end
+
+    local radius
+    if ia.phase == "closing" then
+        radius = maxR * (1 - eased)
+    else
+        radius = maxR * eased
+    end
+
+    local r, g, b = UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3]
+
+    if radius <= 0 then
+        love.graphics.setColor(r, g, b, 1)
+        love.graphics.rectangle("fill", 0, 0, sw, sh)
+        love.graphics.setColor(1, 1, 1, 1)
+        return
+    end
+    if radius >= maxR then
+        love.graphics.setColor(1, 1, 1, 1)
+        return
+    end
+
+    love.graphics.stencil(function()
+        love.graphics.circle("fill", cx, cy, radius)
+    end, "replace", 1)
+    love.graphics.setStencilTest("notequal", 1)
+    love.graphics.setColor(r, g, b, 1)
+    love.graphics.rectangle("fill", 0, 0, sw, sh)
+    love.graphics.setStencilTest()
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 return UI.Renderer

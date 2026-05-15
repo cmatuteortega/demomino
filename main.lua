@@ -48,6 +48,7 @@ function love.load()
     loadCandleSprites()
     loadToolSprites()
     loadCupSprites()
+    loadMapItemSprites()
     
     gameState = {
         screen = {
@@ -260,6 +261,15 @@ function love.load()
             autoDissmissTime = 2.0,  -- Time before auto-dismiss (if not requiring action)
             waitingTimer = 0  -- Timer for auto-dismiss
         },
+        irisAnimation = {
+            active   = false,
+            phase    = "idle",   -- "closing" | "opening"
+            elapsed  = 0,
+            progress = 0,        -- 0→1
+            centerX  = 0,
+            centerY  = 0,
+            pendingAction = nil, -- called when fully closed
+        },
         -- Dialogue content storage (populated by user prompts)
         dialogueContent = {
             playing = {  -- Combat nodes (existing system)
@@ -365,6 +375,7 @@ function love.load()
 
     -- Load CRT shader and create render canvas with depth/stencil support for fog of war
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
+    mapItemPaletteShader = love.graphics.newShader("shaders/map_item_palette.glsl")
     mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
 
     -- Load settings from disk
@@ -669,7 +680,10 @@ function initializeRoundIntro()
     local screenHeight = gameState.screen.height
 
     -- Build the text to display
-    local nightText = "Night " .. tostring(gameState.currentDay)
+    local nightSubtitles = { "Entree", "Sorbet", "Main dish", "Dessert", "The Check" }
+    local subtitle = nightSubtitles[gameState.currentDay]
+    local baseText = "Night " .. tostring(gameState.currentDay)
+    local nightText = subtitle and (baseText .. ": " .. subtitle) or baseText
 
     -- Calculate center position
     local centerX = screenWidth / 2
@@ -678,6 +692,14 @@ function initializeRoundIntro()
     -- Calculate final position (top-left corner, matching map screen)
     local finalX = UI.Layout.scale(60)
     local finalY = UI.Layout.scale(20)
+
+    -- Pre-compute text dimensions so targetX/targetY can account for the centering
+    -- offset that the renderer always applies (startX = currentX - totalWidth/2).
+    -- At the end of the tween: currentX = targetX, so rendered left edge = targetX - fullW/2.
+    -- Setting targetX = finalX + fullW/2 makes the text land exactly at finalX.
+    local font = UI.Fonts.get("formulaScore")
+    local fullTextWidth = font:getWidth(nightText)
+    local fontHeight = font:getHeight()
 
     -- Reset animation state
     gameState.roundIntroAnimation = {
@@ -688,10 +710,14 @@ function initializeRoundIntro()
         charsPerSecond = 8,
         pauseTimer = 0,
         pauseDuration = 0.8,
+        midPauseAt = subtitle and #baseText or 0,
+        midPauseDuration = 0.6,
+        midPauseTimer = 0,
+        midPauseDone = false,
         currentX = centerX,
         currentY = centerY,
-        targetX = finalX,
-        targetY = finalY,
+        targetX = finalX + fullTextWidth / 2,
+        targetY = finalY + fontHeight / 2,
         opacity = 1.0,
         candleGrowth = 0
     }
@@ -1736,12 +1762,28 @@ function updateRoundIntro(dt)
             -- Play a random typewriter sound for each character
             UI.Audio.playTypewriter()
 
+            -- Dramatic pause between "Night X" and ": Subtitle" for nights 1-5
+            if anim.midPauseAt > 0
+               and anim.currentCharIndex == anim.midPauseAt
+               and not anim.midPauseDone then
+                anim.phase = "mid_pausing"
+                anim.midPauseTimer = 0
+                return
+            end
+
             -- Check if we've typed all characters
             if anim.currentCharIndex >= #anim.text then
                 anim.currentCharIndex = #anim.text
                 anim.phase = "pausing"
                 anim.pauseTimer = 0
             end
+        end
+
+    elseif anim.phase == "mid_pausing" then
+        anim.midPauseTimer = anim.midPauseTimer + dt
+        if anim.midPauseTimer >= anim.midPauseDuration then
+            anim.midPauseDone = true
+            anim.phase = "typing"
         end
 
     elseif anim.phase == "pausing" then
@@ -2059,8 +2101,35 @@ function updateCandleLightAnimation(dt)
     end
 end
 
+local function updateIrisAnimation(dt)
+    local ia = gameState.irisAnimation
+    if not ia.active then return end
+
+    ia.elapsed = ia.elapsed + dt
+    local duration = (ia.phase == "closing") and 0.8 or 0.7
+    ia.progress = math.min(ia.elapsed / duration, 1)
+
+    if ia.progress >= 1 then
+        if ia.phase == "closing" then
+            if ia.pendingAction then
+                ia.pendingAction()
+                ia.pendingAction = nil
+            end
+            ia.phase    = "opening"
+            ia.elapsed  = 0
+            ia.progress = 0
+            ia.centerX  = gameState.screen.width  / 2
+            ia.centerY  = gameState.screen.height / 2
+        else
+            ia.active = false
+            ia.phase  = "idle"
+        end
+    end
+end
+
 function love.update(dt)
     Touch.update(dt)
+    updateIrisAnimation(dt)
     UI.Animation.update(dt)
     UI.Animation.updateShadowFlicker(dt)
     UI.Animation.updateDiePhysics(dt)
@@ -2232,7 +2301,7 @@ end
 
 function love.draw()
     -- PASS 1: Render entire game to canvas
-    love.graphics.setCanvas(mainCanvas)
+    love.graphics.setCanvas({mainCanvas, stencil = true})
     -- Don't clear here - let each screen phase handle its own background properly
     
     UI.Layout.begin()
@@ -2306,8 +2375,12 @@ function love.draw()
     UI.Animation.drawFloatingTexts()
     UI.Renderer.drawTooltip()
 
+    if gameState.irisAnimation.active then
+        UI.Renderer.drawIrisOverlay()
+    end
+
     UI.Layout.finish()
-    
+
     -- PASS 2: Apply CRT shader and render canvas to screen
     love.graphics.setCanvas()  -- Reset to screen
     
@@ -3020,6 +3093,32 @@ function loadCupSprites()
         local filename = "sprites/dice/cup_" .. i .. ".png"
         if love.filesystem.getInfo(filename) then
             cupSprites[i] = love.graphics.newImage(filename)
+        end
+    end
+end
+
+function loadMapItemSprites()
+    mapItemSprites = {}
+    local categories = {
+        "food-common", "food-rare", "empty-food",
+        "misc-common", "misc-rare",
+        "shop", "fuse", "contracts", "tools"
+    }
+    for _, category in ipairs(categories) do
+        mapItemSprites[category] = {}
+        local dir = "sprites/map-items/" .. category
+        local files = love.filesystem.getDirectoryItems(dir)
+        if files then
+            for _, filename in ipairs(files) do
+                if filename:match("%.png$") then
+                    local path = dir .. "/" .. filename
+                    if love.filesystem.getInfo(path) then
+                        local img = love.graphics.newImage(path)
+                        img:setFilter("nearest", "nearest")
+                        table.insert(mapItemSprites[category], {image = img, filename = filename})
+                    end
+                end
+            end
         end
     end
 end
