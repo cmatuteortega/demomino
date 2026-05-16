@@ -153,6 +153,21 @@ function love.load()
             idleTimer = 0,
             idleTriggerTime = 8.0  -- Show idle dialogue after 8s
         },
+        -- Tile enhance system
+        enhanceHand = {},       -- 7-tile hand for enhance mode
+        enhanceSlotTile = nil,  -- single tile in the center enhance slot
+        enhanceCurrentCost = 1, -- cost of next Enhance press; resets to 1 on menu entry
+        enhanceButton = nil,    -- {x, y, width, height, enabled}
+        enhanceNextButton = nil,
+        enhanceNextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        enhanceDialogueState = {
+            enteredScreen = false,
+            shownDragPrompt = false,
+            idleTimer = 0,
+            idleTriggerTime = 8.0,
+        },
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
         challengeStates = {},  -- State data for each challenge
@@ -401,6 +416,29 @@ function love.load()
         "Go watch Hereditary"
     }
     gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
+
+    -- Initialize enhance node dialogue
+    gameState.dialogueContent.enhance_menu = {}
+    gameState.dialogueContent.enhance_menu.greetings = {
+        "POWER HAS A PRICE",
+        "I CAN MAKE IT STRONGER",
+        "EVERYTHING HAS ITS LIMIT",
+    }
+    gameState.dialogueContent.enhance_menu.idle = {
+        "CHOOSE CAREFULLY",
+        "THE STORM WAITS FOR NO ONE",
+        "WEAKNESS DISGUSTS ME",
+    }
+    gameState.dialogueContent.enhance_menu.enhance = {
+        "STRONGER!",
+        "YES. THAT'S IT.",
+        "FEEL THE POWER",
+    }
+    gameState.dialogueContent.enhance_menu.tender   = {"GONE SOFT...", "OH. THAT HAPPENS."}
+    gameState.dialogueContent.enhance_menu.obsidian = {"PERFECTION.", "NO GOING BACK NOW"}
+    gameState.dialogueContent.enhance_menu.break_event = {"OOPS.", "TOO FRAGILE.", "IT COULDN'T HANDLE IT"}
+    gameState.dialogueContent.enhance_menu.pip     = {"GROWING...", "MORE. MORE. MORE."}
+    gameState.dialogueContent.enhance_menu.maxed   = {"AT ITS LIMIT.", "TAKE IT. IT IS DONE."}
 
     -- Start background music
     UI.Audio.playMusic()
@@ -1461,9 +1499,16 @@ function updateScoringSequence(dt)
                     local isDouble = Domino.isDouble(tile)
                     local addedValue = tileValue + (isDouble and 10 or 0)
 
-                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip)
-                    local contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
-                    addedValue = addedValue + contractBonus
+                    -- Check banned number challenge — banned tiles contribute nothing visually
+                    local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
+                    local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
+                    if isBanned then addedValue = 0 end
+
+                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip) — skip if banned
+                    if not isBanned then
+                        local contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                        addedValue = addedValue + contractBonus
+                    end
 
                     -- Check for coin rewards from "One Dollar" contract
                     local coinReward = Contracts.calculateCoinReward(tile, gameState.activeContracts)
@@ -1475,13 +1520,15 @@ function updateScoringSequence(dt)
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 
-                    -- Increment multiplier counter (1 for regular tile, +1 for obsidian)
-                    local multiplierIncrement = 1
-                    if tile.tileType == "obsidian" then
-                        multiplierIncrement = multiplierIncrement + 1  -- Obsidian adds extra +1 to multiplier
+                    -- Increment multiplier counter (1 for regular tile, +1 for obsidian) — skip if banned
+                    if not isBanned then
+                        local multiplierIncrement = 1
+                        if tile.tileType == "obsidian" then
+                            multiplierIncrement = multiplierIncrement + 1
+                        end
+                        seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
+                        gameState.multiplierTargetValue = seq.accumulatedMultiplier
                     end
-                    seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
-                    gameState.multiplierTargetValue = seq.accumulatedMultiplier
 
                     -- Set formula target and trigger counting animation
                     gameState.formulaTargetValue = seq.accumulatedValue
@@ -1554,8 +1601,7 @@ function updateScoringSequence(dt)
                 -- When multiplier reaches score and disappears, start counting score up
                 seq.multiplierFused = true
 
-                local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-                local finalScore = breakdown.total
+                local finalScore = Scoring.calculateScore(seq.tiles)
 
                 -- Start animating score from base to final multiplied value
                 gameState.formulaTargetValue = finalScore
@@ -1565,8 +1611,8 @@ function updateScoringSequence(dt)
 
         -- Substage 2: Wait for score to finish counting up
         if seq.multiplierFused then
-            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-            if gameState.formulaDisplayValue >= breakdown.total - 1 then
+            local finalScore = Scoring.calculateScore(seq.tiles)
+            if gameState.formulaDisplayValue >= finalScore - 1 then
                 -- Score finished counting, wait 0.5s then transfer
                 if not seq.waitingForTransfer then
                     seq.waitingForTransfer = true
@@ -1892,6 +1938,67 @@ function updateFusionDialogue(dt)
 end
 
 
+function updateEnhanceDialogue(dt)
+    local enhState = gameState.enhanceDialogueState
+    local dialogue = gameState.dialogueAnimation
+
+    if gameState.gamePhase ~= "tiles_menu" or gameState.currentTilesNodeType ~= "enhance" then
+        return
+    end
+
+    -- 1. Show initial greeting ~1s after entering screen
+    if not enhState.enteredScreen then
+        enhState.idleTimer = enhState.idleTimer + dt
+        if enhState.idleTimer >= 1.0 and not dialogue.isActive then
+            local greetText = Dialogue.getRandomPhrase("enhance_menu", "greetings")
+            if greetText then
+                Dialogue.show(greetText, {
+                    category = "enhance_greeting",
+                    skipDelay = true,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
+            enhState.enteredScreen = true
+            enhState.idleTimer = 0
+        end
+        return
+    end
+
+    -- 2. Once greeting dismissed, show drag prompt if no tile in slot yet
+    if not enhState.shownDragPrompt and not gameState.enhanceSlotTile and not dialogue.isActive then
+        Dialogue.show("DRAG A TILE TO ENHANCE IT", {
+            category = "enhance_drag",
+            skipDelay = true,
+            requiresAction = true,
+            autoDissmissTime = nil
+        })
+        enhState.shownDragPrompt = true
+        enhState.idleTimer = 0
+        return
+    end
+
+    -- 3. Idle random remarks
+    if not dialogue.isActive then
+        enhState.idleTimer = enhState.idleTimer + dt
+        if enhState.idleTimer >= enhState.idleTriggerTime then
+            local idleText = Dialogue.getRandomPhrase("enhance_menu", "idle")
+            if idleText then
+                Dialogue.show(idleText, {
+                    category = "enhance_idle",
+                    skipDelay = true,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
+            enhState.idleTimer = 0
+        end
+    end
+
+    Dialogue.update(dt)
+end
+
+
 function updateIntroDialogue(dt)
     local intro = gameState.introDialogueAnimation
 
@@ -2181,21 +2288,24 @@ function love.update(dt)
             updateFormulaCountAnimation(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
-        -- Handle fusion-specific dialogue when in alchemy mode
+        -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
             updateFusionDialogue(dt)
+        elseif gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
+            updateEnhanceDialogue(dt)
         else
             -- Update dialogue for regular shop screens
             Dialogue.update(dt)
 
-            -- Handle idle timer for shop flavour text
+            -- Handle idle timer for shop/contracts flavour text
             local dialogue = gameState.dialogueAnimation
-            if not dialogue.isActive and gameState.gamePhase == "tiles_menu" then
+            local idlePhase = gameState.gamePhase
+            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu") then
                 dialogue.idleTimer = dialogue.idleTimer + dt
 
                 -- Trigger random idle remark after 10 seconds
                 if dialogue.idleTimer >= 10.0 then
-                    local idleText = Dialogue.getRandomPhrase("tiles_menu", "idle")
+                    local idleText = Dialogue.getRandomPhrase(idlePhase, "idle")
                     if idleText then
                         Dialogue.show(idleText, {
                             category = "idle",
@@ -2215,14 +2325,22 @@ function love.update(dt)
         end
 
         if gameState.gamePhase == "tiles_menu" then
-            local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
-            if isFusionMode then
+            local tileNodeType = gameState.currentTilesNodeType
+            if tileNodeType == "alchemy" then
                 -- Update fusion hand with all animations (like combat/shop hand)
                 if gameState.fusionHand then
                     Hand.updatePositions(gameState.fusionHand)
                     Hand.updateDrawAnimations(gameState.fusionHand, dt)  -- Draw animation (tiles sliding in from right)
                     Hand.updateDiscardAnimations(gameState.fusionHand, dt)  -- Discard animation (tiles falling down)
                     Hand.updateIdleAnimations(gameState.fusionHand, dt)  -- Idle floating/rotation
+                end
+            elseif tileNodeType == "enhance" then
+                -- Update enhance hand with all animations
+                if gameState.enhanceHand then
+                    Hand.updatePositions(gameState.enhanceHand)
+                    Hand.updateDrawAnimations(gameState.enhanceHand, dt)
+                    Hand.updateDiscardAnimations(gameState.enhanceHand, dt)
+                    Hand.updateIdleAnimations(gameState.enhanceHand, dt)
                 end
             else
                 -- Update shop hand tiles with all animations (like combat hand)
@@ -2947,6 +3065,7 @@ function loadNodeSprites()
         alchemy = "tile",    -- ALCHEMY nodes use tile sprite
         artifacts = "artifact",
         contracts = "contract",
+        enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
         start = "tile",      -- Fallback to tile sprite
         boss = "combat"      -- Fallback to combat sprite
     }

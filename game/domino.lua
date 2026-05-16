@@ -16,6 +16,8 @@ function Domino.new(left, right, leftScore, rightScore)
         flipped = false,
         orientation = "vertical",
         tileType = "regular",  -- "regular", "demon", "obsidian", "tender"
+        enhanceBonus = 0,   -- cumulative flat scoring bonus from Enhance node
+        enhanceCount = 0,   -- number of times enhanced (max 5)
         -- Drag state properties
         isDragging = false,
         dragX = 0,
@@ -194,7 +196,7 @@ end
 function Domino.getValue(domino)
     local leftVal = domino.leftScore or Domino.getNumericValue(domino.left)
     local rightVal = domino.rightScore or Domino.getNumericValue(domino.right)
-    return leftVal + rightVal
+    return leftVal + rightVal + (domino.enhanceBonus or 0)
 end
 
 function Domino.isSpecialValue(value)
@@ -268,6 +270,8 @@ function Domino.clone(domino)
         height = domino.height,
         orientation = domino.orientation,
         tileType = domino.tileType or "regular",  -- Preserve tile type
+        enhanceBonus = domino.enhanceBonus or 0,
+        enhanceCount = domino.enhanceCount or 0,
         -- Drag state properties
         isDragging = domino.isDragging or false,
         dragX = domino.dragX or 0,
@@ -395,6 +399,8 @@ function Domino.fuseTiles(tile1, tile2)
     end
 
     local fusedTile = Domino.new(newLeft, newRight, newLeftScore, newRightScore)
+    fusedTile.enhanceBonus = (tile1.enhanceBonus or 0) + (tile2.enhanceBonus or 0)
+    fusedTile.enhanceCount = math.max(tile1.enhanceCount or 0, tile2.enhanceCount or 0)
 
     -- IMPORTANT: Normalize tile orientation to avoid sprite inversion issues
     -- This ensures we always use the base sprite, not the inverted version

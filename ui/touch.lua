@@ -26,6 +26,10 @@ local touchState = {
     playButtonPressed = false,
     discardButtonPressed = false,
     sortButtonPressed = false,
+    -- Fusion/Enhance/Contracts NEXT button press tracking
+    fusionNextButtonPressed    = false,
+    enhanceNextButtonPressed   = false,
+    contractsNextButtonPressed = false,
     -- Tool sprite press tracking (for touch release selection)
     pressedToolIndex = nil,
     pressedToolId = nil
@@ -336,6 +340,41 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
 
+    -- Handle NEXT> button press on enhance screen
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
+        if gameState.enhanceNextButton and isPointInRect(x, y, gameState.enhanceNextButton) then
+            UI.Audio.playButtonTap()
+            UI.Animation.animateTo(gameState.enhanceNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.enhanceNextButtonPressed = true
+            return
+        end
+    end
+
+    -- Handle NEXT> button press on contracts screen
+    if gameState.gamePhase == "contracts_menu" then
+        if gameState.contractsNextButton and isPointInRect(x, y, gameState.contractsNextButton) then
+            UI.Audio.playButtonTap()
+            if not gameState.contractsNextButtonAnimation then
+                gameState.contractsNextButtonAnimation = {
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+                }
+            end
+            UI.Animation.animateTo(gameState.contractsNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.contractsNextButtonPressed = true
+            return
+        end
+    end
+
     -- Handle NEXT >> button press on victory screen
     if gameState.gamePhase == "won" then
         if gameState.nextButtonBounds and isPointInRect(x, y, gameState.nextButtonBounds) then
@@ -481,6 +520,36 @@ function Touch.pressed(x, y, istouch, touchId)
                 Touch.handleToolButtonClick(button.toolId)
                 return
             end
+        end
+    end
+
+    -- Handle enhance hand tile dragging
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" and gameState.enhanceHand then
+        local tile, index = Hand.getTileAt(gameState.enhanceHand, x, y)
+        if tile then
+            if tile.tileType == "obsidian" then
+                UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE ENHANCED",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED,
+                    fontSize = "small",
+                    duration = 1.0,
+                    riseDistance = 20,
+                    startScale = 0.8,
+                    endScale = 1.0,
+                    easing = "easeOutQuart"
+                })
+                return
+            end
+            touchState.draggedTile  = tile
+            touchState.draggedFrom  = "enhanceHand"
+            touchState.draggedIndex = index
+            tile.isDragging = false
+            tile.dragX      = x
+            tile.dragY      = y
+            tile.visualX    = tile.x
+            tile.visualY    = tile.y
+            return
         end
     end
 
@@ -648,7 +717,7 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
 
-    if isInBoardArea(x, y) then
+    if (gameState.gamePhase == "playing" or gameState.gamePhase == "won") and isInBoardArea(x, y) then
         local tile = Board.getTileAt(x, y)
         if tile then
             if not tile.isAnchor then
@@ -1034,8 +1103,9 @@ function Touch.released(x, y, istouch, touchId)
                     gameState.dialogueAnimation.winDialogueShown = false  -- Reset for next win
                 end
 
-                -- Clear dialogue before returning to map
+                -- Clear dialogue and stale board state before returning to map
                 Dialogue.clear()
+                gameState.placedTiles = {}
 
                 if gameState.showNightIntroOnAdvance then
                     gameState.showNightIntroOnAdvance = false
@@ -1217,10 +1287,66 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Determine mode based on node type
         local nodeType = gameState.currentTilesNodeType or "trade"
-        local isFusionMode = (nodeType == "alchemy")
+        local isFusionMode  = (nodeType == "alchemy")
+        local isEnhanceMode = (nodeType == "enhance")
 
         -- Handle based on current mode
-        if isFusionMode then
+        if isEnhanceMode then
+            -- ENHANCE MODE HANDLING
+
+            -- Handle enhance slot click (double-tap to return)
+            if gameState.enhanceSlotButton and gameState.enhanceSlotTile
+                    and isPointInRect(x, y, gameState.enhanceSlotButton)
+                    and not (touchState.draggedTile and touchState.draggedFrom == "enhanceHand") then
+                if touchState.pressTime >= 0.25 then
+                    -- Long press: tooltip
+                    local b = gameState.enhanceSlotButton
+                    Touch.showTooltip("tile", gameState.enhanceSlotTile,
+                        b.x + b.width / 2, b.y + b.height / 2,
+                        {spriteHalfH = b.height / 2})
+                else
+                    -- Single/double tap: return tile to hand
+                    local tile = gameState.enhanceSlotTile
+                    table.insert(gameState.enhanceHand, tile)
+                    Hand.updatePositions(gameState.enhanceHand)
+                    Touch.animateTileToHand(tile, #gameState.enhanceHand, gameState.enhanceHand)
+                    gameState.enhanceSlotTile = nil
+                end
+                touchState.isPressed = false
+                return
+            end
+
+            -- Handle ENHANCE button
+            if gameState.enhanceButton and isPointInRect(x, y, gameState.enhanceButton) and gameState.enhanceButton.enabled then
+                Touch.confirmEnhance()
+                touchState.isPressed = false
+                return
+            end
+
+            -- Handle NEXT> button release for enhance mode
+            if touchState.enhanceNextButtonPressed and gameState.enhanceNextButton and isPointInRect(x, y, gameState.enhanceNextButton) then
+                UI.Audio.playButtonRelease()
+                UI.Animation.animateTo(gameState.enhanceNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_WHITE[1],
+                    [2] = UI.Colors.FONT_WHITE[2],
+                    [3] = UI.Colors.FONT_WHITE[3],
+                    [4] = UI.Colors.FONT_WHITE[4]
+                }, 0.1, "easeOutQuart", function()
+                    UI.Animation.clearAllDiePhysics()
+                    Dialogue.clear()
+                    gameState.gamePhase = "map"
+                end)
+            elseif touchState.enhanceNextButtonPressed then
+                UI.Animation.animateTo(gameState.enhanceNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_PINK[1],
+                    [2] = UI.Colors.FONT_PINK[2],
+                    [3] = UI.Colors.FONT_PINK[3],
+                    [4] = UI.Colors.FONT_PINK[4]
+                }, 0.3, "easeOutQuart")
+            end
+            touchState.enhanceNextButtonPressed = false
+
+        elseif isFusionMode then
             -- FUSION MODE HANDLING
             -- Note: Hand tile selection is done via DRAG only, not click
             -- Clicking hand tiles has no effect (like main game)
@@ -1389,13 +1515,34 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Don't clear touchState.isPressed yet - need it for drag detection below
     elseif gameState.gamePhase == "contracts_menu" then
-        -- Check if Return to Map button was clicked
-        if gameState.returnToMapButton and isPointInRect(x, y, gameState.returnToMapButton) then
-            -- Clear dialogue when returning to map
-            Dialogue.clear()
-            gameState.gamePhase = "map"
+        -- Check if NEXT> button was released
+        if touchState.contractsNextButtonPressed then
+            if gameState.contractsNextButton and isPointInRect(x, y, gameState.contractsNextButton) then
+                -- Animate back to pink then transition
+                if gameState.contractsNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.contractsNextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1],
+                        [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3],
+                        [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.2, "easeOutQuart")
+                end
+                Dialogue.clear()
+                gameState.gamePhase = "map"
+            else
+                -- Released outside — reset color
+                if gameState.contractsNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.contractsNextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1],
+                        [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3],
+                        [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.2, "easeOutQuart")
+                end
+            end
+            touchState.contractsNextButtonPressed = false
             touchState.isPressed = false
-            touchState.touchId = nil
+            touchState.touchId   = nil
             return
         end
 
@@ -1661,6 +1808,56 @@ function Touch.released(x, y, istouch, touchId)
                 })
             end
             Touch.resetTileDragState(touchState.draggedTile)
+        end
+    elseif touchState.draggedTile and touchState.draggedFrom == "enhanceHand" then
+        if Touch.isDragging() then
+            local tile = touchState.draggedTile
+
+            if Touch.isInEnhanceArea(x, y) and not gameState.enhanceSlotTile then
+                -- Place tile into the center enhance slot
+                gameState.enhanceSlotTile = tile
+                table.remove(gameState.enhanceHand, touchState.draggedIndex)
+                Hand.updatePositions(gameState.enhanceHand)
+
+                local fromX = tile.dragX or tile.visualX
+                local fromY = tile.dragY or tile.visualY
+                Touch.positionTileInEnhanceSlot(tile)
+                tile.visualX = fromX
+                tile.visualY = fromY
+                Touch.animateTileToPosition(tile, tile.x, tile.y)
+
+                -- Dismiss drag prompt dialogue
+                if gameState.enhanceDialogueState then
+                    gameState.enhanceDialogueState.shownDragPrompt = true
+                end
+                Dialogue.clear()
+            elseif Touch.isInEnhanceArea(x, y) and gameState.enhanceSlotTile then
+                -- Slot already occupied
+                UI.Animation.createFloatingText("SLOT FULL",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED, fontSize = "small",
+                    duration = 1.0, riseDistance = 20,
+                    startScale = 0.8, endScale = 1.0, easing = "easeOutQuart"
+                })
+                Touch.animateTileToHand(tile, touchState.draggedIndex, gameState.enhanceHand)
+            else
+                Touch.animateTileToHand(tile, touchState.draggedIndex, gameState.enhanceHand)
+            end
+        else
+            -- Just a tap — punch animation and optional tooltip
+            local tile = touchState.draggedTile
+            UI.Animation.animateTo(tile, {selectScale = 1.15}, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
+            end)
+            if touchState.pressTime >= 0.25 then
+                local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
+                local _ss = math.max(_ms * 2.0, 1.0)
+                Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
+                    spriteHalfH = 64 * _ss / 2
+                })
+            end
+            Touch.resetTileDragState(tile)
         end
     elseif touchState.draggedTile and touchState.draggedFrom == "shopHand" then
         if Touch.isDragging() then
@@ -2879,13 +3076,7 @@ function Touch.executeNodeEntry(node)
     -- Route to appropriate screen based on node type
     if nodeType == "combat" or nodeType == "boss" then
         -- Mark if this is the boss node (map completion)
-        if Map.isCompleted(gameState.currentMap) then
-            gameState.isBossRound = true
-            -- Trigger completion celebration
-            Touch.triggerMapCompletionCelebration()
-        else
-            gameState.isBossRound = false
-        end
+        gameState.isBossRound = Map.isCompleted(gameState.currentMap)
 
         -- Store the demon name for this combat encounter
         gameState.currentDemonName = node.demonName
@@ -2963,6 +3154,29 @@ function Touch.executeNodeEntry(node)
         Hand.animateTilesDraw(gameState.fusionHand, 0)
 
         gameState.gamePhase = "tiles_menu"
+    elseif nodeType == "enhance" then
+        -- ENHANCE node - tile enhancement interface
+        gameState.currentTilesNodeType = "enhance"
+
+        Touch.initializeEnhanceHand()
+
+        gameState.buttonAnimations = {
+            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+        gameState.enhanceNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+
+        -- Animate tiles drawing in from right
+        Hand.animateTilesDraw(gameState.enhanceHand, 0)
+
+        -- Clear any existing dialogue
+        Dialogue.clear()
+
+        gameState.gamePhase = "tiles_menu"
+
     elseif nodeType == "tiles" then
         -- Legacy "tiles" node type - default to trade for backward compatibility
         gameState.currentTilesNodeType = "trade"
@@ -3047,6 +3261,21 @@ function Touch.executeNodeEntry(node)
         -- Generate contracts for shop if not already generated
         if #gameState.offeredContracts == 0 then
             gameState.offeredContracts = Contracts.generateShopContracts()
+        end
+        -- Reset button animation
+        gameState.contractsNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+        -- Greeting dialogue
+        Dialogue.clear()
+        local greetText = Dialogue.getRandomPhrase("contracts_menu", "greetings")
+        if greetText then
+            Dialogue.show(greetText, {
+                category = "greeting",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
         end
         gameState.gamePhase = "contracts_menu"
     else
@@ -3133,6 +3362,151 @@ function Touch.initializeFusionHand()
         idleTimer = 0,
         idleTriggerTime = 8.0
     }
+end
+
+-- ─────────────────────────────────────────────────────────────
+-- ENHANCE NODE HELPERS
+-- ─────────────────────────────────────────────────────────────
+
+function Touch.initializeEnhanceHand()
+    gameState.enhanceHand        = {}
+    gameState.enhanceSlotTile    = nil
+    gameState.enhanceCurrentCost = 1
+
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+    gameState.enhanceHand = Hand.drawTiles(gameState.deck, 7)
+
+    -- Reset dialogue state
+    gameState.enhanceDialogueState = {
+        enteredScreen   = false,
+        shownDragPrompt = false,
+        idleTimer       = 0,
+        idleTriggerTime = 8.0,
+    }
+end
+
+function Touch.isInEnhanceArea(x, y)
+    local boardArea = UI.Layout.getBoardArea()
+    return y >= boardArea.y and y <= boardArea.y + boardArea.height
+end
+
+function Touch.positionTileInEnhanceSlot(tile)
+    local boardArea = UI.Layout.getBoardArea()
+    local centerX   = gameState.screen.width / 2
+    local centerY   = boardArea.y + boardArea.height / 2
+    tile.x       = centerX
+    tile.y       = centerY
+    tile.visualX = centerX
+    tile.visualY = centerY
+end
+
+local ENHANCE_VALUES = {3, 5, 8, 10, 15}
+
+local function returnEnhanceTileToHand(tile)
+    if not tile then return end
+    tile.isDragging  = false
+    tile.dragScale   = 1.0
+    tile.dragOpacity = 1.0
+    table.insert(gameState.enhanceHand, tile)
+    Hand.updatePositions(gameState.enhanceHand)
+    Touch.animateTileToHand(tile, #gameState.enhanceHand, gameState.enhanceHand)
+    gameState.enhanceSlotTile = nil
+end
+
+function Touch.confirmEnhance()
+    local tile = gameState.enhanceSlotTile
+    if not tile then return end
+
+    local cost = gameState.enhanceCurrentCost or 1
+    if gameState.coins < cost then return end
+
+    -- Deduct coins (updateCoins expects absolute new value)
+    updateCoins(gameState.coins - cost)
+    gameState.enhanceCurrentCost = cost + 1
+
+    -- Overload: tile at max gets destroyed
+    if (tile.enhanceCount or 0) >= 5 then
+        for i = #gameState.tileCollection, 1, -1 do
+            if gameState.tileCollection[i] == tile then
+                table.remove(gameState.tileCollection, i)
+                break
+            end
+        end
+        gameState.enhanceSlotTile = nil
+        UI.Animation.createFloatingText("OVERLOADED!", gameState.screen.width / 2,
+            gameState.screen.height / 2 - UI.Layout.scale(80), {
+            color = {0.9, 0.2, 0.2, 1}, fontSize = "medium",
+            duration = 1.5, riseDistance = 40,
+            startScale = 0.8, endScale = 1.2, easing = "easeOutBack"
+        })
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "break_event")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+        return
+    end
+
+    -- Normal enhancement
+    local upgradeIndex = (tile.enhanceCount or 0) + 1
+    local bonus = ENHANCE_VALUES[upgradeIndex]
+    tile.enhanceBonus = (tile.enhanceBonus or 0) + bonus
+    tile.enhanceCount = upgradeIndex
+
+    local roll       = love.math.random()
+    local popupText  = "+" .. bonus
+    local popupColor = {0.3, 0.9, 0.4, 1}
+
+    if roll < 0.05 then
+        tile.tileType = "tender"
+        popupText = "TENDER!\n+" .. bonus
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "tender")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+
+    elseif roll < 0.10 then
+        tile.tileType = "obsidian"
+        popupText = "OBSIDIAN!\n+" .. bonus
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "obsidian")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+        returnEnhanceTileToHand(tile)
+
+    elseif roll < 0.15 then
+        popupText  = "SHATTERED!"
+        popupColor = {0.9, 0.2, 0.2, 1}
+        for i = #gameState.tileCollection, 1, -1 do
+            if gameState.tileCollection[i] == tile then
+                table.remove(gameState.tileCollection, i)
+                break
+            end
+        end
+        gameState.enhanceSlotTile = nil
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "break_event")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+
+    elseif roll < 0.25 then
+        if type(tile.left)  == "number" then tile.left  = tile.left  + 1 end
+        if type(tile.right) == "number" then tile.right = tile.right + 1 end
+        tile.id = tostring(tile.left) .. "-" .. tostring(tile.right)
+        popupText = "STRONGER!\n+" .. bonus
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "pip")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+
+    else
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "enhance")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+    end
+
+    UI.Animation.createFloatingText(popupText,
+        gameState.screen.width / 2,
+        gameState.screen.height / 2 - UI.Layout.scale(80), {
+        color = popupColor, fontSize = "medium",
+        duration = 1.5, riseDistance = 40,
+        startScale = 0.8, endScale = 1.2, easing = "easeOutBack"
+    })
+
+    -- Show "maxed" dialogue when tile hits 5 (warn player next press destroys it)
+    if gameState.enhanceSlotTile and tile.enhanceCount >= 5 then
+        local msg = Dialogue.getRandomPhrase("enhance_menu", "maxed")
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+    end
 end
 
 -- Handle clicks on fusion slot tiles (flip or double-tap to return)

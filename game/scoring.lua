@@ -156,6 +156,7 @@ function Scoring.getTileContribution(tile, activeContracts)
     local multBonus = tile.tileType == "obsidian" and 1 or 0
     return {
         pipSum             = pipSum,
+        enhanceBonus       = tile.enhanceBonus or 0,
         doubleBonus        = doubleBonus,
         contractBonus      = contractBonus,
         contractBonusLabel = contractBonusLabel,

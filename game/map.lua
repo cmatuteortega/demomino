@@ -213,6 +213,9 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "contracts" then
                 -- CONTRACTS node - always STOLAS
                 node.demonName = "STOLAS"
+            elseif node.nodeType == "enhance" then
+                -- ENHANCE node - always PAZUZU
+                node.demonName = "PAZUZU"
             end
         end
     end
@@ -233,19 +236,18 @@ function Map.selectRandomNodeType(depth, numLevels, currentRound)
             return "combat"
         else
             -- Non-combat levels: randomly select from other node types
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts", "enhance"}
             return otherTypes[love.math.random(1, #otherTypes)]
         end
     else
         -- Round 2+: Random placement with at least 1 level separation
         -- This will be validated/corrected by ensuring no two consecutive combat levels
-        local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
         local combatChance = 0.4  -- Base 40% chance for combat
 
         if love.math.random() < combatChance then
             return "combat"
         else
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            local otherTypes = {"trade", "alchemy", "artifacts", "contracts", "enhance"}
             return otherTypes[love.math.random(1, #otherTypes)]
         end
     end

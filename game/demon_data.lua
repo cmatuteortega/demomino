@@ -55,6 +55,14 @@ DemonData.SPECIAL_DEMONS = {
     LILITH = {
         name = "LILITH",
         subtitle = "NIGHT LADY"  -- Placeholder - user will update manually
+    },
+    STOLAS = {
+        name = "STOLAS",
+        subtitle = "PRINCE OF HELL"
+    },
+    PAZUZU = {
+        name = "PAZUZU",
+        subtitle = "STORM BRINGER"
     }
 }
 

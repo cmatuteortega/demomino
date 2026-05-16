@@ -942,8 +942,7 @@ function UI.Renderer.drawHand(hand)
 end
 
 function UI.Renderer.drawToolSprites()
-    -- Only draw in playing phase (not in won state)
-    if gameState.gamePhase ~= "playing" then
+    if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
         return
     end
 
@@ -2815,7 +2814,8 @@ function UI.Renderer.drawNodeConfirmation()
         trade = "TRADE",
         alchemy = "ALCHEMY",
         artifacts = "ARTIFACTS",
-        contracts = "MAGIK"
+        contracts = "MAGIK",
+        enhance = "ENHANCE"
     }
 
     local nodeType = gameState.selectedNode.nodeType
@@ -2962,12 +2962,16 @@ function UI.Renderer.drawTilesMenu()
 
     -- Determine which mode to display based on current node type
     local nodeType = gameState.currentTilesNodeType or "trade"  -- Default to trade for backward compatibility
-    local isFusionMode = (nodeType == "alchemy")
 
     -- Draw content based on node type
-    if isFusionMode then
+    if nodeType == "alchemy" then
         -- ALCHEMY node - Fusion mode
         UI.Renderer.drawFusionMode()
+        return
+    elseif nodeType == "enhance" then
+        -- ENHANCE node - Enhance mode
+        UI.Renderer.drawEnhanceMode()
+        return
     else
         -- TRADE node - Shop mode (drag-to-board system like main game)
 
@@ -3377,6 +3381,14 @@ function UI.Renderer.drawContractsMenu()
     UI.Colors.setBackground()
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
+    -- Draw lighter background strip at hand level (like combat/trade/artifacts)
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    -- Draw tool stack (bottom-left corner showing owned tools)
+    UI.Renderer.drawToolStack()
+
     -- Draw node title and demon name in top corners (same style as artifacts/tiles shops)
     local rightX = screenWidth - UI.Layout.scale(40)
     local leftX = UI.Layout.scale(60)
@@ -3411,12 +3423,28 @@ function UI.Renderer.drawContractsMenu()
         currentX = currentX + charWidth
     end
 
-    -- Left side: MAGIK demon name
-    local demonName = "MAGIK"
+    -- Left side: STOLAS demon icon and name
+    local demonName = "STOLAS"
     local demonColor = UI.Colors.FONT_RED
     local font = UI.Fonts.get("demonName")
 
     currentX = leftX
+
+    -- Draw demon icon first (if available)
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite = demonIconSprites[demonName]
+        local fontHeight = font:getHeight()
+        local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+        local iconWidth = iconSprite:getWidth() * iconScale
+        local phase = time * 2.5
+        local waveOffset = math.sin(phase) * 3
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
 
     -- Draw demon name
     for i = 1, #demonName do
@@ -3436,26 +3464,36 @@ function UI.Renderer.drawContractsMenu()
     end
 
     -- Draw demon subtitle
-    local subtitle = "DEAL WITH THE DEVIL"
-    local subtitleFont = UI.Fonts.get("large")
-    local subtitleColor = UI.Colors.FONT_PINK
-    local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
-    local subtitleX = leftX
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
 
-    for i = 1, #subtitle do
-        local char = subtitle:sub(i, i)
-        local charWidth = subtitleFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local waveOffset = math.sin(phase) * 1
+        local iconWidth = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+            local fontHeight = font:getHeight()
+            local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+            iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+        end
 
-        UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(2),
-            scale = 1.0,
-            shake = 0
-        })
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1
 
-        subtitleX = subtitleX + charWidth
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", {
+                shadow = true,
+                shadowOffset = UI.Layout.scale(2),
+                scale = 1.0,
+                shake = 0
+            })
+
+            subtitleX = subtitleX + charWidth
+        end
     end
 
     -- Coins are drawn separately via drawCoinText() call at end of draw cycle
@@ -3496,8 +3534,8 @@ function UI.Renderer.drawContractsMenu()
     UI.Renderer.drawCoinSprites()
     UI.Renderer.drawCoinText()
 
-    -- Return to Map button
-    UI.Renderer.drawReturnToMapButton()
+    -- NEXT> button (bottom-right, matches fusion/enhance style)
+    UI.Renderer.drawContractsNextButton()
 end
 
 -- Draw a contract card in the shop
@@ -4192,6 +4230,51 @@ function UI.Renderer.drawReturnToMapButton()
 
     -- Store button bounds for touch handling
     gameState.returnToMapButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight}
+end
+
+function UI.Renderer.drawContractsNextButton()
+    if not gameState.contractsNextButtonAnimation then
+        gameState.contractsNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local font         = UI.Fonts.get("formulaScore")
+    local time         = love.timer.getTime()
+    local text         = "NEXT>"
+    local textColor    = gameState.contractsNextButtonAnimation.color
+
+    local totalWidth = 0
+    for i = 1, #text do
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i))
+    end
+
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin   = UI.Layout.scale(20)
+    local textX = screenWidth  - totalWidth - horizontalMargin
+    local textY = screenHeight - font:getHeight() - verticalMargin
+
+    local currentX = textX
+    for i = 1, #text do
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4)
+        })
+        currentX = currentX + charWidth
+    end
+
+    local padding = UI.Layout.scale(20)
+    gameState.contractsNextButton = {
+        x      = textX  - padding,
+        y      = textY  - padding,
+        width  = totalWidth + padding * 2,
+        height = font:getHeight() + padding * 2
+    }
 end
 
 function UI.Renderer.drawMapNodes(map)
@@ -5007,6 +5090,280 @@ function UI.Renderer.drawFusionMode()
     UI.Renderer.drawFusionNextButton()
 end
 
+-- ─────────────────────────────────────────────────────────────
+-- ENHANCE NODE RENDERING
+-- ─────────────────────────────────────────────────────────────
+
+function UI.Renderer.drawEnhanceMode()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+
+    -- Background
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Hand area light strip
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    -- Tool stack (owned tools, bottom-left)
+    UI.Renderer.drawToolStack()
+
+    -- Header layout (shared constants)
+    local rightX    = screenWidth - UI.Layout.scale(40)
+    local leftX     = UI.Layout.scale(60)
+    local topY      = UI.Layout.scale(20)
+    local time      = love.timer.getTime()
+    local titleFont = UI.Fonts.get("formulaScore")
+
+    -- Right side: ENHANCE title (wave animation)
+    local nodeTitle  = "ENHANCE"
+    local titleColor = UI.Colors.FONT_WHITE
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
+    end
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char      = nodeTitle:sub(i, i)
+        local charWidth = titleFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "formulaScore", titleColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    -- Left side: PAZUZU icon + name + subtitle
+    local demonName  = "PAZUZU"
+    local demonColor = UI.Colors.FONT_RED
+    local font       = UI.Fonts.get("demonName")
+    currentX = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite  = demonIconSprites[demonName]
+        local fontHeight  = font:getHeight()
+        local iconScale   = (fontHeight / iconSprite:getHeight()) * 1.3
+        local iconWidth   = iconSprite:getWidth() * iconScale
+        local phase       = time * 2.5
+        local waveOffset  = math.sin(phase) * 3
+        local shadowOff   = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOff, topY + waveOffset + shadowOff, 0, iconScale, iconScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char      = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont  = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY     = topY + font:getHeight() - UI.Layout.scale(5)
+        local iconWidth     = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local s = demonIconSprites[demonName]
+            local sc = (font:getHeight() / s:getHeight()) * 1.3
+            iconWidth = s:getWidth() * sc + UI.Layout.scale(8)
+        end
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char      = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+            local phase     = time * 2.5 + (i - 1) * 0.4
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + math.sin(phase) * 1, "large", subtitleColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subtitleX = subtitleX + charWidth
+        end
+    end
+
+    -- Center slot
+    UI.Renderer.drawEnhanceArea()
+
+    -- 7-tile enhance hand
+    if gameState.enhanceHand then
+        UI.Renderer.drawHand(gameState.enhanceHand)
+    end
+
+    -- Coins
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+
+    -- Buttons
+    UI.Renderer.drawEnhanceButton()
+    UI.Renderer.drawEnhanceNextButton()
+end
+
+function UI.Renderer.drawEnhanceArea()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY   = boardArea.y + boardArea.height / 2
+
+    local minScale    = math.min(screenWidth / 800, screenHeight / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    local sampleVert  = dominoSprites and dominoSprites["00"]
+    local tileW = sampleVert and (sampleVert.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
+    local tileH = sampleVert and (sampleVert.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+
+    -- Store slot button bounds for touch detection
+    gameState.enhanceSlotButton = {
+        x      = centerX - tileW / 2,
+        y      = centerY - tileH / 2,
+        width  = tileW,
+        height = tileH,
+    }
+
+    local tile = gameState.enhanceSlotTile
+    if tile then
+        -- Draw the tile in the slot
+        UI.Renderer.drawDomino(tile, centerX, centerY, gameState.screen.scale, "vertical", 1.0)
+
+        -- Enhancement info below tile
+        local infoY = centerY + tileH / 2 + UI.Layout.scale(12)
+        local ENHANCE_VALUES = {3, 5, 8, 10, 15}
+        local count = tile.enhanceCount or 0
+
+        if count > 0 then
+            local totalBonus = tile.enhanceBonus or 0
+            local bonusText  = "+" .. totalBonus .. " VALUE"
+            UI.Fonts.drawAnimatedText(bonusText, centerX, infoY, "large",
+                {0.3, 0.9, 0.4, 1}, "center", {shadow = true, shadowOffset = UI.Layout.scale(2)})
+            infoY = infoY + UI.Layout.scale(18)
+        end
+
+        local countColor = (count >= 5) and UI.Colors.FONT_RED or UI.Colors.FONT_WHITE
+        UI.Fonts.drawText(count .. "/5", centerX, infoY, "large", countColor, "center")
+
+        if count >= 5 then
+            UI.Fonts.drawText("NEXT PRESS DESTROYS!", centerX, infoY + UI.Layout.scale(18), "large", UI.Colors.FONT_RED, "center")
+        end
+    else
+        -- Empty slot placeholder
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line",
+            centerX - tileW / 2,
+            centerY - tileH / 2,
+            tileW, tileH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+        UI.Fonts.drawText("DRAG TILE HERE", centerX, centerY, "large", UI.Colors.FONT_WHITE, "center")
+    end
+end
+
+function UI.Renderer.drawEnhanceButton()
+    local ENHANCE_VALUES = {3, 5, 8, 10, 15}
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale   = buttonAnim and buttonAnim.scale  or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    local tile       = gameState.enhanceSlotTile
+    local count      = tile and (tile.enhanceCount or 0) or 0
+    local cost       = gameState.enhanceCurrentCost or 1
+    local canAfford  = gameState.coins >= cost
+    local hasTile    = tile ~= nil
+    local isMaxed    = count >= 5
+    local isObsidian = hasTile and tile.tileType == "obsidian"
+
+    -- Overload state: tile can still be pressed but it will be destroyed
+    local enabled = hasTile and not isObsidian and canAfford
+
+    local buttonColor, textColor, buttonText
+    if not hasTile then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "SELECT A TILE"
+    elseif isObsidian then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "OBSIDIAN: FULL"
+    elseif not canAfford then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "NOT ENOUGH $"
+    elseif isMaxed then
+        -- Danger state: next press destroys tile
+        buttonColor = UI.Colors.FONT_RED
+        textColor   = UI.Colors.FONT_WHITE
+        buttonText  = "PUSH FURTHER? (" .. cost .. "$)"
+    else
+        buttonColor = UI.Colors.FONT_PINK
+        textColor   = UI.Colors.FONT_WHITE
+        local nextValue = ENHANCE_VALUES[count + 1]
+        buttonText  = "ENHANCE (" .. cost .. "$) +" .. nextValue
+    end
+
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center", true)
+
+    gameState.enhanceButton = {
+        x = playX, y = playY + yOffset,
+        width = buttonWidth * scale, height = buttonHeight * scale,
+        enabled = enabled
+    }
+end
+
+function UI.Renderer.drawEnhanceNextButton()
+    if not gameState.enhanceNextButtonAnimation then
+        gameState.enhanceNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local font         = UI.Fonts.get("formulaScore")
+    local time         = love.timer.getTime()
+    local text         = "NEXT>"
+    local textColor    = gameState.enhanceNextButtonAnimation.color
+
+    local hMargin = UI.Layout.scale(40)
+    local vMargin = UI.Layout.scale(20)
+    local totalWidth = 0
+    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) end
+
+    local textX = screenWidth  - totalWidth - hMargin
+    local textY = screenHeight - font:getHeight() - vMargin
+
+    local currentX = textX
+    for i = 1, #text do
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        UI.Fonts.drawAnimatedText(char, currentX, textY + math.sin(phase) * 3, "formulaScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4)
+        })
+        currentX = currentX + charWidth
+    end
+
+    local padding = UI.Layout.scale(20)
+    gameState.enhanceNextButton = {
+        x = textX - padding, y = textY - padding,
+        width = totalWidth + padding * 2, height = font:getHeight() + padding * 2
+    }
+end
+
 -- Draw fusion area showing selected tiles and preview
 function UI.Renderer.drawFusionArea()
     local screenWidth = gameState.screen.width
@@ -5461,7 +5818,9 @@ function UI.Renderer.drawTooltip()
         local typeNames = {regular = "BONE", obsidian = "OBSIDIAN", tender = "TENDER", demon = "DEMON"}
         local typeName  = tile.isAnchor and "DEMON" or (typeNames[tile.tileType] or "TILE")
         local pipStr    = tostring(tile.left) .. " - " .. tostring(tile.right)
-        local contrib   = tile.isAnchor and {totalSum = 0, mult = 0} or Scoring.getTileContribution(tile, gameState.activeContracts)
+        local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
+        local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
+        local contrib   = (tile.isAnchor or isBanned) and {totalSum = 0, mult = 0} or Scoring.getTileContribution(tile, gameState.activeContracts)
         local sumStr    = "+" .. contrib.totalSum
         local multStr   = "x" .. contrib.mult
 
