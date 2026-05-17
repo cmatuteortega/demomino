@@ -1823,21 +1823,35 @@ function UI.Renderer.drawScore(score)
         end
     end
 
-    -- Draw tiles left counter in bottom right corner with same offset as other corner UI elements
+    -- Draw tiles left counter vertically centered at the play/discard/sort button row
     local tilesLeft = #gameState.deck
     local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
     local tilesText = "Tiles: " .. tilesLeft .. "/" .. totalTiles
-    local tilesColor = UI.Colors.FONT_WHITE
+    local tilesColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
 
-    -- Use same margin as other corner elements (score counter uses 40px)
     local margin = UI.Layout.scale(40)
-    local bottomRightX = gameState.screen.width - margin
-    local bottomRightY = gameState.screen.height - margin
+    local rightX = gameState.screen.width - margin
+    local _, btnHeight = UI.Layout.getButtonSize()
+    local _, btnY     = UI.Layout.getPlayButtonPosition()
+    local centerY     = btnY + btnHeight / 2
 
-    UI.Fonts.drawAnimatedText(tilesText, bottomRightX, bottomRightY, "large", tilesColor, "right", {
+    UI.Fonts.drawAnimatedText(tilesText, rightX, centerY, "counter", tilesColor, "right", {
         shadow = true,
-        shadowOffset = UI.Layout.scale(3)
+        shadowOffset = UI.Layout.scale(3),
+        vcenter = true,
     })
+
+    -- Store hit bounds so the counter is tappable (opens deck preview)
+    local font = UI.Fonts.get("counter")
+    local tw   = font:getWidth(tilesText)
+    local th   = font:getHeight()
+    local pad  = UI.Layout.scale(10)
+    gameState.deckPreviewTilesBounds = {
+        x      = rightX - tw - pad,
+        y      = centerY - th / 2 - pad,
+        width  = tw  + pad * 2,
+        height = th  + pad * 2,
+    }
 end
 
 function UI.Renderer.drawVictoryPhrase()
@@ -2972,7 +2986,7 @@ function UI.Renderer.drawNodeConfirmation()
 
     -- NEXT> button in bottom-right (on map screen)
     local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(20)
+    local verticalMargin = UI.Layout.scale(80)
     local nextFont = UI.Fonts.get("formulaScore")
 
     local text = "NEXT>"
@@ -4000,7 +4014,7 @@ function UI.Renderer.drawShopNextButton()
 
     -- NEXT> button in bottom-right
     local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(20)
+    local verticalMargin = UI.Layout.scale(80)
 
     local text = "NEXT>"
     local textColor = gameState.shopNextButtonAnimation.color
@@ -4063,7 +4077,7 @@ function UI.Renderer.drawArtifactsNextButton()
 
     -- NEXT> button in bottom-right
     local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(20)
+    local verticalMargin = UI.Layout.scale(80)
 
     local text = "NEXT>"
     local textColor = gameState.artifactsNextButtonAnimation.color
@@ -4126,7 +4140,7 @@ function UI.Renderer.drawFusionNextButton()
 
     -- NEXT> button in bottom-right
     local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(20)
+    local verticalMargin = UI.Layout.scale(80)
 
     local text = "NEXT>"
     local textColor = gameState.fusionNextButtonAnimation.color
@@ -4192,7 +4206,7 @@ function UI.Renderer.drawContractsNextButton()
     end
 
     local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin   = UI.Layout.scale(20)
+    local verticalMargin   = UI.Layout.scale(80)
     local textX = screenWidth  - totalWidth - horizontalMargin
     local textY = screenHeight - font:getHeight() - verticalMargin
 
@@ -5242,7 +5256,7 @@ function UI.Renderer.drawEnhanceNextButton()
     local textColor    = gameState.enhanceNextButtonAnimation.color
 
     local hMargin = UI.Layout.scale(40)
-    local vMargin = UI.Layout.scale(20)
+    local vMargin = UI.Layout.scale(80)
     local totalWidth = 0
     for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) end
 
@@ -5878,6 +5892,180 @@ function UI.Renderer.drawIrisOverlay()
     love.graphics.setColor(r, g, b, 1)
     love.graphics.rectangle("fill", 0, 0, sw, sh)
     love.graphics.setStencilTest()
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Tappable "Tiles: N" counter drawn vertically centered at the button row on map/shop screens.
+-- Stores hit bounds in gameState.deckPreviewTilesBounds for touch detection.
+function UI.Renderer.drawTilesCountButton()
+    local screenWidth = gameState.screen.width
+
+    local total = gameState.tileCollection and #gameState.tileCollection or 0
+    local tilesText = "Tiles: " .. total
+    local textColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
+
+    local margin      = UI.Layout.scale(40)
+    local rightX      = screenWidth - margin
+    local _, btnHeight = UI.Layout.getButtonSize()
+    local _, btnY      = UI.Layout.getPlayButtonPosition()
+    local centerY      = btnY + btnHeight / 2
+
+    UI.Fonts.drawAnimatedText(tilesText, rightX, centerY, "counter", textColor, "right", {
+        shadow = true,
+        shadowOffset = UI.Layout.scale(3),
+        vcenter = true,
+    })
+
+    local font = UI.Fonts.get("counter")
+    local tw   = font:getWidth(tilesText)
+    local th   = font:getHeight()
+    local pad  = UI.Layout.scale(10)
+    gameState.deckPreviewTilesBounds = {
+        x      = rightX - tw - pad,
+        y      = centerY - th / 2 - pad,
+        width  = tw  + pad * 2,
+        height = th  + pad * 2,
+    }
+end
+
+-- Full-screen deck preview overlay.  Call after the current phase is drawn so it sits on top.
+function UI.Renderer.drawDeckPreview()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local time = love.timer.getTime()
+
+    -- Opaque background
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- "COLLECTION" title with wave animation (same pattern as shop menus)
+    local titleFont  = UI.Fonts.get("formulaScore")
+    local titleText  = "LOADOUT"
+    local titleColor = UI.Colors.FONT_WHITE
+    local titleTotalW = 0
+    for i = 1, #titleText do
+        titleTotalW = titleTotalW + titleFont:getWidth(titleText:sub(i, i))
+    end
+    local titleX = (screenWidth - titleTotalW) / 2
+    local titleY = UI.Layout.scale(16)
+    local curTX  = titleX
+    for i = 1, #titleText do
+        local ch  = titleText:sub(i, i)
+        local chW = titleFont:getWidth(ch)
+        local wv  = math.sin(time * 2.5 + (i - 1) * 0.4) * 3
+        UI.Fonts.drawAnimatedText(ch, curTX, titleY + wv, "formulaScore", titleColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4)
+        })
+        curTX = curTX + chW
+    end
+
+    -- Tile grid layout constants
+    local tiles = gameState.deckPreviewTiles
+    local N = tiles and #tiles or 0
+
+    local rows       = 4
+    local tilesPerRow = math.max(1, math.ceil(N / rows))
+    local margin     = UI.Layout.scale(24)
+    local topMargin  = UI.Layout.scale(58)   -- below title
+    local botMargin  = UI.Layout.scale(58)   -- above back button
+
+    local minSc       = math.min(screenWidth / 800, screenHeight / 600)
+    local spriteScale = math.max(minSc * 2.0, 1.0)
+    local sampleData  = dominoSprites and dominoSprites["00"]
+    local baseTileW   = sampleData and (sampleData.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
+    local baseTileH   = sampleData and (sampleData.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+
+    local rowWidth = screenWidth - margin * 2
+    local cellW    = rowWidth / tilesPerRow
+    local availH   = screenHeight - topMargin - botMargin
+    local rowH     = availH / rows
+
+    -- Draw tiles (update entrance animation inline)
+    if N > 0 then
+        local startOffX = screenWidth + UI.Layout.scale(200)
+        for i, tile in ipairs(tiles) do
+            local idx = i - 1
+            local row = math.floor(idx / tilesPerRow)
+            local col = idx % tilesPerRow
+            local targetX = margin + (col + 0.5) * cellW
+            local targetY = topMargin + (row + 0.5) * rowH
+
+            if tile.isAnimating then
+                local elapsed = time - tile.drawAnimStart
+                if elapsed >= 0 then
+                    local progress = math.min(elapsed / tile.drawAnimDuration, 1.0)
+                    local eased    = 1 - math.pow(1 - progress, 4)
+                    tile.visualX   = startOffX + (targetX - startOffX) * eased
+                    tile.visualY   = targetY
+                    if progress >= 1.0 then tile.isAnimating = false end
+                else
+                    tile.visualX = startOffX
+                    tile.visualY = targetY
+                end
+            end
+
+            UI.Renderer.drawDomino(tile, targetX, targetY, nil, "vertical", nil)
+        end
+
+        -- Compute hit areas for touch (overwrite each frame)
+        gameState.deckPreviewTileHitAreas = gameState.deckPreviewTileHitAreas or {}
+        for i, tile in ipairs(tiles) do
+            local idx     = i - 1
+            local row     = math.floor(idx / tilesPerRow)
+            local col     = idx % tilesPerRow
+            local targetX = margin + (col + 0.5) * cellW
+            local targetY = topMargin + (row + 0.5) * rowH
+            local drawX   = tile.isAnimating and tile.visualX or targetX
+            gameState.deckPreviewTileHitAreas[i] = {
+                x      = drawX   - baseTileW / 2,
+                y      = targetY - baseTileH / 2,
+                width  = baseTileW,
+                height = baseTileH,
+                tile   = tile,
+                pivotX = drawX,
+                pivotY = targetY,
+                halfH  = baseTileH / 2,
+            }
+        end
+        for i = N + 1, #gameState.deckPreviewTileHitAreas do
+            gameState.deckPreviewTileHitAreas[i] = nil
+        end
+    end
+
+    -- Back button ">>" (same as settings close button)
+    local skipFont  = UI.Fonts.get("bigScore")
+    local skipText  = ">>"
+    local skipColor = gameState.deckPreviewBackButtonAnimation.color or UI.Colors.FONT_PINK
+    local skipScale = 0.5
+    local hMargin   = UI.Layout.scale(60)
+    local vMargin   = UI.Layout.scale(60)
+
+    local skipTotalW = 0
+    for i = 1, #skipText do
+        skipTotalW = skipTotalW + skipFont:getWidth(skipText:sub(i, i)) * skipScale
+    end
+    local skipX = screenWidth  - skipTotalW - hMargin
+    local skipY = screenHeight - (skipFont:getHeight() * skipScale) - vMargin
+
+    local curSX = skipX
+    for i = 1, #skipText do
+        local ch  = skipText:sub(i, i)
+        local chW = skipFont:getWidth(ch) * skipScale
+        local wv  = math.sin(time * 2.5 + (i - 1) * 0.2) * 1.5
+        UI.Fonts.drawAnimatedText(ch, curSX, skipY + wv, "bigScore", skipColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
+        })
+        curSX = curSX + chW
+    end
+
+    local bp = UI.Layout.scale(15)
+    gameState.deckPreviewBackButtonBounds = {
+        x      = skipX - bp,
+        y      = skipY - bp,
+        width  = skipTotalW + bp * 2,
+        height = (skipFont:getHeight() * skipScale) + bp * 2,
+    }
+
     love.graphics.setColor(1, 1, 1, 1)
 end
 

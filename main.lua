@@ -187,6 +187,18 @@ function love.load()
         settingsCloseButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
+        -- Deck preview overlay
+        deckPreviewOpen = false,
+        deckPreviewTilesBounds = nil,
+        deckPreviewTilesButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        deckPreviewBackButtonBounds = nil,
+        deckPreviewBackButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        deckPreviewBackButtonPressed = false,
+        deckPreviewTiles = {},
         -- Tools/Artifacts system
         ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
@@ -2455,6 +2467,7 @@ function love.draw()
 
         UI.Renderer.drawDialogue()  -- Draw demon dialogue at top (includes tutorial when enabled)
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
         if gameState.gamePhase == "won" then
@@ -2463,28 +2476,38 @@ function love.draw()
     elseif gameState.gamePhase == "map" then
         UI.Renderer.drawMap()
         UI.Renderer.drawDialogue()  -- Draw dialogue on map screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "node_confirmation" then
         UI.Renderer.drawMap()  -- Draw map background
         UI.Renderer.drawNodeConfirmation()  -- Draw confirmation dialog on top
         UI.Renderer.drawDialogue()  -- Draw dialogue on node confirmation screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
         UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "artifacts_menu" then
         UI.Renderer.drawArtifactsMenu()
         UI.Renderer.drawDialogue()  -- Draw dialogue on artifacts shop screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
         UI.Renderer.drawDialogue()  -- Draw dialogue on contracts screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "lost" then
         UI.Renderer.drawGameOver()

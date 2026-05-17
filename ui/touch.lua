@@ -232,6 +232,35 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle deck preview interactions when overlay is open (takes priority over all else)
+    if gameState.deckPreviewOpen then
+        if gameState.deckPreviewBackButtonBounds and isPointInRect(x, y, gameState.deckPreviewBackButtonBounds) then
+            UI.Audio.playButtonTap()
+            UI.Animation.animateTo(gameState.deckPreviewBackButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1],
+                [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3],
+                [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.deckPreviewBackButtonPressed = true
+        else
+            if gameState.deckPreviewTileHitAreas then
+                local tileHit = false
+                for _, area in ipairs(gameState.deckPreviewTileHitAreas) do
+                    if isPointInRect(x, y, area) then
+                        Touch.showTooltip("tile", area.tile, area.pivotX, area.pivotY, {spriteHalfH = area.halfH})
+                        tileHit = true
+                        break
+                    end
+                end
+                if not tileHit then Touch.dismissTooltip() end
+            else
+                Touch.dismissTooltip()
+            end
+        end
+        return
+    end
+
     -- Check for settings button press in any phase that shows it
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
@@ -248,6 +277,25 @@ function Touch.pressed(x, y, istouch, touchId)
                 gameState.settingsCloseButtonAnimation.color = {0.941, 0.576, 0.608, 1}
                 return
             end
+        end
+    end
+
+    -- Check for deck preview tiles button press (mark pressed; open fires on release)
+    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "playing", "won"}
+    for _, phase in ipairs(phasesWithTilesButton) do
+        if gameState.gamePhase == phase then
+            if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
+                UI.Audio.playButtonTap()
+                UI.Animation.animateTo(gameState.deckPreviewTilesButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_RED[1],
+                    [2] = UI.Colors.FONT_RED[2],
+                    [3] = UI.Colors.FONT_RED[3],
+                    [4] = UI.Colors.FONT_RED[4]
+                }, 0.3, "easeOutQuart")
+                touchState.deckPreviewTilesButtonPressed = true
+                return
+            end
+            break
         end
     end
 
@@ -1072,6 +1120,69 @@ function Touch.released(x, y, istouch, touchId)
         touchState.settingsCloseButtonPressed = false
         touchState.isPressed = false
         touchState.touchId = nil
+        return
+    end
+
+    -- Open deck preview on tiles button release
+    if touchState.deckPreviewTilesButtonPressed then
+        if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
+            UI.Audio.playButtonRelease()
+            UI.Animation.animateTo(gameState.deckPreviewTilesButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                Touch.openDeckPreview()
+                gameState.deckPreviewTilesButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
+            end)
+        else
+            UI.Animation.animateTo(gameState.deckPreviewTilesButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
+        end
+        touchState.deckPreviewTilesButtonPressed = false
+        return
+    end
+
+    -- Handle deck preview back button release
+    if gameState.deckPreviewOpen and touchState.deckPreviewBackButtonPressed then
+        if gameState.deckPreviewBackButtonBounds and isPointInRect(x, y, gameState.deckPreviewBackButtonBounds) then
+            UI.Audio.playButtonRelease()
+            UI.Animation.animateTo(gameState.deckPreviewBackButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1],
+                [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3],
+                [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.15, "easeOutQuart", function()
+                gameState.deckPreviewOpen = false
+                gameState.deckPreviewTiles = {}
+                gameState.deckPreviewTileHitAreas = nil
+                Touch.dismissTooltip()
+                gameState.deckPreviewBackButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1],
+                    UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3],
+                    UI.Colors.FONT_PINK[4]
+                }
+            end)
+        else
+            UI.Animation.animateTo(gameState.deckPreviewBackButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1],
+                [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3],
+                [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
+        end
+        touchState.deckPreviewBackButtonPressed = false
         return
     end
 
@@ -5330,6 +5441,45 @@ function isToolContainsPoint(tool, x, y)
 
     return x >= toolX - halfWidth and x <= toolX + halfWidth and
            y >= toolY - halfHeight and y <= toolY + halfHeight
+end
+
+function Touch.openDeckPreview()
+    gameState.deckPreviewOpen = true
+    gameState.deckPreviewBackButtonPressed = false
+    gameState.deckPreviewBackButtonAnimation.color = {
+        UI.Colors.FONT_PINK[1],
+        UI.Colors.FONT_PINK[2],
+        UI.Colors.FONT_PINK[3],
+        UI.Colors.FONT_PINK[4]
+    }
+    gameState.deckPreviewTileHitAreas = nil
+    Touch.dismissTooltip()
+
+    -- In combat show only the tiles still in the draw pool; elsewhere show the full collection
+    local inCombat = gameState.gamePhase == "playing" or gameState.gamePhase == "won"
+    local sourceList = inCombat and gameState.deck or gameState.tileCollection
+
+    gameState.deckPreviewTiles = {}
+    local now = love.timer.getTime()
+    local sw  = gameState.screen.width
+    for i, t in ipairs(sourceList) do
+        local clone = {
+            left             = t.left,
+            right            = t.right,
+            tileType         = t.tileType or "regular",
+            leftScore        = t.leftScore,
+            rightScore       = t.rightScore,
+            id               = t.id,
+            enhanceBonus     = t.enhanceBonus,
+            enhanceCount     = t.enhanceCount,
+            isAnimating      = true,
+            visualX          = sw + UI.Layout.scale(200),
+            visualY          = 0,
+            drawAnimStart    = now + (i - 1) * 0.015,
+            drawAnimDuration = 0.35,
+        }
+        table.insert(gameState.deckPreviewTiles, clone)
+    end
 end
 
 function Touch.showTooltip(tooltipType, data, x, y, opts)

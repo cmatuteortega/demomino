@@ -19,7 +19,8 @@ function UI.Fonts.load()
         bigScore = math.max(96 * baseScale, 72), 
         demonName = math.max(60 * baseScale, 45),
         formulaScore = math.max(72 * baseScale, 54),
-        button = math.max(14 * baseScale, 12)
+        button = math.max(14 * baseScale, 12),
+        counter = math.max(35 * baseScale, 26)
     }
     
     for size, pixels in pairs(sizes) do
