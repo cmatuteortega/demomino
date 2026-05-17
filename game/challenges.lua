@@ -72,7 +72,13 @@ Challenges.TYPES = {
             return true
         end,
         onPlaceTiles = function(gameState, challengeState, tiles)
-            if #tiles > (challengeState.maxTilesPerHand or 4) then
+            local countable = 0
+            for _, t in ipairs(tiles) do
+                if not t.isAnchor and t.tileType ~= "demon" then
+                    countable = countable + 1
+                end
+            end
+            if countable > (challengeState.maxTilesPerHand or 4) then
                 return false, "Too many tiles! Max " .. (challengeState.maxTilesPerHand or 4)
             end
             return true
@@ -183,25 +189,6 @@ function Challenges.initialize(gameState)
     return #gameState.activeChallenges > 0
 end
 
--- Validate tile placement against all active challenges
-function Challenges.validatePlacement(gameState, tiles)
-    if not gameState.activeChallenges then
-        return true, nil
-    end
-
-    for _, challenge in ipairs(gameState.activeChallenges) do
-        local challengeState = gameState.challengeStates[challenge.id]
-        if challenge.onPlaceTiles then
-            local valid, errorMsg = challenge.onPlaceTiles(gameState, challengeState, tiles)
-            if not valid then
-                return false, errorMsg
-            end
-        end
-    end
-
-    return true, nil
-end
-
 -- Apply challenge modifications to score
 function Challenges.modifyScore(gameState, tiles, baseScore)
     if not gameState.activeChallenges then
@@ -232,16 +219,6 @@ function Challenges.onHandComplete(gameState)
             challenge.onHandComplete(gameState, challengeState)
         end
     end
-end
-
--- Check if anchor tile challenge is active
-function Challenges.hasAnchorTile(gameState)
-    if not gameState.challengeStates then
-        return false
-    end
-
-    local anchorState = gameState.challengeStates["anchor_tile"]
-    return anchorState and anchorState.anchorTile ~= nil
 end
 
 -- Get the anchor tile

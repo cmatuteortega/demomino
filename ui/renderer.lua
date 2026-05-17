@@ -94,89 +94,104 @@ function UI.Renderer.updateEyeBlinks(dt)
         return
     end
 
-    -- Update blinks for all anchor tiles
+    -- Collect all demon-rendered tiles from both board and hand
+    local demonTiles = {}
     for _, tile in ipairs(gameState.placedTiles) do
-        if tile.isAnchor then
-            local tileId = tile.id
-            -- Use Domino.getValue to handle special tiles (odd, even, x, etc.)
-            local pipCount = Domino.getValue(tile)
+        if tile.isAnchor or tile.tileType == "demon" then
+            table.insert(demonTiles, tile)
+        end
+    end
+    for _, tile in ipairs(gameState.hand or {}) do
+        if tile.tileType == "demon" then
+            table.insert(demonTiles, tile)
+        end
+    end
 
-            -- Initialize if needed
-            initializeEyeBlinks(tileId, pipCount)
+    for _, tile in ipairs(demonTiles) do
+        local tileId = tile.id
+        -- Use Domino.getValue to handle special tiles (odd, even, x, etc.)
+        local pipCount = Domino.getValue(tile)
 
-            local blinkState = eyeBlinkStates[tileId]
-            if not blinkState then
-                return
-            end
+        -- Initialize if needed
+        initializeEyeBlinks(tileId, pipCount)
 
-            local currentTime = love.timer.getTime()
+        local blinkState = eyeBlinkStates[tileId]
+        if not blinkState then
+            return
+        end
 
-            -- Check for special blink patterns every 8-15 seconds
-            if currentTime - blinkState.lastBlinkPattern > love.math.random() * 7 + 8 then
-                blinkState.lastBlinkPattern = currentTime
+        local currentTime = love.timer.getTime()
 
-                local patternRoll = love.math.random()
+        -- Check for special blink patterns every 8-15 seconds
+        if currentTime - blinkState.lastBlinkPattern > love.math.random() * 7 + 8 then
+            blinkState.lastBlinkPattern = currentTime
 
-                if patternRoll < 0.2 then
-                    -- Wave pattern: cascade blinks with 100ms delay
-                    for i = 1, #blinkState.pips do
-                        local pip = blinkState.pips[i]
-                        pip.blinkTimer = (i - 1) * 0.1  -- Stagger by 100ms
-                    end
-                elseif patternRoll < 0.3 then
-                    -- Simultaneous: all blink at once
-                    for i = 1, #blinkState.pips do
-                        blinkState.pips[i].blinkTimer = 0
-                    end
+            local patternRoll = love.math.random()
+
+            if patternRoll < 0.2 then
+                -- Wave pattern: cascade blinks with 100ms delay
+                for i = 1, #blinkState.pips do
+                    local pip = blinkState.pips[i]
+                    pip.blinkTimer = (i - 1) * 0.1  -- Stagger by 100ms
+                end
+            elseif patternRoll < 0.3 then
+                -- Simultaneous: all blink at once
+                for i = 1, #blinkState.pips do
+                    blinkState.pips[i].blinkTimer = 0
                 end
             end
+        end
 
-            -- Update each pip
-            for i = 1, #blinkState.pips do
-                local pip = blinkState.pips[i]
+        -- Update each pip
+        for i = 1, #blinkState.pips do
+            local pip = blinkState.pips[i]
 
-                if pip.isBlinking then
-                    -- Update blink animation
-                    pip.frameTimer = pip.frameTimer + dt
-                    local frameTime = 1 / 12  -- 12 FPS
+            if pip.isBlinking then
+                -- Update blink animation
+                pip.frameTimer = pip.frameTimer + dt
+                local frameTime = 1 / 12  -- 12 FPS
 
-                    if pip.frameTimer >= frameTime then
-                        pip.frameTimer = pip.frameTimer - frameTime
-                        pip.blinkPhase = pip.blinkPhase + 1
+                if pip.frameTimer >= frameTime then
+                    pip.frameTimer = pip.frameTimer - frameTime
+                    pip.blinkPhase = pip.blinkPhase + 1
 
-                        -- Blink sequence: base -> blink1 -> blink2 -> blink3 -> done (3 frames)
-                        local sequence = {2, 3, 4}
-                        if pip.blinkPhase <= #sequence then
-                            pip.currentFrame = sequence[pip.blinkPhase]
-                        else
-                            -- Blink complete
-                            pip.currentFrame = 1
-                            pip.isBlinking = false
-                            pip.blinkPhase = 0
-                            pip.blinkTimer = pip.blinkInterval
-                        end
+                    -- Blink sequence: base -> blink1 -> blink2 -> blink3 -> done (3 frames)
+                    local sequence = {2, 3, 4}
+                    if pip.blinkPhase <= #sequence then
+                        pip.currentFrame = sequence[pip.blinkPhase]
+                    else
+                        -- Blink complete
+                        pip.currentFrame = 1
+                        pip.isBlinking = false
+                        pip.blinkPhase = 0
+                        pip.blinkTimer = pip.blinkInterval
                     end
-                else
-                    -- Count down to next blink
-                    pip.blinkTimer = pip.blinkTimer - dt
+                end
+            else
+                -- Count down to next blink
+                pip.blinkTimer = pip.blinkTimer - dt
 
-                    if pip.blinkTimer <= 0 then
-                        -- Start blink
-                        pip.isBlinking = true
-                        pip.blinkPhase = 1
-                        pip.frameTimer = 0
-                        pip.currentFrame = 2  -- First blink frame
-                        pip.blinkInterval = love.math.random() * 3 + 2  -- New random interval
-                    end
+                if pip.blinkTimer <= 0 then
+                    -- Start blink
+                    pip.isBlinking = true
+                    pip.blinkPhase = 1
+                    pip.frameTimer = 0
+                    pip.currentFrame = 2  -- First blink frame
+                    pip.blinkInterval = love.math.random() * 3 + 2  -- New random interval
                 end
             end
         end
     end
 
-    -- Cleanup blinks for removed tiles
+    -- Cleanup blinks for tiles no longer on board or in hand
     local activeTileIds = {}
     for _, tile in ipairs(gameState.placedTiles) do
-        if tile.isAnchor then
+        if tile.isAnchor or tile.tileType == "demon" then
+            activeTileIds[tile.id] = true
+        end
+    end
+    for _, tile in ipairs(gameState.hand or {}) do
+        if tile.tileType == "demon" then
             activeTileIds[tile.id] = true
         end
     end
@@ -283,6 +298,39 @@ local function drawEyePips(x, y, count, scale, tileId, pipIndexOffset)
         drawEye(x + spacing/2, y, pipIndexOffset + 4)
         drawEye(x - spacing/2, y + spacing/2, pipIndexOffset + 5)
         drawEye(x + spacing/2, y + spacing/2, pipIndexOffset + 6)
+    elseif count == 7 then
+        -- 3 columns (3 + 1 + 3): left 3, center 1 (middle), right 3
+        local r = spacing * 0.5
+        drawEye(x - spacing/2, y - r, pipIndexOffset + 1)
+        drawEye(x - spacing/2, y,     pipIndexOffset + 2)
+        drawEye(x - spacing/2, y + r, pipIndexOffset + 3)
+        drawEye(x,             y,     pipIndexOffset + 4)
+        drawEye(x + spacing/2, y - r, pipIndexOffset + 5)
+        drawEye(x + spacing/2, y,     pipIndexOffset + 6)
+        drawEye(x + spacing/2, y + r, pipIndexOffset + 7)
+    elseif count == 8 then
+        -- 3 columns (3 + 2 + 3): left 3, center 2 at quarter heights, right 3
+        local r = spacing * 0.5
+        drawEye(x - spacing/2, y - r,   pipIndexOffset + 1)
+        drawEye(x - spacing/2, y,       pipIndexOffset + 2)
+        drawEye(x - spacing/2, y + r,   pipIndexOffset + 3)
+        drawEye(x,             y - r/2, pipIndexOffset + 4)
+        drawEye(x,             y + r/2, pipIndexOffset + 5)
+        drawEye(x + spacing/2, y - r,   pipIndexOffset + 6)
+        drawEye(x + spacing/2, y,       pipIndexOffset + 7)
+        drawEye(x + spacing/2, y + r,   pipIndexOffset + 8)
+    elseif count == 9 then
+        -- 3×3 grid
+        local r = spacing * 0.5
+        drawEye(x - spacing/2, y - r, pipIndexOffset + 1)
+        drawEye(x,             y - r, pipIndexOffset + 2)
+        drawEye(x + spacing/2, y - r, pipIndexOffset + 3)
+        drawEye(x - spacing/2, y,     pipIndexOffset + 4)
+        drawEye(x,             y,     pipIndexOffset + 5)
+        drawEye(x + spacing/2, y,     pipIndexOffset + 6)
+        drawEye(x - spacing/2, y + r, pipIndexOffset + 7)
+        drawEye(x,             y + r, pipIndexOffset + 8)
+        drawEye(x + spacing/2, y + r, pipIndexOffset + 9)
     end
 end
 
@@ -298,6 +346,16 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     else
         x = x or domino.x
         y = y or domino.y
+    end
+
+    -- Apply hand-tile offsets (nil-safe; board tiles don't have these set)
+    if not domino.isDragging then
+        if domino.selectOffset then
+            y = y + domino.selectOffset
+        end
+        if domino.idleFloatOffset and orientation == "vertical" then
+            y = y + domino.idleFloatOffset
+        end
     end
 
     -- Apply scoring shake effect
@@ -356,9 +414,13 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
         baseSprite:getWidth()/2, baseSprite:getHeight()/2)
 
     -- Calculate pip positions and draw eyes
-    local leftVal = domino.left
-    local rightVal = domino.right
+    -- Clamp to 0-9; odd/even strings and values >=10 render 0 eyes (blank side)
+    local leftVal  = type(domino.left)  == "number" and math.min(domino.left,  9) or 0
+    local rightVal = type(domino.right) == "number" and math.min(domino.right, 9) or 0
     local tileId = domino.id
+
+    -- Defensive: ensure blink states exist before drawing (update loop may not have run yet)
+    initializeEyeBlinks(tileId, leftVal + rightVal)
 
     -- Eye pip scale should match base sprite scale
     local eyeScale = spriteScale
@@ -630,10 +692,16 @@ function UI.Renderer.drawDominoSprite(domino, x, y, scale, orientation, dynamicS
 end
 
 function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
+    -- Demon-type tiles use demon sprite rendering everywhere (hand, slots, shop, etc.)
+    if domino.tileType == "demon" then
+        UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicScale)
+        return
+    end
+
     scale = scale or gameState.screen.scale
     orientation = orientation or "vertical"
     dynamicScale = dynamicScale or 1.0
-    
+
     -- Use special scaling for map tiles
     local isMapTile = domino.isMapTile
     
@@ -1242,7 +1310,7 @@ function UI.Renderer.drawPlacedTiles()
     -- PASS 1: Draw ALL shadows first (behind all tiles)
     for i, domino in ipairs(gameState.placedTiles) do
         if not domino.isDragging then
-            if domino.isAnchor then
+            if domino.isAnchor or domino.tileType == "demon" then
                 UI.Renderer.drawDemonDominoShadow(domino, nil, nil, nil, domino.orientation, dynamicScale)
             else
                 UI.Renderer.drawDominoShadow(domino, nil, nil, nil, domino.orientation, dynamicScale)
@@ -1253,7 +1321,7 @@ function UI.Renderer.drawPlacedTiles()
     -- PASS 2: Draw non-dragging tile sprites (on top of all shadows)
     for i, domino in ipairs(gameState.placedTiles) do
         if not domino.isDragging then
-            if domino.isAnchor then
+            if domino.isAnchor or domino.tileType == "demon" then
                 UI.Renderer.drawDemonDominoSprite(domino, nil, nil, nil, domino.orientation, dynamicScale)
             else
                 UI.Renderer.drawDominoSprite(domino, nil, nil, nil, domino.orientation, dynamicScale)
@@ -1264,7 +1332,7 @@ function UI.Renderer.drawPlacedTiles()
     -- PASS 3: Draw dragging placed tiles on top (shadow + sprite)
     for i, domino in ipairs(gameState.placedTiles) do
         if domino.isDragging then
-            if domino.isAnchor then
+            if domino.isAnchor or domino.tileType == "demon" then
                 UI.Renderer.drawDemonDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
             else
                 UI.Renderer.drawDomino(domino, nil, nil, nil, domino.orientation, dynamicScale)
@@ -2001,10 +2069,10 @@ function UI.Renderer.drawChallenges()
     -- Show max tiles counter if that challenge is active
     local maxTiles = Challenges.getMaxTilesLimit(gameState)
     if maxTiles then
-        -- Count non-anchor tiles only
+        -- Count non-anchor, non-demon tiles only
         local tilesPlaced = 0
         for _, tile in ipairs(gameState.placedTiles) do
-            if not tile.isAnchor then
+            if not tile.isAnchor and tile.tileType ~= "demon" then
                 tilesPlaced = tilesPlaced + 1
             end
         end
@@ -3767,68 +3835,6 @@ function UI.Renderer.drawArtifactsShopUI()
     UI.Fonts.drawText("REROLL (" .. rerollCost .. "$)", discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOffset, "button", discardTextColor, "center", true)
 end
 
-function UI.Renderer.drawArtifactsShopDebug()
-    local debugY = UI.Layout.scale(80)
-    local debugX = UI.Layout.scale(40)
-    local lineHeight = UI.Layout.scale(20)
-
-    love.graphics.setColor(0, 0, 0, 0.8)
-    love.graphics.rectangle("fill", debugX - 10, debugY - 10, 600, 260)
-
-    -- Show offeredTools state
-    local offeredCount = gameState.offeredTools and #gameState.offeredTools or 0
-    UI.Fonts.drawText("Offered Tools: " .. offeredCount, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-    debugY = debugY + lineHeight
-
-    if gameState.offeredTools then
-        for i, tool in ipairs(gameState.offeredTools) do
-            local posText = string.format("  [%d] %s x=%.0f y=%.0f vX=%.0f vY=%.0f drag=%s",
-                i, tool.toolId or "?",
-                tool.x or -1, tool.y or -1,
-                tool.visualX or -1, tool.visualY or -1,
-                tostring(tool.isDragging or false))
-            UI.Fonts.drawText(posText, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-            debugY = debugY + lineHeight
-        end
-    end
-
-    -- Show placed tools state
-    local placedCount = gameState.artifactsShopPlacedTools and #gameState.artifactsShopPlacedTools or 0
-    UI.Fonts.drawText("Placed Tools: " .. placedCount, debugX, debugY, "small", UI.Colors.FONT_YELLOW, "left")
-    debugY = debugY + lineHeight
-
-    -- Show drag state from touchState
-    local touchState = Touch and Touch.getTouchState and Touch.getTouchState()
-    local dragState = "none"
-    if touchState and touchState.draggedTool then
-        dragState = string.format("%s (from: %s, idx: %s)",
-            touchState.draggedTool.toolId or "?",
-            touchState.draggedFrom or "?",
-            tostring(touchState.draggedIndex or "?"))
-    end
-    UI.Fonts.drawText("Drag: " .. dragState, debugX, debugY, "small", UI.Colors.FONT_PINK, "left")
-    debugY = debugY + lineHeight
-
-    -- Show button press state
-    local buttonState = "none"
-    if touchState then
-        if touchState.discardButtonPressed then
-            buttonState = "DISCARD"
-        elseif touchState.playButtonPressed then
-            buttonState = "PLAY"
-        end
-    end
-    UI.Fonts.drawText("Button: " .. buttonState, debugX, debugY, "small", {0.3, 0.9, 1, 1}, "left")
-    debugY = debugY + lineHeight
-
-    -- Show game phase
-    UI.Fonts.drawText("Phase: " .. (gameState.gamePhase or "?"), debugX, debugY, "small", {1, 0.7, 0.3, 1}, "left")
-    debugY = debugY + lineHeight
-
-    -- Show coins
-    UI.Fonts.drawText("Coins: " .. (gameState.coins or 0), debugX, debugY, "small", {1, 0.9, 0.3, 1}, "left")
-end
-
 function UI.Renderer.drawTileOffers()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
@@ -4164,72 +4170,6 @@ function UI.Renderer.drawFusionNextButton()
         width = totalWidth + padding * 2,
         height = font:getHeight() + padding * 2
     }
-end
-
-function UI.Renderer.drawShopRerollButton()
-    local screenWidth = gameState.screen.width
-    local screenHeight = gameState.screen.height
-
-    local buttonWidth = UI.Layout.scale(160)
-    local buttonHeight = UI.Layout.scale(60)
-
-    -- Position to the right side of purchase zone, mid-height
-    local buttonX = screenWidth - buttonWidth - UI.Layout.scale(30)
-    local buttonY = screenHeight / 2 - buttonHeight / 2 - UI.Layout.scale(50)
-
-    -- Check if player can afford reroll
-    local rerollCost = gameState.shopRerollCost or 1
-    local canAfford = gameState.coins >= rerollCost
-
-    -- Button background (disabled if can't afford)
-    if canAfford then
-        UI.Colors.setBackgroundLight()
-    else
-        love.graphics.setColor(UI.Colors.BACKGROUND[1], UI.Colors.BACKGROUND[2], UI.Colors.BACKGROUND[3], 0.5)
-    end
-    love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-    -- Button border
-    UI.Colors.setOutline()
-    love.graphics.setLineWidth(UI.Layout.scale(2))
-    love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-    love.graphics.setLineWidth(1)
-
-    -- Button text
-    local buttonText = "REROLL (" .. rerollCost .. "$)"
-    local textColor = canAfford and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    UI.Fonts.drawText(buttonText, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2, "medium", textColor, "center")
-
-    -- Store button bounds for touch handling
-    gameState.shopRerollButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight, enabled = canAfford}
-end
-
-function UI.Renderer.drawReturnToMapButton()
-    local screenWidth = gameState.screen.width
-    local screenHeight = gameState.screen.height
-
-    local buttonWidth = UI.Layout.scale(150)
-    local buttonHeight = UI.Layout.scale(50)
-
-    -- Position at bottom right with padding
-    local buttonX = screenWidth - buttonWidth - UI.Layout.scale(20)
-    local buttonY = screenHeight - buttonHeight - UI.Layout.scale(20)
-
-    -- Button background
-    UI.Colors.setBackgroundLight()
-    love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-    -- Button border
-    UI.Colors.setOutline()
-    love.graphics.rectangle("line", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(5))
-
-    -- Button text (centered within button)
-    local textX = buttonX + buttonWidth/2
-    local textY = buttonY + buttonHeight/2
-    UI.Fonts.drawText("RETURN TO MAP", textX, textY, "small", UI.Colors.FONT_WHITE, "center")
-
-    -- Store button bounds for touch handling
-    gameState.returnToMapButton = {x = buttonX, y = buttonY, width = buttonWidth, height = buttonHeight}
 end
 
 function UI.Renderer.drawContractsNextButton()
@@ -4830,43 +4770,6 @@ function UI.Renderer.drawMapFogOverlay(map)
 
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
-end
-
-function UI.Renderer.drawMapScrollIndicators(map)
-    local screenWidth = gameState.screen.width
-    local screenHeight = gameState.screen.height
-    
-    -- Only show indicators if map is wider than screen
-    if map.totalWidth <= screenWidth then
-        return
-    end
-    
-    local indicatorHeight = UI.Layout.scale(40)
-    local indicatorY = screenHeight - UI.Layout.scale(60)
-    local arrowSize = UI.Layout.scale(15)
-    
-    -- Left scroll indicator (if can scroll left)
-    if map.cameraX > 0 then
-        love.graphics.setColor(0.4, 0.7, 0.9, 0.7)
-        love.graphics.polygon("fill", 
-            UI.Layout.scale(20), indicatorY,
-            UI.Layout.scale(20) + arrowSize, indicatorY - arrowSize/2,
-            UI.Layout.scale(20) + arrowSize, indicatorY + arrowSize/2
-        )
-    end
-    
-    -- Right scroll indicator (if can scroll right)
-    local maxCameraX = math.max(0, map.totalWidth - screenWidth)
-    if map.cameraX < maxCameraX then
-        love.graphics.setColor(0.4, 0.7, 0.9, 0.7)
-        love.graphics.polygon("fill", 
-            screenWidth - UI.Layout.scale(20), indicatorY,
-            screenWidth - UI.Layout.scale(20) - arrowSize, indicatorY - arrowSize/2,
-            screenWidth - UI.Layout.scale(20) - arrowSize, indicatorY + arrowSize/2
-        )
-    end
-    
-    love.graphics.setColor(1, 1, 1, 1) -- Reset color
 end
 
 -- Draw mode toggle buttons (SHOP / FUSION)
@@ -5588,45 +5491,6 @@ function UI.Renderer.drawActiveDieSprites()
     end
 end
 
---- DEBUG: Draw fusion drag state information
-function UI.Renderer.drawFusionDebugInfo()
-    local Touch = require("ui.touch")
-    local touchState = Touch.getTouchState()
-
-    if not touchState then return end
-
-    local debugY = UI.Layout.scale(120)
-    local debugX = UI.Layout.scale(20)
-    local lineHeight = UI.Layout.scale(20)
-
-    -- Draw debug info for dragged tile
-    if touchState.draggedTile then
-        local tile = touchState.draggedTile
-        local info = string.format("DRAG STATE:")
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-        debugY = debugY + lineHeight
-
-        info = string.format("From: %s", touchState.draggedFrom or "nil")
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-        debugY = debugY + lineHeight
-
-        info = string.format("isDragging: %s", tostring(tile.isDragging))
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-        debugY = debugY + lineHeight
-
-        info = string.format("Touch.isDragging(): %s", tostring(Touch.isDragging()))
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-        debugY = debugY + lineHeight
-
-        info = string.format("dragScale: %.2f", tile.dragScale or 1.0)
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-        debugY = debugY + lineHeight
-
-        info = string.format("Slots filled: %d/2", gameState.fusionSlotTiles and #gameState.fusionSlotTiles or 0)
-        UI.Fonts.drawText(info, debugX, debugY, "small", UI.Colors.FONT_WHITE, "left")
-    end
-end
-
 function UI.Renderer.drawCombatCandles()
     -- Only draw during combat phase
     if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
@@ -5816,11 +5680,12 @@ function UI.Renderer.drawTooltip()
     if tt.type == "tile" and tt.data then
         local tile      = tt.data
         local typeNames = {regular = "BONE", obsidian = "OBSIDIAN", tender = "TENDER", demon = "DEMON"}
-        local typeName  = tile.isAnchor and "DEMON" or (typeNames[tile.tileType] or "TILE")
+        local typeName  = (tile.isAnchor or tile.tileType == "demon") and "DEMON" or (typeNames[tile.tileType] or "TILE")
         local pipStr    = tostring(tile.left) .. " - " .. tostring(tile.right)
-        local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
+        local inCombat = gameState.gamePhase == "playing" or gameState.gamePhase == "won"
+        local bannedNumber = inCombat and Challenges and Challenges.getBannedNumber(gameState) or nil
         local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
-        local contrib   = (tile.isAnchor or isBanned) and {totalSum = 0, mult = 0} or Scoring.getTileContribution(tile, gameState.activeContracts)
+        local contrib   = (tile.isAnchor or tile.tileType == "demon" or isBanned) and {totalSum = 0, mult = 0} or Scoring.getTileContribution(tile, gameState.activeContracts)
         local sumStr    = "+" .. contrib.totalSum
         local multStr   = "x" .. contrib.mult
 

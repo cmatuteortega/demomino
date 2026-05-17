@@ -1103,6 +1103,17 @@ function Touch.released(x, y, istouch, touchId)
                     gameState.dialogueAnimation.winDialogueShown = false  -- Reset for next win
                 end
 
+                -- Return anchor tile to collection as demon type for future rounds
+                local anchorTile = Challenges and Challenges.getAnchorTile(gameState)
+                if anchorTile then
+                    for _, collectionTile in ipairs(gameState.tileCollection) do
+                        if collectionTile.id == anchorTile.id and collectionTile.tileType ~= "demon" then
+                            collectionTile.tileType = "demon"
+                            break
+                        end
+                    end
+                end
+
                 -- Clear dialogue and stale board state before returning to map
                 Dialogue.clear()
                 gameState.placedTiles = {}
@@ -2366,12 +2377,12 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
         return false
     end
 
-    -- Check max tiles limit from challenges (count non-anchor tiles only)
+    -- Check max tiles limit from challenges (anchor and demon tiles are free)
     local maxTiles = Challenges and Challenges.getMaxTilesLimit(gameState)
     if maxTiles then
         local nonAnchorCount = 0
         for _, placedTile in ipairs(gameState.placedTiles) do
-            if not placedTile.isAnchor then
+            if not placedTile.isAnchor and placedTile.tileType ~= "demon" then
                 nonAnchorCount = nonAnchorCount + 1
             end
         end
@@ -2667,7 +2678,7 @@ function Touch.playPlacedTiles()
         -- Get only the tiles placed this hand (exclude anchor tile)
         local tilesToScore = {}
         for _, tile in ipairs(gameState.placedTiles) do
-            if not tile.isAnchor then
+            if not tile.isAnchor and tile.tileType ~= "demon" then
                 table.insert(tilesToScore, tile)
             end
         end
