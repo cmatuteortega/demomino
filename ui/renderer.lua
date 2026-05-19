@@ -42,10 +42,10 @@ local obsidianShader = love.graphics.newShader([[
         tex.g = hardLightBlend(tex.g, overlayColor.g);
         tex.b = hardLightBlend(tex.b, overlayColor.b);
 
-        // === Part 2: Blue tint → palette snap → iridescent shine ===
+        // === Part 2: Blue tint → glow params → palette snap → additive glow ===
         tex.rgb = tex.rgb + vec3(0.2, 0.25, 0.55);
-        tex.rgb = snapPalette(tex.rgb);
 
+        // Capture spread before snap (post-snap delta would be ~0, killing the glow)
         float low   = min(tex.r, min(tex.g, tex.b));
         float high  = max(tex.r, max(tex.g, tex.b));
         float delta = high - low - 0.1;
@@ -57,9 +57,14 @@ local obsidianShader = love.graphics.newShader([[
         float fac5 = sin((uv.x + uv.y) * 7.0  + time * 0.3) * 0.5;
         float maxfac = 0.7 * max(max(fac, max(fac2, max(fac3, 0.0))) + (fac + fac2 + fac3 * fac4), 0.0);
 
-        tex.r = tex.r - delta + delta * maxfac * (0.7 + fac5 * 0.27) - 0.1;
-        tex.g = tex.g - delta + delta * maxfac * (0.7 - fac5 * 0.27) - 0.1;
-        tex.b = tex.b - delta + delta * maxfac * 0.7                  - 0.1;
+        // Snap locks in the tint
+        tex.rgb = snapPalette(tex.rgb);
+
+        // Additive glow on top of snapped color
+        tex.r += delta * maxfac * (0.7 + fac5 * 0.27) - 0.05;
+        tex.g += delta * maxfac * (0.7 - fac5 * 0.27) - 0.05;
+        tex.b += delta * maxfac * 0.7                  - 0.05;
+        tex.rgb = clamp(tex.rgb, 0.0, 1.0);
         // alpha preserved — sprite must stay visible
 
         return tex * color;

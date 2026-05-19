@@ -156,6 +156,7 @@ end
 
 function Touch.pressed(x, y, istouch, touchId)
     if gameState.irisAnimation and gameState.irisAnimation.active then return end
+    if touchState.draggedTile ~= nil then return end
 
     touchState.isPressed = true
     touchState.startX = x
@@ -800,6 +801,7 @@ function Touch.released(x, y, istouch, touchId)
     if not touchState.isPressed then
         return
     end
+    if touchId ~= nil and touchState.touchId ~= nil and touchId ~= touchState.touchId then return end
 
     -- Dismiss any visible tooltip on every tap (specific handlers may re-show a new one)
     if gameState.tooltip and gameState.tooltip.visible then
