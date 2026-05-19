@@ -1,12 +1,13 @@
 UI = UI or {}
 UI.Renderer = {}
 
--- Obsidian hard light blend shader
+-- Obsidian hard light blend shader + Part 2 iridescent shine
 local obsidianShader = love.graphics.newShader([[
+    uniform float time;
+
     // Obsidian blue color (#202543)
     const vec3 overlayColor = vec3(0.125, 0.145, 0.263);
 
-    // Hard light blend function
     float hardLightBlend(float base, float overlay) {
         if (overlay <= 0.5) {
             return 2.0 * base * overlay;
@@ -15,16 +16,53 @@ local obsidianShader = love.graphics.newShader([[
         }
     }
 
+    // Snap to map item palette: #191e23 #1f2545 #412c35 #63374a #a43838 #e95050 #ff8d99 #ffd7d7
+    vec3 snapPalette(vec3 rgb) {
+        vec3 closest = vec3(0.09804, 0.11765, 0.13725);
+        float minDist = 1e10;
+        float d;
+        vec3 c;
+        c = vec3(0.09804, 0.11765, 0.13725); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(0.12157, 0.14510, 0.27059); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(0.25490, 0.17255, 0.20784); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(0.38824, 0.21569, 0.29020); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(0.64314, 0.21961, 0.21961); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(0.91373, 0.31373, 0.31373); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(1.00000, 0.55294, 0.60000); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        c = vec3(1.00000, 0.84314, 0.84314); d = dot(rgb-c,rgb-c); if(d<minDist){minDist=d;closest=c;}
+        return closest;
+    }
+
     vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
-        vec4 pixel = Texel(texture, texture_coords);
+        vec4 tex = Texel(texture, texture_coords);
+        vec2 uv  = texture_coords;
 
-        // Apply hard light blend to each channel
-        pixel.r = hardLightBlend(pixel.r, overlayColor.r);
-        pixel.g = hardLightBlend(pixel.g, overlayColor.g);
-        pixel.b = hardLightBlend(pixel.b, overlayColor.b);
+        // Hard light blend
+        tex.r = hardLightBlend(tex.r, overlayColor.r);
+        tex.g = hardLightBlend(tex.g, overlayColor.g);
+        tex.b = hardLightBlend(tex.b, overlayColor.b);
 
-        // Preserve alpha and apply vertex color
-        return pixel * color;
+        // === Part 2: Blue tint → palette snap → iridescent shine ===
+        tex.rgb = tex.rgb + vec3(0.2, 0.25, 0.55);
+        tex.rgb = snapPalette(tex.rgb);
+
+        float low   = min(tex.r, min(tex.g, tex.b));
+        float high  = max(tex.r, max(tex.g, tex.b));
+        float delta = high - low - 0.1;
+
+        float fac  = sin((uv.x - uv.y) * 6.0  + time * 0.6) * 0.5;
+        float fac2 = cos((uv.x + uv.y) * 4.0  - time * 0.4) * 0.5;
+        float fac3 = sin(uv.x * 3.0 + uv.y * 5.0 + time * 0.5) * 0.5;
+        float fac4 = cos((uv.x - uv.y) * 9.0  - time * 0.7) * 0.5;
+        float fac5 = sin((uv.x + uv.y) * 7.0  + time * 0.3) * 0.5;
+        float maxfac = 0.7 * max(max(fac, max(fac2, max(fac3, 0.0))) + (fac + fac2 + fac3 * fac4), 0.0);
+
+        tex.r = tex.r - delta + delta * maxfac * (0.7 + fac5 * 0.27) - 0.1;
+        tex.g = tex.g - delta + delta * maxfac * (0.7 - fac5 * 0.27) - 0.1;
+        tex.b = tex.b - delta + delta * maxfac * 0.7                  - 0.1;
+        // alpha preserved — sprite must stay visible
+
+        return tex * color;
     }
 ]])
 
@@ -54,6 +92,15 @@ local tenderShader = love.graphics.newShader([[
         return pixel * color;
     }
 ]])
+
+-- Negative: HSL inversion + teal-gray tint + iridescent shine (hand tiles, flagged)
+local tileNegativeShader = love.graphics.newShader("shaders/tile_negative.glsl")
+
+-- Tile fire: heat-shimmer distortion shader + grid dimensions (must match main.lua)
+local tileFireShader     = love.graphics.newShader("shaders/tile_fire.glsl")
+local TILE_FIRE_W        = 10
+local TILE_FIRE_SPRITE_H = 20   -- fire rows that map to sprite height
+local TILE_FIRE_H        = 30   -- total rows; excess rises above the sprite
 
 -- Eye blink state management
 local eyeBlinkStates = {}
@@ -691,7 +738,7 @@ function UI.Renderer.drawDominoSprite(domino, x, y, scale, orientation, dynamicS
     domino._skipShadow = originalSkipShadow  -- Restore
 end
 
-function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
+function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, applyNegative)
     -- Demon-type tiles use demon sprite rendering everywhere (hand, slots, shop, etc.)
     if domino.tileType == "demon" then
         UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicScale)
@@ -890,9 +937,17 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
                 love.graphics.setColor(r, g, b, a)  -- Reset color for main sprite
             end
 
-            -- Apply shader based on tile type
-            if domino.tileType == "obsidian" then
+            -- Apply shader: fire > negative hand effect > tile-type tints
+            if domino.fireImage then
+                love.graphics.setShader(tileFireShader)
+                tileFireShader:send("time", love.timer.getTime())
+                tileFireShader:send("fireMap", domino.fireImage)
+            elseif applyNegative then
+                love.graphics.setShader(tileNegativeShader)
+                tileNegativeShader:send("time", love.timer.getTime())
+            elseif domino.tileType == "obsidian" then
                 love.graphics.setShader(obsidianShader)
+                obsidianShader:send("time", love.timer.getTime())
             elseif domino.tileType == "tender" then
                 love.graphics.setShader(tenderShader)
             end
@@ -900,9 +955,23 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale)
             love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
 
-            -- Reset shader if any special type
-            if domino.tileType == "obsidian" or domino.tileType == "tender" then
+            if domino.fireImage or applyNegative or domino.tileType == "obsidian" or domino.tileType == "tender" then
                 love.graphics.setShader()
+            end
+
+            -- Fire additive overlay: matches sprite width, bottom-aligned, overflows above
+            if domino.fireImage then
+                local spriteH = sprite:getHeight() * math.abs(scaleY)
+                local fw = sprite:getWidth() * math.abs(scaleX) / TILE_FIRE_W
+                local fh = spriteH / TILE_FIRE_SPRITE_H
+                -- Shift center so fire bottom aligns with sprite bottom
+                local fireY = y + spriteH * 0.5 * (1 - TILE_FIRE_H / TILE_FIRE_SPRITE_H)
+                love.graphics.setBlendMode("add")
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(domino.fireImage, x, fireY, rotation,
+                    fw, fh, TILE_FIRE_W / 2, TILE_FIRE_H / 2)
+                love.graphics.setBlendMode("alpha")
+                love.graphics.setColor(r, g, b, a)
             end
 
             -- Draw numbers on X tiles if values >= 10
@@ -972,7 +1041,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if not domino.isDragging and not domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
         end
     end
 
@@ -980,7 +1049,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if not domino.isDragging and domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
         end
     end
 
@@ -988,7 +1057,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDragging then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
         end
     end
 
@@ -996,7 +1065,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
         end
     end
 
@@ -1004,7 +1073,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDrawing then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical")
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
         end
     end
 end
@@ -2023,7 +2092,8 @@ function UI.Renderer.drawCoinText()
     local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
     local isArtifactsMenu = gameState.gamePhase == "artifacts_menu"
     local isFusionMode = gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy"
-    if not isShopMode and not isArtifactsMenu and not isFusionMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
+    local isEnhanceMode = gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance"
+    if not isShopMode and not isArtifactsMenu and not isFusionMode and not isEnhanceMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
         local lineHeight = font:getHeight() + UI.Layout.scale(5)
         -- Position breakdown to the right of coin counter text, with spacing
@@ -3941,6 +4011,24 @@ function UI.Renderer.drawShopPlacedTiles()
             UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
         end
     end
+
+    -- Empty slot placeholder when no tile has been dragged in
+    if #gameState.shopPlacedTiles == 0 then
+        local screenWidth  = gameState.screen.width
+        local screenHeight = gameState.screen.height
+        local slotX = screenWidth / 2
+        local slotY = screenHeight / 2 - UI.Layout.scale(100)
+
+        local minScale    = math.min(screenWidth / 800, screenHeight / 600)
+        local spriteScale = math.max(minScale * 2.0, 1.0)
+        local sampleH = dominoTiltedSprites and dominoTiltedSprites["00"]
+        local slotW = sampleH and (sampleH.sprite:getWidth()  * spriteScale) or UI.Layout.scale(100)
+        local slotH = sampleH and (sampleH.sprite:getHeight() * spriteScale) or UI.Layout.scale(50)
+
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", slotX - slotW / 2, slotY - slotH / 2, slotW, slotH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+    end
 end
 
 function UI.Renderer.drawShopUI()
@@ -4982,21 +5070,6 @@ function UI.Renderer.drawFusionMode()
     UI.Renderer.drawCoinSprites()
     UI.Renderer.drawCoinText()
 
-    -- Draw tiles remaining counter (bottom-right corner)
-    local tilesLeft = #gameState.deck
-    local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
-    local tilesText = "Tiles: " .. tilesLeft .. "/" .. totalTiles
-    local tilesColor = UI.Colors.FONT_WHITE
-
-    local margin = UI.Layout.scale(40)
-    local bottomRightX = screenWidth - margin
-    local bottomRightY = screenHeight - margin
-
-    UI.Fonts.drawAnimatedText(tilesText, bottomRightX, bottomRightY, "large", tilesColor, "right", {
-        shadow = true,
-        shadowOffset = UI.Layout.scale(3)
-    })
-
     -- Draw FUSE button
     UI.Renderer.drawFuseButton()
 
@@ -5179,7 +5252,6 @@ function UI.Renderer.drawEnhanceArea()
             centerY - tileH / 2,
             tileW, tileH, UI.Layout.scale(4))
         love.graphics.setColor(1, 1, 1, 1)
-        UI.Fonts.drawText("DRAG TILE HERE", centerX, centerY, "large", UI.Colors.FONT_WHITE, "center")
     end
 end
 
@@ -5290,10 +5362,7 @@ function UI.Renderer.drawFusionArea()
     local areaY = UI.Layout.scale(170)
     local areaHeight = UI.Layout.scale(200)
 
-    -- Only draw if we have tiles in fusion slots
-    if not gameState.fusionSlotTiles or #gameState.fusionSlotTiles == 0 then
-        return
-    end
+    if not gameState.fusionSlotTiles then gameState.fusionSlotTiles = {} end
 
     local centerY = areaY + areaHeight / 2
 
@@ -5333,6 +5402,11 @@ function UI.Renderer.drawFusionArea()
             width  = tileDispW,
             height = tileDispH,
         }
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", tile1X - tileDispW / 2, centerY - tileDispH / 2, tileDispW, tileDispH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+        gameState.fusionSlotButtons[1] = nil
     end
 
     -- Draw + symbol centred between tile1 and tile2
@@ -5348,18 +5422,25 @@ function UI.Renderer.drawFusionArea()
             width  = tileDispW,
             height = tileDispH,
         }
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", tile2X - tileDispW / 2, centerY - tileDispH / 2, tileDispW, tileDispH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+        gameState.fusionSlotButtons[2] = nil
     end
 
-    -- Draw = symbol and result if 2 tiles selected
-    if #gameState.fusionSlotTiles == 2 then
-        UI.Fonts.drawText("=", eqX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+    -- Always draw = symbol
+    UI.Fonts.drawText("=", eqX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
 
-        -- Draw result tile (vertical)
+    -- Draw result tile or empty slot
+    if #gameState.fusionSlotTiles == 2 then
         UI.Renderer.drawFusionResult(resultX, centerY, verticalWidth, verticalHeight)
     else
-        -- Clear stale bounds so the tap handler doesn't fire on a phantom tile
-        gameState.fusionResultBounds   = nil
-        gameState.fusionPreviewTile    = nil
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", resultX - verticalWidth / 2, centerY - verticalHeight / 2, verticalWidth, verticalHeight, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+        gameState.fusionResultBounds = nil
+        gameState.fusionPreviewTile  = nil
     end
 end
 
@@ -5506,8 +5587,11 @@ function UI.Renderer.drawActiveDieSprites()
 end
 
 function UI.Renderer.drawCombatCandles()
-    -- Only draw during combat phase
-    if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
+    local skipPhases = {
+        map = true, node_confirmation = true,
+        title_screen = true, intro_dialogue = true, round_intro = true, lost = true
+    }
+    if skipPhases[gameState.gamePhase] then
         return
     end
 
@@ -5695,6 +5779,17 @@ function UI.Renderer.drawTooltip()
         local tile      = tt.data
         local typeNames = {regular = "BONE", obsidian = "OBSIDIAN", tender = "TENDER", demon = "DEMON"}
         local typeName  = (tile.isAnchor or tile.tileType == "demon") and "DEMON" or (typeNames[tile.tileType] or "TILE")
+        local typeDescs = {
+            BONE     = "",
+            TENDER   = "Breaks on use",
+            OBSIDIAN = "Scores double,\ncan't upgrade or discard",
+            DEMON    = "Cursed. Does not score.",
+        }
+        local typeDesc  = typeDescs[typeName] or ""
+        local descLines = {}
+        for line in (typeDesc .. "\n"):gmatch("([^\n]*)\n") do
+            if line ~= "" then table.insert(descLines, line) end
+        end
         local pipStr    = tostring(tile.left) .. " - " .. tostring(tile.right)
         local inCombat = gameState.gamePhase == "playing" or gameState.gamePhase == "won"
         local bannedNumber = inCombat and Challenges and Challenges.getBannedNumber(gameState) or nil
@@ -5704,17 +5799,19 @@ function UI.Renderer.drawTooltip()
         local multStr   = "x" .. contrib.mult
 
         local fLarge = UI.Fonts.get("large")
+        local fMed   = UI.Fonts.get("medium")
         local largeH = fLarge:getHeight()
+        local medH   = fMed:getHeight()
         local sumW   = fLarge:getWidth(sumStr)
         local multW  = fLarge:getWidth(multStr)
 
-        -- Panel width fits the widest row; inner margin is pad on each side
-        -- Sum+mult row: they sit at the inner margins (sumStr left, multStr right)
-        -- so minimum content width must fit both with at least a small gap between
+        -- Panel width is determined by other rows only; description wraps to fit
         local smGap    = scale * 8
         local contentW = math.max(fLarge:getWidth(typeName), fLarge:getWidth(pipStr), sumW + multW + smGap)
         local totalW   = contentW + pad * 2  -- pad left + pad right
-        local contentH = largeH * 3 + sepPad
+        -- Description block: lines + separator below (same sepPad as the pips/score separator)
+        local descH    = #descLines > 0 and (#descLines * medH + sepPad) or 0
+        local contentH = largeH * 3 + sepPad + descH
         local totalH   = pad + contentH + pad
 
         -- Use the caller-supplied spriteHalfH when available (handles rotated/scaled tiles
@@ -5749,6 +5846,17 @@ function UI.Renderer.drawTooltip()
         -- Row 1: type name centred (pink)
         UI.Fonts.drawText(typeName, cx, curY, "large", C_TITLE, "center")
         curY = curY + largeH
+
+        -- Row 1b: description lines + separator (only when non-empty)
+        if #descLines > 0 then
+            for _, line in ipairs(descLines) do
+                UI.Fonts.drawText(line, cx, curY, "medium", C_BODY, "center")
+                curY = curY + medH
+            end
+            curY = curY + sepPad / 2
+            drawSep(bx, curY, totalW)
+            curY = curY + sepPad / 2
+        end
 
         -- Row 2: pips centred (white)
         UI.Fonts.drawText(pipStr, cx, curY, "large", C_BODY, "center")
@@ -5900,8 +6008,9 @@ end
 function UI.Renderer.drawTilesCountButton()
     local screenWidth = gameState.screen.width
 
-    local total = gameState.tileCollection and #gameState.tileCollection or 0
-    local tilesText = "Tiles: " .. total
+    local deckLeft = gameState.deck and #gameState.deck or 0
+    local total    = gameState.tileCollection and #gameState.tileCollection or 0
+    local tilesText = "Tiles: " .. deckLeft .. "/" .. total
     local textColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
 
     local margin      = UI.Layout.scale(40)

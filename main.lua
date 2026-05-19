@@ -56,6 +56,8 @@ function love.load()
             height = screenHeight,
             scale = math.min(screenWidth / 800, screenHeight / 600)
         },
+        debugFireHand = false,  -- set true to draw fire on every hand tile (for testing)
+        negativeHandEffect = false,  -- set true to apply negative+shine shader to all hand tiles
         deck = {},
         hand = {},
         placedTiles = {},
@@ -1509,7 +1511,9 @@ function updateScoringSequence(dt)
                     -- Add this tile's value to accumulated
                     local tileValue = Domino.getValue(tile)
                     local isDouble = Domino.isDouble(tile)
-                    local addedValue = tileValue + (isDouble and 10 or 0)
+                    local doubleBonus = isDouble and 10 or 0
+                    local enhanceBonus = tile.enhanceBonus or 0
+                    local addedValue = tileValue + doubleBonus + enhanceBonus
 
                     -- Check banned number challenge — banned tiles contribute nothing visually
                     local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
@@ -1517,8 +1521,9 @@ function updateScoringSequence(dt)
                     if isBanned then addedValue = 0 end
 
                     -- Apply "Lucky Five" contract bonus (per tile with 5 pip) — skip if banned
+                    local contractBonus = 0
                     if not isBanned then
-                        local contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                        contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
                         addedValue = addedValue + contractBonus
                     end
 
@@ -1546,8 +1551,13 @@ function updateScoringSequence(dt)
                     gameState.formulaTargetValue = seq.accumulatedValue
                     gameState.formulaCountSpeed = math.max(100, addedValue * 3)  -- Speed based on added value
 
-                    -- Animate the tile with shake effect
-                    animateTileScoring(tile)
+                    -- Animate the tile with shake effect and per-tile scoring popup
+                    local valueInfo = {
+                        totalAdded = addedValue,
+                        isObsidian = tile.tileType == "obsidian",
+                        isBanned   = isBanned,
+                    }
+                    animateTileScoring(tile, valueInfo)
                     
                     seq.currentTileIndex = seq.currentTileIndex + 1
                 else
@@ -1651,7 +1661,7 @@ function updateScoringSequence(dt)
     end
 end
 
-function animateTileScoring(tile)
+function animateTileScoring(tile, valueInfo)
     -- Create satisfying punch-out shake effect
     tile.scoreScale = tile.scoreScale or 1.0
     tile.scoreShake = tile.scoreShake or 0
@@ -1661,11 +1671,11 @@ function animateTileScoring(tile)
 
     local seq = gameState.scoringSequence
     local isFinalTile = (seq.currentTileIndex == #seq.tiles)
-    
+
     if isFinalTile then
         seq.finalTileAnimating = true
     end
-    
+
     UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
         UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack", function()
             -- If this was the final tile, mark that it's done animating
@@ -1674,20 +1684,57 @@ function animateTileScoring(tile)
             end
         end)
     end)
-    
+
     -- Add shake effect
     tile.scoreShake = 5
     UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
-    
+
     -- Animate the formula counter as well
     seq.formulaAnimation = seq.formulaAnimation or {scale = 1.0, shake = 0}
     seq.formulaAnimation.scale = 1.0
     seq.formulaAnimation.shake = 3
-    
+
     UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.2}, 0.1, "easeOutBack", function()
         UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.0}, 0.2, "easeOutBack")
     end)
     UI.Animation.animateTo(seq.formulaAnimation, {shake = 0}, 0.3, "easeOutQuart")
+
+    spawnTileScoringPopup(tile, valueInfo)
+end
+
+function spawnTileScoringPopup(tile, valueInfo)
+    if not valueInfo or valueInfo.isBanned then return end
+
+    local popX = tile.x
+    local popY = tile.y - 40
+
+    -- Combined sum (pips + enhance + double + contract) — #ffd7d7 (FONT_WHITE)
+    if valueInfo.totalAdded > 0 then
+        UI.Animation.createFloatingText("+" .. valueInfo.totalAdded, popX, popY, {
+            color        = UI.Colors.FONT_WHITE,
+            fontSize     = "counter",
+            duration     = 1.5,
+            riseDistance = 50,
+            startScale   = 0.4,
+            endScale     = 1.3,
+            easing       = "easeOutBack",
+            bounce       = true,
+        })
+    end
+
+    -- Obsidian multiplier boost — #ff8d99 (FONT_PINK), falls downward to distinguish from sum
+    if valueInfo.isObsidian then
+        UI.Animation.createFloatingText("+1 mult", popX, tile.y + 22, {
+            color        = UI.Colors.FONT_PINK,
+            fontSize     = "large",
+            duration     = 1.5,
+            riseDistance = -50,
+            startScale   = 0.4,
+            endScale     = 1.2,
+            easing       = "easeOutBack",
+            bounce       = true,
+        })
+    end
 end
 
 function completeScoringSequence()
@@ -2246,6 +2293,136 @@ local function updateIrisAnimation(dt)
     end
 end
 
+-- ── Hand tile fire simulation ─────────────────────────────────────────────────
+-- 2× coarser grid = 2× larger flame pixels. TILE_FIRE_H > TILE_FIRE_SPRITE_H lets
+-- flames overflow above tile. Visual output size is unchanged (renderer scales to fit).
+local TILE_FIRE_W        = 10   -- fire grid width  (controls horizontal pixel size)
+local TILE_FIRE_SPRITE_H = 20   -- fire rows that map to the sprite height
+local TILE_FIRE_H        = 30   -- total fire rows (30-20=10 rows extend above sprite)
+
+-- Heat-source mask derived from the domino sprite's alpha channel.
+-- All standard tiles share the same outer rounded-rectangle boundary, so 00.png
+-- gives the correct per-column mask for every tile in the deck.
+local heatSourceMask = (function()
+    local imgData = love.image.newImageData("sprites/tiles/00.png")
+    local imgW, imgH = imgData:getWidth(), imgData:getHeight()
+    local mask = {}
+    for fx = 1, TILE_FIRE_W do
+        local px = math.max(0, math.min(imgW - 1,
+                    math.floor((fx - 0.5) / TILE_FIRE_W * imgW)))
+        local inside = false
+        for row = 0, 4 do
+            local _, _, _, a = imgData:getPixel(px, imgH - 1 - row)
+            if a > 0.1 then inside = true; break end
+        end
+        mask[fx] = inside and 36 or 0
+    end
+    return mask
+end)()
+
+local tileFirePalette = (function()
+    local stops = {
+        {0,  {0,    0,    0,    0   }},
+        {5,  {0.22, 0,    0,    0.50}},
+        {15, {1,    0,    0,    0.60}},
+        {26, {1,    0.55, 0,    0.65}},
+        {35, {1,    1,    0,    0.65}},
+        {36, {1,    1,    1,    0.65}},
+    }
+    local p = {}
+    for heat = 0, 36 do
+        local lo, hi
+        for i = 1, #stops - 1 do
+            if heat >= stops[i][1] and heat <= stops[i + 1][1] then
+                lo, hi = stops[i], stops[i + 1]
+                break
+            end
+        end
+        local t  = (heat - lo[1]) / (hi[1] - lo[1])
+        local lc, hc = lo[2], hi[2]
+        p[heat + 1] = {
+            lc[1] + t * (hc[1] - lc[1]),
+            lc[2] + t * (hc[2] - lc[2]),
+            lc[3] + t * (hc[3] - lc[3]),
+            lc[4] + t * (hc[4] - lc[4]),
+        }
+    end
+    return p
+end)()
+
+local function initTileFire(domino)
+    domino.fireGrid = {}
+    for y = 1, TILE_FIRE_H do
+        domino.fireGrid[y] = {}
+        for x = 1, TILE_FIRE_W do
+            domino.fireGrid[y][x] = 0
+        end
+    end
+    for seedY = TILE_FIRE_H - 2, TILE_FIRE_H do
+        for x = 1, TILE_FIRE_W do
+            domino.fireGrid[seedY][x] = heatSourceMask[x]
+        end
+    end
+    domino.fireData  = love.image.newImageData(TILE_FIRE_W, TILE_FIRE_H)
+    domino.fireImage = love.graphics.newImage(domino.fireData)
+    domino.fireImage:setFilter("nearest", "nearest")
+end
+
+local function stepTileFire(domino)
+    local grid = domino.fireGrid
+    for x = 1, TILE_FIRE_W do
+        grid[TILE_FIRE_H][x] = heatSourceMask[x]
+    end
+    -- Scatter toward center with alternating scan direction.
+    -- Alternating left↔right each step cancels the iteration-order bias that
+    -- causes persistent directional lean in scatter mode.
+    -- Inward bias (35%) makes flames taper toward the centre as they rise.
+    local mid = (TILE_FIRE_W + 1) * 0.5
+    domino._fireScanLeft = not (domino._fireScanLeft ~= false)
+    local x0, x1, dx = domino._fireScanLeft and 1 or TILE_FIRE_W,
+                        domino._fireScanLeft and TILE_FIRE_W or 1,
+                        domino._fireScanLeft and 1 or -1
+    -- bodyThreshold: bottom 2/3 of sprite = near-vertical, low decay → solid body
+    -- rows above it (top 1/3 + above-sprite rows): fast decay → flames vanish ~20px up
+    local bodyThreshold = TILE_FIRE_H - math.floor(TILE_FIRE_SPRITE_H * 2 / 3)  -- row 34
+    for y = 2, TILE_FIRE_H do
+        for x = x0, x1, dx do
+            local heat = grid[y][x]
+            local xOff, decay
+            if y > bodyThreshold then
+                -- Body: near-vertical columns, minimal decay
+                xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
+                decay = love.math.random() < 0.60 and 1 or 0
+            else
+                -- Tips: center-inward scatter, faster decay so flames die naturally
+                local inward = x < mid and 1 or -1
+                xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
+                decay = love.math.random(2, 3)
+            end
+            local tx = math.max(1, math.min(TILE_FIRE_W, x + xOff))
+            grid[y - 1][tx] = math.max(0, heat - decay)
+        end
+    end
+    local data = domino.fireData
+    for y = 1, TILE_FIRE_H do
+        for x = 1, TILE_FIRE_W do
+            local col = tileFirePalette[grid[y][x] + 1]
+            data:setPixel(x - 1, y - 1, col[1], col[2], col[3], col[4])
+        end
+    end
+    domino.fireImage:replacePixels(data)
+end
+
+local _fireFrame = 0
+local function updateHandFire()
+    if not gameState.debugFireHand then return end
+    _fireFrame = (_fireFrame + 1) % 6
+    for _, domino in ipairs(gameState.hand) do
+        if not domino.fireGrid then initTileFire(domino) end
+        if _fireFrame == 0 then stepTileFire(domino) end
+    end
+end
+
 function love.update(dt)
     Touch.update(dt)
     updateIrisAnimation(dt)
@@ -2296,6 +2473,7 @@ function love.update(dt)
 
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
+            updateHandFire()
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
@@ -2470,7 +2648,7 @@ function love.draw()
         if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
-        if gameState.gamePhase == "won" then
+        if gameState.gamePhase == "won" and not gameState.deckPreviewOpen then
             UI.Renderer.drawGameOver()
         end
     elseif gameState.gamePhase == "map" then
@@ -2490,6 +2668,7 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -2497,6 +2676,7 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "artifacts_menu" then
         UI.Renderer.drawArtifactsMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on artifacts shop screen
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -2504,6 +2684,7 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on contracts screen
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -2821,7 +3002,7 @@ function loadDominoSprites()
         if dominoSprites[key] and dominoSprites[key].sprite then
             dominoSprites[reverseKey] = {
                 sprite = dominoSprites[key].sprite,
-                inverted = true
+                inverted = false
             }
         end
     end
@@ -2841,7 +3022,7 @@ function loadDominoSprites()
         if dominoSprites[key] and dominoSprites[key].sprite then
             dominoSprites[reverseKey] = {
                 sprite = dominoSprites[key].sprite,
-                inverted = true
+                inverted = false
             }
         end
     end
@@ -2917,7 +3098,7 @@ function loadDominoSprites()
     if dominoSprites["oddeven"] and dominoSprites["oddeven"].sprite then
         dominoSprites["evenodd"] = {
             sprite = dominoSprites["oddeven"].sprite,
-            inverted = true
+            inverted = false
         }
     end
 
@@ -2934,7 +3115,7 @@ function loadDominoSprites()
             local reverseKey = "even" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = true
+                flipped = false
             }
         end
     end
@@ -2951,7 +3132,7 @@ function loadDominoSprites()
             local reverseKey = "odd" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = true
+                flipped = false
             }
         end
     end
@@ -2991,7 +3172,7 @@ function loadDominoSprites()
         -- Create reverse mapping (x-odd)
         dominoTiltedSprites["xodd"] = {
             sprite = rawTiltedSprites["oddx"],
-            flipped = true
+            flipped = false
         }
     end
     if rawTiltedSprites["evenx"] then
@@ -3002,7 +3183,7 @@ function loadDominoSprites()
         -- Create reverse mapping (x-even)
         dominoTiltedSprites["xeven"] = {
             sprite = rawTiltedSprites["evenx"],
-            flipped = true
+            flipped = false
         }
     end
 
@@ -3020,7 +3201,7 @@ function loadDominoSprites()
     if rawTiltedSprites["oddeven"] then
         dominoTiltedSprites["evenodd"] = {
             sprite = rawTiltedSprites["oddeven"],
-            flipped = true
+            flipped = false
         }
     end
 end

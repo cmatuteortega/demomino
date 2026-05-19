@@ -2223,8 +2223,8 @@ function Touch.released(x, y, istouch, touchId)
         end
     end
 
-    -- Check combat candle taps (active contract tooltips) — only in playing phase, non-drag
-    if (gameState.gamePhase == "playing" or gameState.gamePhase == "won") and
+    -- Check combat candle taps (active contract tooltips) — all screens except map/node_confirmation
+    if gameState.gamePhase ~= "map" and gameState.gamePhase ~= "node_confirmation" and
         not Touch.isDragging() and gameState.combatCandleBounds then
         for _, bound in ipairs(gameState.combatCandleBounds) do
             if x >= bound.x and x <= bound.x + bound.w and y >= bound.y and y <= bound.y + bound.h then
@@ -2296,7 +2296,9 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
 
         -- Handle tool sprite dragging
         -- Drag the tool that was pressed (not the selected one)
-        if touchState.pressedToolIndex and Touch.isDragging() and not gameState.draggedTool then
+        local canDragTool = gameState.gamePhase == "playing" or gameState.gamePhase == "won"
+                            or gameState.gamePhase == "artifacts_menu"
+        if touchState.pressedToolIndex and Touch.isDragging() and not gameState.draggedTool and canDragTool then
             -- Start dragging the pressed tool
             local toolIndex = touchState.pressedToolIndex
             local toolId = touchState.pressedToolId

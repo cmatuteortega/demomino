@@ -60,7 +60,7 @@ function Scoring.getScoreBreakdown(tiles)
     local obsidianCount = 0
 
     for _, tile in ipairs(tiles) do
-        tileValues = tileValues + Domino.getValue(tile)
+        tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
         if Domino.isDouble(tile) then
             doubleCount = doubleCount + 1
         end
@@ -160,7 +160,7 @@ function Scoring.getTileContribution(tile, activeContracts)
         doubleBonus        = doubleBonus,
         contractBonus      = contractBonus,
         contractBonusLabel = contractBonusLabel,
-        totalSum           = pipSum + doubleBonus + contractBonus,
+        totalSum           = pipSum + (tile.enhanceBonus or 0) + doubleBonus + contractBonus,
         mult               = 1 + multBonus,
         multBonus          = multBonus,
     }
