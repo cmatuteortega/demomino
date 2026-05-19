@@ -44,11 +44,11 @@ function Map.selectDemonName(usedNames, isBoss)
 end
 
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
-function Map.generateMap(screenWidth, screenHeight, currentRound)
+function Map.generateMap(screenWidth, screenHeight, currentNight)
     -- Use default dimensions if not provided for backward compatibility
     screenWidth = screenWidth or 800
     screenHeight = screenHeight or 600
-    currentRound = currentRound or 1
+    currentNight = currentNight or 1
     local map = {
         nodes = {},        -- All nodes in the DAG
         levels = {},       -- Nodes organized by depth level
@@ -78,7 +78,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
         -- Store generation parameters for potential regeneration
         screenWidth = screenWidth,
         screenHeight = screenHeight,
-        currentRound = currentRound,
+        currentNight = currentNight,
 
         -- Legacy compatibility for renderer
         columns = {}
@@ -119,7 +119,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
 
         -- Generate nodes for selected rows only
         for _, rowNumber in ipairs(selectedRows) do
-            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentRound)
+            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentNight)
             local node = Map.createNode(depth, rowNumber, nodeType)
             map.nodes[node.id] = node
             table.insert(map.levels[depth], node)
@@ -131,7 +131,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
     Map.generateDAGConnections(map, minConnections, maxConnections)
 
     -- Validate DAG structure and ensure all paths lead to boss
-    Map.validateAndFixDAG(map, currentRound)
+    Map.validateAndFixDAG(map, currentNight)
     
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
@@ -225,34 +225,25 @@ function Map.assignDemonNames(map)
 end
 
 -- Select a random node type for regular nodes with balanced distribution
--- For Round 1 (Night 1): Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels starting from 2)
--- For Round 2+: Combat nodes must be separated by at least 1 non-combat level
-function Map.selectRandomNodeType(depth, numLevels, currentRound)
-    currentRound = currentRound or 1
+-- Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels) on all nights.
+-- Non-combat nodes are weighted: 40% shop-group, 30% contracts, 30% artifacts.
+function Map.selectRandomNodeType(depth, numLevels, currentNight)
+    -- Deterministic combat spacing: depths where depth % 3 == 2 (2, 5, 8, 11…)
+    local isCombatLevel = (depth % 3 == 2)
 
-    if currentRound == 1 then
-        -- Round 1: Deterministic combat at levels 2, 5, 8, 11, etc.
-        -- Level 2 is the first playable node since level 1 is the start node
-        local isCombatLevel = (depth % 3 == 2)
+    if isCombatLevel then
+        return "combat"
+    end
 
-        if isCombatLevel then
-            return "combat"
-        else
-            -- Non-combat levels: randomly select from other node types
-            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts", "enhance"}
-            return otherTypes[love.math.random(1, #otherTypes)]
-        end
+    -- Weighted non-combat selection
+    local roll = love.math.random()
+    if roll < 0.40 then
+        local shopGroup = {"trade", "alchemy", "alchemy_subtract", "enhance"}
+        return shopGroup[love.math.random(1, #shopGroup)]
+    elseif roll < 0.70 then
+        return "contracts"
     else
-        -- Round 2+: Random placement with at least 1 level separation
-        -- This will be validated/corrected by ensuring no two consecutive combat levels
-        local combatChance = 0.4  -- Base 40% chance for combat
-
-        if love.math.random() < combatChance then
-            return "combat"
-        else
-            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts", "enhance"}
-            return otherTypes[love.math.random(1, #otherTypes)]
-        end
+        return "artifacts"
     end
 end
 
@@ -623,44 +614,38 @@ function Map.removeUnreachableNodes(map)
 end
 
 -- Validate and fix DAG structure to ensure proper connectivity
-function Map.validateAndFixDAG(map, currentRound)
+function Map.validateAndFixDAG(map, currentNight)
     local numLevels = #map.levels
-    currentRound = currentRound or 1
-    
+
     -- Remove unreachable nodes first (forward reachability from start)
     Map.removeUnreachableNodes(map)
-    
+
     -- Check if boss node still exists after unreachable node removal
     if #map.levels[numLevels] == 0 then
         -- Boss was removed, regenerate map (this should be rare)
         print("Warning: Boss node was unreachable, regenerating map...")
-        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration
     end
-    
+
     local bossNode = map.levels[numLevels][1] -- Boss is always the single node at final level
-    
+
     -- Ensure all remaining nodes can reach the boss node (backward connectivity)
     Map.ensureAllPathsReachBoss(map, bossNode)
-    
+
     -- Verify DAG structure (no cycles)
     Map.validateAcyclicStructure(map)
-    
+
     -- Ensure boss node has incoming connections
     Map.ensureBossHasConnections(map, bossNode)
-    
-    -- NEW: Validate and improve path balance
-    Map.validatePathBalance(map)
 
-    -- For Round 2+, validate that no two combat levels are consecutive
-    if map.currentRound > 1 then
-        Map.validateConsecutiveCombatLevels(map)
-    end
+    -- Validate and improve path balance
+    Map.validatePathBalance(map)
 
     -- FINAL: Comprehensive connectivity validation with regeneration fallback
     local connectivityValid = Map.performFinalConnectivityCheck(map)
     if not connectivityValid then
         print("Critical: Final connectivity check failed, regenerating map...")
-        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration as last resort
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration as last resort
     end
 end
 

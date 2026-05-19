@@ -75,6 +75,7 @@ function love.load()
         currentMap = nil,
         selectedNode = nil,  -- For node confirmation dialog
         isBossRound = false,  -- Track if current combat is the boss round
+        isEndlessMode = false,  -- True after beating Night 5
         currentDay = 1,  -- Track which map/day the player is on
         scoreAnimation = {    -- Animation properties for score display
             scale = 1.0,
@@ -464,6 +465,8 @@ function resetGameToFresh()
 
     -- Reset ALL game state completely
     gameState.currentRound = 1
+    gameState.currentDay = 1
+    gameState.isEndlessMode = false
     gameState.targetScore = TARGET_SCORE
     gameState.coins = 0
     gameState.startRoundCoins = 0
@@ -507,7 +510,7 @@ function resetGameToFresh()
     initializeGame(false)
 
     -- Generate new map
-    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
+    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
 end
 
 function initializeGame(isNewRound)
@@ -2678,6 +2681,8 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "lost" then
         UI.Renderer.drawGameOver()
+    elseif gameState.gamePhase == "run_complete" then
+        UI.Renderer.drawRunCompleteScreen()
     end
     
     UI.Animation.drawFloatingTexts()

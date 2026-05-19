@@ -2614,6 +2614,54 @@ function UI.Renderer.drawGameOver()
     end
 end
 
+function UI.Renderer.drawRunCompleteScreen()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+    local centerY = screenHeight / 2
+
+    -- Dark overlay
+    UI.Colors.setOutline()
+    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.85)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Animated YOU WIN! title
+    local titleScale = 1 + math.sin(love.timer.getTime() * 2.5) * 0.12
+    local titleAnimProps = {scale = titleScale}
+    UI.Fonts.drawAnimatedText("YOU WIN!", centerX, centerY - UI.Layout.scale(80), "title", UI.Colors.FONT_PINK, "center", titleAnimProps)
+
+    -- Flavour line
+    UI.Fonts.drawText("The feast is over. You are victorious.", centerX, centerY - UI.Layout.scale(25), "large", UI.Colors.FONT_WHITE, "center")
+
+    -- Night count
+    local nightText = "All " .. tostring(5) .. " nights conquered!"
+    UI.Fonts.drawText(nightText, centerX, centerY + UI.Layout.scale(15), "small", UI.Colors.FONT_WHITE, "center")
+
+    -- Buttons
+    local buttonWidth = UI.Layout.scale(200)
+    local buttonHeight = UI.Layout.scale(50)
+    local buttonSpacing = UI.Layout.scale(20)
+    local buttonsY = centerY + UI.Layout.scale(75)
+
+    -- RETURN TO TITLE button (left)
+    local returnX = centerX - buttonWidth - buttonSpacing / 2
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", returnX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", returnX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+    UI.Fonts.drawText("RETURN TO TITLE", returnX + buttonWidth / 2, buttonsY + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center", true)
+    gameState.runCompleteReturnButton = {x = returnX, y = buttonsY, width = buttonWidth, height = buttonHeight}
+
+    -- CONTINUE ENDLESS button (right)
+    local endlessX = centerX + buttonSpacing / 2
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", endlessX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", endlessX, buttonsY, buttonWidth, buttonHeight, UI.Layout.scale(8))
+    UI.Fonts.drawText("CONTINUE ENDLESS", endlessX + buttonWidth / 2, buttonsY + buttonHeight / 2, "button", UI.Colors.FONT_PINK, "center", true)
+    gameState.runCompleteEndlessButton = {x = endlessX, y = buttonsY, width = buttonWidth, height = buttonHeight}
+end
+
 function UI.Renderer.drawMap()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height

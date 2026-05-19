@@ -464,6 +464,7 @@ function UI.TitleScreen.continueGame()
     gameState.baseTargetScore = TARGET_SCORE
     gameState.coins = saveData.coins or 0
     gameState.isBossRound = saveData.isBossRound or false
+    gameState.isEndlessMode = saveData.isEndlessMode or false
     gameState.currentDay = saveData.currentDay or 1
 
     -- Restore owned tools

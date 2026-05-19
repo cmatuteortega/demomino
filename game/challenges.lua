@@ -140,12 +140,13 @@ Challenges.TYPES = {
     }
 }
 
--- Challenge progression: which challenges activate at which rounds
+-- Challenge progression keyed by night number (currentDay).
+-- Night 1: clean board; Night 2+: anchor/demon tile; Night 3+: additional challenges.
 Challenges.PROGRESSION = {
-    [1] = {},  -- Round 1: No challenges
-    [2] = {"anchor_tile"},  -- Round 2: Anchor tile
-    [3] = {"anchor_tile", "max_tiles"},  -- Round 3: Anchor + max tiles
-    [4] = {"anchor_tile", "max_tiles", "banned_number"},  -- Round 4+: All challenges
+    [1] = {},  -- Night 1: No challenges, no demon tile
+    [2] = {"anchor_tile"},  -- Night 2: Anchor/demon tile on board
+    [3] = {"anchor_tile", "max_tiles"},  -- Night 3: Demon tile + max tiles
+    [4] = {"anchor_tile", "max_tiles", "banned_number"},  -- Night 4+: All challenges
 }
 
 -- Get challenges for a specific round (with fallback for higher rounds)
@@ -167,7 +168,7 @@ function Challenges.initialize(gameState)
     gameState.activeChallenges = {}
     gameState.challengeStates = {}
 
-    local roundNumber = gameState.currentRound or 1
+    local roundNumber = gameState.currentDay or 1
     local challengeIds = Challenges.getChallengesForRound(roundNumber)
 
     for _, challengeId in ipairs(challengeIds) do

@@ -35,6 +35,7 @@ function Save.saveGame(gameState)
         -- Map state
         mapData = nil,
         isBossRound = gameState.isBossRound or false,
+        isEndlessMode = gameState.isEndlessMode or false,
 
         -- Timestamp
         saveTime = os.time()
@@ -138,7 +139,7 @@ function Save.serializeMap(map)
         traversedConnections = {},  -- Save path history
         screenWidth = map.screenWidth or 800,
         screenHeight = map.screenHeight or 600,
-        currentRound = map.currentRound or 1,
+        currentNight = map.currentNight or 1,
         candles = {},  -- Save candle states
         levels = {}
     }
@@ -224,7 +225,7 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         candles = {},  -- Will be restored after node positioning
         screenWidth = mapData.screenWidth or screenWidth or 800,
         screenHeight = mapData.screenHeight or screenHeight or 600,
-        currentRound = mapData.currentRound or 1,
+        currentNight = mapData.currentNight or 1,
         columns = {}  -- Legacy compatibility
     }
 

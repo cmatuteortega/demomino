@@ -1294,6 +1294,30 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
+    -- Handle run complete (You Win!) screen interactions
+    if gameState.gamePhase == "run_complete" then
+        if gameState.runCompleteReturnButton and isPointInRect(x, y, gameState.runCompleteReturnButton) then
+            Save.deleteSave()
+            UI.Animation.clearAllDiePhysics()
+            gameState.titleTilesInitialized = false
+            gameState.titleTiles = {}
+            gameState.gamePhase = "title_screen"
+        elseif gameState.runCompleteEndlessButton and isPointInRect(x, y, gameState.runCompleteEndlessButton) then
+            gameState.isEndlessMode = true
+            UI.Animation.clearAllDiePhysics()
+            gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
+            Dialogue.clear()
+            gameState.placedTiles = {}
+            initializeRoundIntro()
+            gameState.gamePhase = "round_intro"
+            Save.saveGame(gameState)
+        end
+
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
     -- Handle map screen interactions
     if gameState.gamePhase == "map" then
         if gameState.currentMap then
@@ -2932,17 +2956,24 @@ function Touch.checkGameEnd()
         Hand.animateAllHandDiscard(gameState.hand, function()
             gameState.gamePhase = "won"
 
-            -- If this was a boss round, generate a completely new map
+            -- If this was a boss round, generate a completely new map or end the run
             if gameState.isBossRound then
                 gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
-                gameState.showNightIntroOnAdvance = true
-                gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
                 gameState.isBossRound = false
+
+                if gameState.currentDay > 5 then
+                    -- Player has beaten all 5 nights — show run complete screen
+                    gameState.gamePhase = "run_complete"
+                    gameState.currentMap = nil
+                else
+                    gameState.showNightIntroOnAdvance = true
+                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
+                end
             else
                 -- Regular combat node completion - return to existing map
                 -- Generate a new map if one doesn't exist (shouldn't happen)
                 if not gameState.currentMap then
-                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
+                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
                 end
             end
         end)
