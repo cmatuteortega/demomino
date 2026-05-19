@@ -16,6 +16,7 @@ function Domino.new(left, right, leftScore, rightScore)
         flipped = false,
         orientation = "vertical",
         tileType = "regular",  -- "regular", "demon", "obsidian", "tender"
+        negative = false,   -- true if result of a subtraction that produced a negative value
         enhanceBonus = 0,   -- cumulative flat scoring bonus from Enhance node
         enhanceCount = 0,   -- number of times enhanced (max 5)
         -- Drag state properties
@@ -270,6 +271,7 @@ function Domino.clone(domino)
         height = domino.height,
         orientation = domino.orientation,
         tileType = domino.tileType or "regular",  -- Preserve tile type
+        negative = domino.negative or false,
         enhanceBonus = domino.enhanceBonus or 0,
         enhanceCount = domino.enhanceCount or 0,
         -- Drag state properties
@@ -430,6 +432,67 @@ function Domino.fuseTiles(tile1, tile2)
     end
 
     return fusedTile
+end
+
+-- Subtraction fusion: tile1 - tile2. Sides with negative results use abs value and mark tile negative.
+function Domino.subtractTiles(tile1, tile2)
+    local tile1LeftScore  = tile1.leftScore  or Domino.getNumericValue(tile1.left)
+    local tile1RightScore = tile1.rightScore or Domino.getNumericValue(tile1.right)
+    local tile2LeftScore  = tile2.leftScore  or Domino.getNumericValue(tile2.left)
+    local tile2RightScore = tile2.rightScore or Domino.getNumericValue(tile2.right)
+
+    local rawLeft  = tile1LeftScore  - tile2LeftScore
+    local rawRight = tile1RightScore - tile2RightScore
+    local isNegative = rawLeft < 0 or rawRight < 0
+
+    local newLeft, newLeftScore
+    if Domino.isSpecialValue(tile1.left) then
+        newLeft = tile1.left
+        newLeftScore = math.abs(rawLeft)
+    elseif Domino.isSpecialValue(tile2.left) then
+        newLeft = tile2.left
+        newLeftScore = math.abs(rawLeft)
+    else
+        newLeft = math.abs(rawLeft)
+        newLeftScore = nil
+    end
+
+    local newRight, newRightScore
+    if Domino.isSpecialValue(tile1.right) then
+        newRight = tile1.right
+        newRightScore = math.abs(rawRight)
+    elseif Domino.isSpecialValue(tile2.right) then
+        newRight = tile2.right
+        newRightScore = math.abs(rawRight)
+    else
+        newRight = math.abs(rawRight)
+        newRightScore = nil
+    end
+
+    local resultTile = Domino.new(newLeft, newRight, newLeftScore, newRightScore)
+    resultTile.negative = isNegative
+    resultTile.enhanceBonus  = (tile1.enhanceBonus or 0) + (tile2.enhanceBonus or 0)
+    resultTile.enhanceCount  = math.max(tile1.enhanceCount or 0, tile2.enhanceCount or 0)
+
+    -- Normalize: smaller value on left (same as fuseTiles, avoids sprite inversion)
+    local leftIsNumeric  = type(resultTile.left)  == "number"
+    local rightIsNumeric = type(resultTile.right) == "number"
+
+    if leftIsNumeric and rightIsNumeric then
+        if resultTile.left > resultTile.right then
+            resultTile.left, resultTile.right = resultTile.right, resultTile.left
+            resultTile.leftScore, resultTile.rightScore = resultTile.rightScore, resultTile.leftScore
+        end
+    elseif not Domino.isSpecialValue(resultTile.left) and not Domino.isSpecialValue(resultTile.right) then
+        local ls = resultTile.leftScore  or resultTile.left
+        local rs = resultTile.rightScore or resultTile.right
+        if type(ls) == "number" and type(rs) == "number" and ls > rs then
+            resultTile.left, resultTile.right = resultTile.right, resultTile.left
+            resultTile.leftScore, resultTile.rightScore = resultTile.rightScore, resultTile.leftScore
+        end
+    end
+
+    return resultTile
 end
 
 -- Remove a tile from collection by index

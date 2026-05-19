@@ -48,7 +48,8 @@ function Save.saveGame(gameState)
                 right = tile.right,
                 leftScore = tile.leftScore,    -- Preserve score overrides (for fused tiles)
                 rightScore = tile.rightScore,  -- Preserve score overrides (for fused tiles)
-                tileType = tile.tileType       -- Preserve tile type (regular/demon/obsidian)
+                tileType = tile.tileType,      -- Preserve tile type (regular/demon/obsidian)
+                negative = tile.negative       -- Preserve negative flag
             })
         end
     end

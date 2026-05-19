@@ -942,7 +942,7 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
                 love.graphics.setShader(tileFireShader)
                 tileFireShader:send("time", love.timer.getTime())
                 tileFireShader:send("fireMap", domino.fireImage)
-            elseif applyNegative then
+            elseif applyNegative or domino.negative then
                 love.graphics.setShader(tileNegativeShader)
                 tileNegativeShader:send("time", love.timer.getTime())
             elseif domino.tileType == "obsidian" then
@@ -955,7 +955,7 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
             love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
 
-            if domino.fireImage or applyNegative or domino.tileType == "obsidian" or domino.tileType == "tender" then
+            if domino.fireImage or applyNegative or domino.negative or domino.tileType == "obsidian" or domino.tileType == "tender" then
                 love.graphics.setShader()
             end
 
@@ -1041,7 +1041,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if not domino.isDragging and not domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil)
         end
     end
 
@@ -1049,7 +1049,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if not domino.isDragging and domino.selected and not domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil)
         end
     end
 
@@ -1057,7 +1057,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDragging then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil)
         end
     end
 
@@ -1065,7 +1065,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDiscarding then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil)
         end
     end
 
@@ -1073,7 +1073,7 @@ function UI.Renderer.drawHand(hand)
     for i, domino in ipairs(hand) do
         if domino.isDrawing then
             local x, y = UI.Layout.getHandPosition(i - 1, #hand)
-            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil, gameState.negativeHandEffect)
+            UI.Renderer.drawDomino(domino, x, y, nil, "vertical", nil)
         end
     end
 end
@@ -2091,7 +2091,7 @@ function UI.Renderer.drawCoinText()
     -- Skip breakdown in shop menu, artifacts menu, and fusion menu (only show in combat)
     local isShopMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType)
     local isArtifactsMenu = gameState.gamePhase == "artifacts_menu"
-    local isFusionMode = gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy"
+    local isFusionMode = gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract")
     local isEnhanceMode = gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance"
     if not isShopMode and not isArtifactsMenu and not isFusionMode and not isEnhanceMode and gameState.coinBreakdown and #gameState.coinBreakdown > 0 then
         local font = UI.Fonts.get("large")  -- Smaller font
@@ -2965,6 +2965,7 @@ function UI.Renderer.drawNodeConfirmation()
         combat = "DISPUTE",
         trade = "TRADE",
         alchemy = "ALCHEMY",
+        alchemy_subtract = "ALCHEMY",
         artifacts = "ARTIFACTS",
         contracts = "MAGIK",
         enhance = "ENHANCE"
@@ -3015,6 +3016,7 @@ function UI.Renderer.drawNodeConfirmation()
         combat = "CHALLENGE FOR PROFIT",
         trade = "GET NEW BONES",
         alchemy = "FUSE YOUR BONES",
+        alchemy_subtract = "SUBSTRACT BONES",
         artifacts = "USEFUL ARTIFACTS",
         contracts = "DEAL WITH THE DEVIL"
     }
@@ -3116,8 +3118,8 @@ function UI.Renderer.drawTilesMenu()
     local nodeType = gameState.currentTilesNodeType or "trade"  -- Default to trade for backward compatibility
 
     -- Draw content based on node type
-    if nodeType == "alchemy" then
-        -- ALCHEMY node - Fusion mode
+    if nodeType == "alchemy" or nodeType == "alchemy_subtract" then
+        -- ALCHEMY / ALCHEMY SUBTRACT node - Fusion mode (symbol and operation differ by node type)
         UI.Renderer.drawFusionMode()
         return
     elseif nodeType == "enhance" then
@@ -4941,7 +4943,7 @@ function UI.Renderer.drawFusionMode()
     local time = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
 
-    -- Right side: ALCHEMY title
+    -- Right side: node title (ALCHEMY or SUBTRACTION)
     local nodeTitle = "ALCHEMY"
     local titleColor = UI.Colors.FONT_WHITE
 
@@ -5409,8 +5411,9 @@ function UI.Renderer.drawFusionArea()
         gameState.fusionSlotButtons[1] = nil
     end
 
-    -- Draw + symbol centred between tile1 and tile2
-    UI.Fonts.drawText("+", plusX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+    -- Draw +/- symbol centred between tile1 and tile2
+    local fusionSymbol = (gameState.currentTilesNodeType == "alchemy_subtract") and "-" or "+"
+    UI.Fonts.drawText(fusionSymbol, plusX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
 
     -- Draw second fusion slot tile (tilted/horizontal)
     if #gameState.fusionSlotTiles >= 2 then
@@ -5454,8 +5457,13 @@ function UI.Renderer.drawFusionResult(x, y, width, height)
 
     if not tile1 or not tile2 then return end
 
-    -- Create a preview of the fused tile (don't actually fuse yet)
-    local fusedTile = Domino.fuseTiles(tile1, tile2)
+    -- Create a preview of the fused/subtracted tile (don't actually apply yet)
+    local fusedTile
+    if gameState.currentTilesNodeType == "alchemy_subtract" then
+        fusedTile = Domino.subtractTiles(tile1, tile2)
+    else
+        fusedTile = Domino.fuseTiles(tile1, tile2)
+    end
 
     -- Store preview tile and its screen bounds for tap-to-tooltip detection
     gameState.fusionPreviewTile  = fusedTile
@@ -5502,7 +5510,8 @@ function UI.Renderer.drawFuseButton()
 
     -- Button text
     local textColor = canFuse and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
-    local buttonText = hasEnoughTiles and ("FUSE (" .. fuseCost .. "$)") or "SELECT 2 TILES"
+    local actionWord = (gameState.currentTilesNodeType == "alchemy_subtract") and "SUBTRACT" or "FUSE"
+    local buttonText = hasEnoughTiles and (actionWord .. " (" .. fuseCost .. "$)") or "SELECT 2 TILES"
     if hasEnoughTiles and not canAfford then
         buttonText = "NOT ENOUGH $"
     end

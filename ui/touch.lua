@@ -369,7 +369,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Handle NEXT> button press on fusion screen
-    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+    if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
         if gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
             -- Play tap sound
             UI.Audio.playButtonTap()
@@ -602,7 +602,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Handle fusion hand (reuse regular hand logic)
-    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" and gameState.fusionHand then
+    if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") and gameState.fusionHand then
         local tile, index = Hand.getTileAt(gameState.fusionHand, x, y)
         if tile then
             -- Obsidian tiles cannot be used in fusion
@@ -1409,7 +1409,7 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Determine mode based on node type
         local nodeType = gameState.currentTilesNodeType or "trade"
-        local isFusionMode  = (nodeType == "alchemy")
+        local isFusionMode  = (nodeType == "alchemy" or nodeType == "alchemy_subtract")
         local isEnhanceMode = (nodeType == "enhance")
 
         -- Handle based on current mode
@@ -3032,8 +3032,9 @@ function Touch.discardSelectedTiles()
         -- After discard animation completes, remove tiles and draw new ones
         Hand.removeSelectedTiles(gameState.hand)
 
-        -- Draw new tiles to replace discarded ones (same amount as discarded)
-        local drawnCount, drawnTiles = Hand.refillHand(gameState.hand, gameState.deck, #gameState.hand + discardedCount)
+        -- Refill to 7 non-negative, counting tiles already placed on the board
+        local placedNonNeg = Hand.countNonNegative(gameState.placedTiles or {})
+        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7, placedNonNeg)
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then
@@ -3261,7 +3262,7 @@ function Touch.executeNodeEntry(node)
             })
         end
     elseif nodeType == "alchemy" then
-        -- ALCHEMY node - fusion interface
+        -- ALCHEMY node - fusion interface (addition)
         gameState.currentTilesNodeType = "alchemy"
 
         -- Initialize fusion hand using the existing function
@@ -3275,6 +3276,21 @@ function Touch.executeNodeEntry(node)
         }
 
         -- Animate tiles drawing in from right (like combat screen)
+        Hand.animateTilesDraw(gameState.fusionHand, 0)
+
+        gameState.gamePhase = "tiles_menu"
+    elseif nodeType == "alchemy_subtract" then
+        -- ALCHEMY SUBTRACT node - fusion interface (subtraction)
+        gameState.currentTilesNodeType = "alchemy_subtract"
+
+        Touch.initializeFusionHand()
+
+        gameState.buttonAnimations = {
+            playButton = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+
         Hand.animateTilesDraw(gameState.fusionHand, 0)
 
         gameState.gamePhase = "tiles_menu"
@@ -3745,8 +3761,13 @@ function Touch.confirmFusion()
         return
     end
 
-    -- Perform fusion
-    local fusedTile = Domino.fuseTiles(tile1, tile2)
+    -- Perform fusion or subtraction
+    local fusedTile
+    if gameState.currentTilesNodeType == "alchemy_subtract" then
+        fusedTile = Domino.subtractTiles(tile1, tile2)
+    else
+        fusedTile = Domino.fuseTiles(tile1, tile2)
+    end
 
     -- Store tile values before removing (we'll need these to find them in collection)
     local tile1Left, tile1Right = tile1.left, tile1.right
@@ -3810,7 +3831,8 @@ function Touch.confirmFusion()
     local centerY = gameState.screen.height / 2
 
     local fusedValues = fusedTile.left .. "-" .. fusedTile.right
-    UI.Animation.createFloatingText("TILES FUSED!\n" .. fusedValues, centerX, centerY - UI.Layout.scale(50), {
+    local fuseLabel = (gameState.currentTilesNodeType == "alchemy_subtract") and "TILES SUBTRACTED!\n" or "TILES FUSED!\n"
+    UI.Animation.createFloatingText(fuseLabel .. fusedValues, centerX, centerY - UI.Layout.scale(50), {
         color = {0.2, 0.9, 0.3, 1},
         fontSize = "large",
         duration = 2.0,
@@ -5469,6 +5491,7 @@ function Touch.openDeckPreview()
             left             = t.left,
             right            = t.right,
             tileType         = t.tileType or "regular",
+            negative         = t.negative or false,
             leftScore        = t.leftScore,
             rightScore       = t.rightScore,
             id               = t.id,

@@ -57,7 +57,6 @@ function love.load()
             scale = math.min(screenWidth / 800, screenHeight / 600)
         },
         debugFireHand = false,  -- set true to draw fire on every hand tile (for testing)
-        negativeHandEffect = false,  -- set true to apply negative+shine shader to all hand tiles
         deck = {},
         hand = {},
         placedTiles = {},
@@ -526,15 +525,8 @@ function initializeGame(isNewRound)
     -- Initialize empty hand first
     gameState.hand = {}
 
-    -- Draw tiles from deck
-    for i = 1, 7 do
-        local tile = table.remove(gameState.deck, 1)
-        if tile then
-            tile.selected = false
-            tile.placed = false
-            table.insert(gameState.hand, tile)
-        end
-    end
+    -- Draw tiles: fill until 7 non-negative tiles are present (negative tiles don't count as slots)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
     -- Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -671,15 +663,8 @@ function initializeCombatRound()
     -- STEP 3: Initialize challenges (can now take a tile from deck for anchor)
     Challenges.initialize(gameState)
 
-    -- STEP 4: Draw tiles from deck to hand
-    for i = 1, 7 do
-        local tile = table.remove(gameState.deck, 1)
-        if tile then
-            tile.selected = false
-            tile.placed = false
-            table.insert(gameState.hand, tile)
-        end
-    end
+    -- STEP 4: Draw tiles from deck to hand (negative tiles don't consume a hand slot)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
     -- STEP 5: Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -1834,7 +1819,7 @@ function completeScoringSequence()
 
     if not isGameEnding then
         -- Only refill hand if game is continuing
-        local drawnCount, drawnTiles = Hand.refillHand(gameState.hand, gameState.deck, 7)
+        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then
@@ -1954,7 +1939,8 @@ function updateFusionDialogue(dt)
     local dialogue = gameState.dialogueAnimation
 
     -- Only run during fusion menu
-    if gameState.gamePhase ~= "tiles_menu" or gameState.currentTilesNodeType ~= "alchemy" then
+    if gameState.gamePhase ~= "tiles_menu" or
+       (gameState.currentTilesNodeType ~= "alchemy" and gameState.currentTilesNodeType ~= "alchemy_subtract") then
         return
     end
 
@@ -2479,7 +2465,7 @@ function love.update(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
         -- Handle mode-specific dialogue for tiles_menu sub-modes
-        if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
         elseif gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
             updateEnhanceDialogue(dt)
@@ -2516,7 +2502,7 @@ function love.update(dt)
 
         if gameState.gamePhase == "tiles_menu" then
             local tileNodeType = gameState.currentTilesNodeType
-            if tileNodeType == "alchemy" then
+            if tileNodeType == "alchemy" or tileNodeType == "alchemy_subtract" then
                 -- Update fusion hand with all animations (like combat/shop hand)
                 if gameState.fusionHand then
                     Hand.updatePositions(gameState.fusionHand)
@@ -3266,7 +3252,8 @@ function loadNodeSprites()
         combat = "combat",
         tiles = "tile",      -- Legacy node type (backward compatibility)
         trade = "tile",      -- TRADE nodes use tile sprite
-        alchemy = "tile",    -- ALCHEMY nodes use tile sprite
+        alchemy = "tile",          -- ALCHEMY nodes use tile sprite
+        alchemy_subtract = "tile", -- ALCHEMY SUBTRACT nodes use tile sprite
         artifacts = "artifact",
         contracts = "contract",
         enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)

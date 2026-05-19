@@ -207,6 +207,9 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "alchemy" then
                 -- ALCHEMY node - always PAIMON
                 node.demonName = "PAIMON"
+            elseif node.nodeType == "alchemy_subtract" then
+                -- ALCHEMY SUBTRACT node - always PAIMON
+                node.demonName = "PAIMON"
             elseif node.nodeType == "artifacts" then
                 -- ARTIFACTS node - always LILITH
                 node.demonName = "LILITH"
@@ -236,7 +239,7 @@ function Map.selectRandomNodeType(depth, numLevels, currentRound)
             return "combat"
         else
             -- Non-combat levels: randomly select from other node types
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts", "enhance"}
+            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts", "enhance"}
             return otherTypes[love.math.random(1, #otherTypes)]
         end
     else
@@ -247,7 +250,7 @@ function Map.selectRandomNodeType(depth, numLevels, currentRound)
         if love.math.random() < combatChance then
             return "combat"
         else
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts", "enhance"}
+            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts", "enhance"}
             return otherTypes[love.math.random(1, #otherTypes)]
         end
     end
@@ -2804,7 +2807,7 @@ function Map.validateConsecutiveCombatLevels(map)
 
         -- If both levels have combat, convert the next level's combat nodes to non-combat
         if currentLevelHasCombat and nextLevelHasCombat then
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts"}
             for _, node in ipairs(map.levels[depth + 1]) do
                 if node.nodeType == "combat" then
                     node.nodeType = otherTypes[love.math.random(1, #otherTypes)]

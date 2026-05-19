@@ -479,8 +479,9 @@ function UI.TitleScreen.continueGame()
         for _, tileData in ipairs(saveData.tileCollection) do
             -- Use Domino.new to ensure ID is properly assigned, then restore all properties
             local tile = Domino.new(tileData.left, tileData.right, tileData.leftScore, tileData.rightScore)
-            -- Restore tile type (regular/demon/obsidian) - important for visual persistence
+            -- Restore tile type and negative flag - important for visual persistence
             tile.tileType = tileData.tileType or "regular"
+            tile.negative = tileData.negative or false
             table.insert(gameState.tileCollection, tile)
         end
     else

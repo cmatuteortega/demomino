@@ -333,6 +333,53 @@ function Hand.refillHand(hand, deck, targetCount)
     return #drawnTiles, drawnTiles
 end
 
+-- Count non-negative tiles in a list.
+function Hand.countNonNegative(tiles)
+    local n = 0
+    for _, t in ipairs(tiles) do
+        if not t.negative and not t.isAnchor then n = n + 1 end
+    end
+    return n
+end
+
+-- Draw tiles until `targetNonNeg` non-negative tiles are in hand+board (or deck exhausted).
+-- `placedNonNegCount` seeds the counter for tiles already committed to the board.
+-- Negative tiles do not consume a hand slot, so more tiles may be drawn than targetNonNeg.
+-- Edge case: if all remaining deck tiles are negative, the entire deck enters the hand.
+function Hand.refillHandNegativeAware(hand, deck, targetNonNeg, placedNonNegCount)
+    placedNonNegCount = placedNonNegCount or 0
+    local drawnTiles = {}
+    while #deck > 0 do
+        local nonNegCount = placedNonNegCount
+        for _, t in ipairs(hand) do
+            if not t.negative then nonNegCount = nonNegCount + 1 end
+        end
+        -- Also count tiles already drawn this refill (they're not yet in hand)
+        for _, t in ipairs(drawnTiles) do
+            if not t.negative then nonNegCount = nonNegCount + 1 end
+        end
+        if nonNegCount >= targetNonNeg then break end
+
+        local tile = table.remove(deck, 1)
+        if tile then
+            tile.selected = false
+            tile.placed = false
+            table.insert(drawnTiles, tile)
+        end
+    end
+
+    -- Insert directly to bypass Hand.addTiles ID-based de-dup: a negative tile and a regular
+    -- tile with identical pip values have the same id but must both enter the hand.
+    for _, tile in ipairs(drawnTiles) do
+        table.insert(hand, tile)
+    end
+    if #drawnTiles > 0 then
+        Hand.updatePositions(hand, true)
+    end
+
+    return #drawnTiles, drawnTiles
+end
+
 function Hand.isEmpty(hand)
     return #hand == 0
 end
