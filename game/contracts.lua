@@ -94,6 +94,18 @@ function Contracts.isActive(contractId, activeContracts)
     return false
 end
 
+-- Return one random contract not already in activeContracts (nil if all owned)
+function Contracts.getRandomForDeal(activeContracts)
+    local pool = {}
+    for _, def in pairs(Contracts.definitions) do
+        if not Contracts.isActive(def.id, activeContracts) then
+            table.insert(pool, def)
+        end
+    end
+    if #pool == 0 then return nil end
+    return pool[love.math.random(1, #pool)]
+end
+
 -- Get a contract definition by ID
 function Contracts.getById(contractId)
     return Contracts.definitions[contractId]

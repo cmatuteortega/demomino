@@ -69,12 +69,12 @@ function Dialogue.calculateMaxWidth()
         local nameWidth = dayFont:getWidth(dayText)
 
         leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
-    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" then
-        -- Shop screens: demon name (MAMMON, PAIMON, LILITH) + shadow
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" then
+        -- Shop screens: demon name (MAMMON, PAIMON, LILITH, STOLAS) + shadow
         local demonName = "MAMMON"  -- Default for shops (longest name)
         if phase == "artifacts_menu" then
             demonName = "PAIMON"
-        elseif phase == "contracts_menu" then
+        elseif phase == "contracts_menu" or phase == "deal_menu" then
             demonName = "STOLAS"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             demonName = "LILITH"
@@ -155,6 +155,15 @@ function Dialogue.calculateMaxWidth()
         local titleFont = UI.Fonts.get("formulaScore")
         local rightX = screenWidth - UI.Layout.scale(40)
         local titleWidth = titleFont:getWidth("CONTRACTS")
+
+        local titleStartX = rightX - titleWidth
+        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+
+    elseif phase == "deal_menu" then
+        -- Deal: "DEAL" title (right-aligned from rightX)
+        local titleFont = UI.Fonts.get("formulaScore")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local titleWidth = titleFont:getWidth("DEAL")
 
         local titleStartX = rightX - titleWidth
         rightBoundary = titleStartX - 40  -- -40px margin from leftmost char

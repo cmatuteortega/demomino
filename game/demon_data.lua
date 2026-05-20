@@ -1,6 +1,5 @@
 DemonData = {}
 
--- Regular demon names for combat encounters
 DemonData.REGULAR_DEMON_NAMES = {
     "IMPLOYEE",
     "IMPATIENT",
@@ -13,7 +12,27 @@ DemonData.REGULAR_DEMON_NAMES = {
     "IMPOSTOR",
     "IMPOSED",
     "LIMP",
-    "SHRIMP"
+    "SHRIMP",
+    "IMPULSIVE",
+    "IMPOSTER",
+    "IMPRESS",
+    "IMPRISON",
+    "IMPOSSIBLE",
+    "IMPARTIAL",
+    "IMPENDING",
+    "SIMPLETON",
+    "BLIMP",
+    "GLIMPSE",
+    "PIMP",
+    "CHIMP",
+    "WHIMP",
+    "IMPERSONATOR",
+    "IMPLANT",
+    "IMPLICIT",
+    "IMPECCABLE",
+    "IMPOTENT",
+    "SIMPLY",
+    "SIMPATHY"
 }
 
 -- Regular demon subtitles (matching order)
@@ -29,7 +48,27 @@ DemonData.REGULAR_DEMON_SUBTITLES = {
     "FAKE DEMON",
     "OBLIGATORY DEMON",
     "ONE LEGGED DEMON",
-    "SHELLFISH DEMON"
+    "SHELLFISH DEMON",
+    "IMPULSE DEMON",
+    "SCAM DEMON",
+    "SHOWOFF DEMON",
+    "INMATE DEMON",
+    "STUBBORN DEMON",
+    "NEUTRAL DEMON",
+    "DOOM DEMON",
+    "DUMMY DEMON",
+    "FAT DEMON",
+    "VOYEUR DEMON",
+    "HUSTLER DEMON",
+    "MONKEY DEMON",
+    "CRYBABY DEMON",
+    "COPYCAT DEMON",
+    "SURGERY DEMON",
+    "SUBTLE DEMON",
+    "FANCY DEMON",
+    "USELESS DEMON",
+    "BASIC DEMON",
+    "SORRY DEMON"
 }
 
 -- Boss demon names

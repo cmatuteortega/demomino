@@ -213,8 +213,8 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "artifacts" then
                 -- ARTIFACTS node - always LILITH
                 node.demonName = "LILITH"
-            elseif node.nodeType == "contracts" then
-                -- CONTRACTS node - always STOLAS
+            elseif node.nodeType == "contracts" or node.nodeType == "deal" then
+                -- CONTRACTS / DEAL node - always STOLAS
                 node.demonName = "STOLAS"
             elseif node.nodeType == "enhance" or node.nodeType == "flatten" then
                 -- ENHANCE / FLATTEN node - always PAZUZU
@@ -240,8 +240,10 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
     if roll < 0.40 then
         local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten"}
         return shopGroup[love.math.random(1, #shopGroup)]
-    elseif roll < 0.70 then
+    elseif roll < 0.55 then
         return "contracts"
+    elseif roll < 0.70 then
+        return "deal"
     else
         return "artifacts"
     end

@@ -26,11 +26,13 @@ local touchState = {
     playButtonPressed = false,
     discardButtonPressed = false,
     sortButtonPressed = false,
-    -- Fusion/Enhance/Flatten/Contracts NEXT button press tracking
+    -- Fusion/Enhance/Flatten/Contracts/Deal NEXT button press tracking
     fusionNextButtonPressed    = false,
     enhanceNextButtonPressed   = false,
     flattenNextButtonPressed   = false,
     contractsNextButtonPressed = false,
+    dealNextButtonPressed      = false,
+    dealAcceptButtonPressed    = false,
     -- Tool sprite press tracking (for touch release selection)
     pressedToolIndex = nil,
     pressedToolId = nil
@@ -266,7 +268,7 @@ function Touch.pressed(x, y, istouch, touchId)
     -- Check for settings button press in any phase that shows it
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
-        "tiles_menu", "artifacts_menu", "contracts_menu",
+        "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu",
         "title_screen"
     }
 
@@ -283,7 +285,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Check for deck preview tiles button press (mark pressed; open fires on release)
-    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "playing", "won"}
+    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "playing", "won"}
     for _, phase in ipairs(phasesWithTilesButton) do
         if gameState.gamePhase == phase then
             if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
@@ -438,6 +440,30 @@ function Touch.pressed(x, y, istouch, touchId)
             touchState.contractsNextButtonPressed = true
             return
         end
+    end
+
+    -- Handle NEXT> and ACCEPT button press on deal screen
+    if gameState.gamePhase == "deal_menu" then
+        if gameState.dealNextButton and isPointInRect(x, y, gameState.dealNextButton) then
+            UI.Audio.playButtonTap()
+            if not gameState.dealNextButtonAnimation then
+                gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
+            end
+            UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.dealNextButtonPressed = true
+            return
+        end
+        if gameState.dealAcceptButton and isPointInRect(x, y, gameState.dealAcceptButton) then
+            if not gameState.dealAccepted then
+                UI.Audio.playButtonTap()
+                touchState.dealAcceptButtonPressed = true
+                return
+            end
+        end
+        return
     end
 
     -- Handle NEXT >> button press on victory screen
@@ -1914,6 +1940,46 @@ function Touch.released(x, y, istouch, touchId)
 
         touchState.isPressed = false
         touchState.touchId = nil
+        return
+    elseif gameState.gamePhase == "deal_menu" then
+        if touchState.dealNextButtonPressed then
+            touchState.dealNextButtonPressed = false
+            if gameState.dealNextButton and isPointInRect(x, y, gameState.dealNextButton) then
+                if gameState.dealNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                        [1] = 1, [2] = 1, [3] = 1, [4] = 1
+                    }, 0.2, "easeOutQuart")
+                end
+                local skipText = Dialogue.getRandomPhrase("deal_menu", "skip")
+                if skipText then
+                    Dialogue.show(skipText, {category = "idle", skipDelay = true,
+                        requiresAction = false, autoDissmissTime = 4.0})
+                end
+                UI.Audio.playButtonRelease()
+                Dialogue.clear()
+                gameState.gamePhase = "map"
+            else
+                if gameState.dealNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                        [1] = 1, [2] = 1, [3] = 1, [4] = 1
+                    }, 0.2, "easeOutQuart")
+                end
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        if touchState.dealAcceptButtonPressed then
+            touchState.dealAcceptButtonPressed = false
+            if gameState.dealAcceptButton and isPointInRect(x, y, gameState.dealAcceptButton) then
+                Touch.acceptDeal()
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        touchState.isPressed = false
+        touchState.touchId   = nil
         return
     end
 
@@ -3741,6 +3807,7 @@ function Touch.executeNodeEntry(node)
             color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
         }
         -- Greeting dialogue
+        gameState.gamePhase = "contracts_menu"
         Dialogue.clear()
         local greetText = Dialogue.getRandomPhrase("contracts_menu", "greetings")
         if greetText then
@@ -3751,7 +3818,30 @@ function Touch.executeNodeEntry(node)
                 autoDissmissTime = 10.0
             })
         end
-        gameState.gamePhase = "contracts_menu"
+    elseif nodeType == "deal" then
+        -- Random contract offer (excluding already-owned)
+        gameState.offeredDealContract = Contracts.getRandomForDeal(gameState.activeContracts)
+        -- Build two 1-1 demon tiles for display
+        local t1 = Domino.new(1, 1, 1, 1)
+        t1.tileType = "demon"
+        t1.id = "11"
+        local t2 = Domino.new(1, 1, 1, 1)
+        t2.tileType = "demon"
+        t2.id = "11"
+        gameState.dealDemonTiles = {t1, t2}
+        gameState.dealAccepted = false
+        gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
+        gameState.gamePhase = "deal_menu"
+        Dialogue.clear()
+        local greet = Dialogue.getRandomPhrase("deal_menu", "greetings")
+        if greet then
+            Dialogue.show(greet, {
+                category = "greeting",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 8.0
+            })
+        end
     else
         -- Unknown node type, return to map
         -- Clear any thrown tool sprites
@@ -6220,6 +6310,77 @@ end
 -- DEBUG: Expose touchState for debugging
 Touch.getTouchState = function()
     return touchState
+end
+
+-- ============================================================
+-- DEAL NODE HELPERS
+-- ============================================================
+
+function Touch.acceptDeal()
+    if gameState.dealAccepted then return end
+    gameState.dealAccepted = true
+
+    -- Add 2 demon 1-1 tiles to collection
+    local d1 = Domino.new(1, 1, 1, 1)
+    d1.tileType = "demon"
+    d1.id = "11"
+    local d2 = Domino.new(1, 1, 1, 1)
+    d2.tileType = "demon"
+    d2.id = "11"
+    table.insert(gameState.tileCollection, d1)
+    table.insert(gameState.tileCollection, d2)
+
+    -- Refresh deck from updated collection
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+
+    local contract  = gameState.offeredDealContract
+    local screenCX  = gameState.screen.width  / 2
+    local screenCY  = gameState.screen.height / 2
+
+    if #gameState.activeContracts >= 2 or not contract then
+        -- Slots full: award coins instead
+        updateCoins(gameState.coins + 5, {hasBonus = false})
+        UI.Animation.createFloatingText("+5$!", screenCX, screenCY - UI.Layout.scale(60), {
+            color = UI.Colors.FONT_WHITE, fontSize = "larger",
+            duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        local text = Dialogue.getRandomPhrase("deal_menu", "accept_full")
+        if text then
+            Dialogue.show(text, {category = "idle", skipDelay = true,
+                requiresAction = false, autoDissmissTime = 6.0})
+        end
+    else
+        -- Add contract to active list
+        table.insert(gameState.activeContracts, {
+            id             = contract.id,
+            name           = contract.name,
+            description    = contract.description,
+            effectType     = contract.effectType,
+            effectValue    = contract.effectValue,
+            triggerPip     = contract.triggerPip,
+            condition      = contract.condition,
+            conditionValue = contract.conditionValue,
+        })
+        UI.Animation.createFloatingText("CONTRACT SEALED!", screenCX, screenCY - UI.Layout.scale(60), {
+            color = UI.Colors.FONT_PINK, fontSize = "large",
+            duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        local text = Dialogue.getRandomPhrase("deal_menu", "accept")
+        if text then
+            Dialogue.show(text, {category = "idle", skipDelay = true,
+                requiresAction = false, autoDissmissTime = 6.0})
+        end
+    end
+
+    UI.Animation.createFloatingText("+2 DEMON TILES", screenCX, screenCY - UI.Layout.scale(30), {
+        color = UI.Colors.FONT_RED, fontSize = "small",
+        duration = 2.0, riseDistance = 30, startScale = 0.7, endScale = 1.0,
+        easing = "easeOutQuart"
+    })
+    UI.Audio.playPlayButton()
 end
 
 return Touch

@@ -218,6 +218,10 @@ function love.load()
         -- Contracts system
         activeContracts = {},  -- Currently active contracts (max 2)
         offeredContracts = {},  -- Contracts being offered in shop (always 3)
+        offeredDealContract = nil,  -- Single contract offered at DEAL node
+        dealDemonTiles = {},        -- {tile1, tile2} pre-built for rendering
+        dealAccepted = false,
+        dealNextButtonAnimation = { color = {1, 1, 1, 1} },
         combatCandleBounds = {},  -- [{x,y,w,h,contractIndex}] populated each frame by drawCombatCandles
         tooltip = {
             visible = false,
@@ -367,6 +371,33 @@ function love.load()
                     "Power flows through you..."
                 },
                 actions = {}
+            },
+            deal_menu = {  -- Deal node (Stolas)
+                greetings = {
+                    "A CONTRACT, IN EXCHANGE FOR COMPANY.",
+                    "I OFFER YOU POWER. THE PRICE IS MODEST.",
+                    "SIGN AND WE SHALL SPEAK NO MORE OF IT.",
+                },
+                idle = {
+                    "DECIDE, MORTAL. I HAVE OTHER APPOINTMENTS.",
+                    "THE INK IS WAITING.",
+                    "DO NOT TEST MY PATIENCE.",
+                },
+                accept = {
+                    "WISE. VERY WISE.",
+                    "A PLEASURE DOING BUSINESS.",
+                    "IT IS DONE. YOU WILL NOT REGRET THIS.",
+                },
+                accept_full = {
+                    "YOUR ROSTER IS FULL. TAKE COIN INSTEAD.",
+                    "NO ROOM FOR THE CONTRACT — COMPENSATION AWARDED.",
+                    "CONSIDER THE COIN A CONSOLATION.",
+                },
+                skip = {
+                    "THEN LEAVE.",
+                    "COWARD.",
+                    "YOUR LOSS.",
+                }
             }
         },
         -- Intro dialogue system (plays before first Night X on NEW GAME only)
@@ -572,6 +603,9 @@ function resetGameToFresh()
     -- Reset contracts
     gameState.activeContracts = {}
     gameState.offeredContracts = {}
+    gameState.offeredDealContract = nil
+    gameState.dealDemonTiles = {}
+    gameState.dealAccepted = false
 
     -- Reset coin animation state
     gameState.coinsAnimation = {
@@ -582,6 +616,24 @@ function resetGameToFresh()
         fallingCoins = {},
         settledCoins = 0,
         targetCoins = 0
+    }
+
+    -- Clear any active dialogue from a previous combat round
+    gameState.dialogueAnimation = {
+        phase = "idle",
+        text = "",
+        lines = {},
+        currentCharIndex = 0,
+        charTimer = 0,
+        charsPerSecond = 15,
+        showPrompt = false,
+        isActive = false,
+        delayTimer = 0,
+        delayDuration = 2.0,
+        idleTimer = 0,
+        idleTriggerTime = 5.0,
+        isPressed = false,
+        winDialogueShown = false
     }
 
     -- Initialize a fresh game
@@ -2544,7 +2596,7 @@ function love.update(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
-    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
+    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" then
         -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
@@ -2557,7 +2609,7 @@ function love.update(dt)
             -- Handle idle timer for shop/contracts flavour text
             local dialogue = gameState.dialogueAnimation
             local idlePhase = gameState.gamePhase
-            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu") then
+            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu") then
                 dialogue.idleTimer = dialogue.idleTimer + dt
 
                 -- Trigger random idle remark after 10 seconds
@@ -2769,6 +2821,14 @@ function love.draw()
         UI.Renderer.drawContractsMenu()
         UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on contracts screen
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "deal_menu" then
+        UI.Renderer.drawDealMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
         if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
@@ -3252,7 +3312,7 @@ function loadDominoSprites()
     if rawTiltedSprites["oddx"] then
         dominoTiltedSprites["oddx"] = {
             sprite = rawTiltedSprites["oddx"],
-            flipped = false
+            flipped = true
         }
         -- Create reverse mapping (x-odd)
         dominoTiltedSprites["xodd"] = {
@@ -3263,7 +3323,7 @@ function loadDominoSprites()
     if rawTiltedSprites["evenx"] then
         dominoTiltedSprites["evenx"] = {
             sprite = rawTiltedSprites["evenx"],
-            flipped = false
+            flipped = true
         }
         -- Create reverse mapping (x-even)
         dominoTiltedSprites["xeven"] = {
@@ -3355,6 +3415,7 @@ function loadNodeSprites()
         alchemy_subtract = "tile", -- ALCHEMY SUBTRACT nodes use tile sprite
         artifacts = "artifact",
         contracts = "contract",
+        deal = "contract",     -- DEAL nodes reuse contracts icon (both Stolas)
         enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
         pawn = "tile",       -- PAWN nodes use tile sprite (same as alchemy/trade)
         flatten = "tile",    -- FLATTEN nodes use tile sprite (same as enhance)
