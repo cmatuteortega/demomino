@@ -18,7 +18,7 @@ UI.Colors.FONT_RED_DARK = {0.596, 0.251, 0.235, 1}     -- #98403C - Critical war
 UI.Colors.OUTLINE = {0.102, 0.118, 0.137, 1}           -- #1A1E23 - Outlines, borders
 
 -- Tile type blend colors
-UI.Colors.OBSIDIAN_BLUE = {0.125, 0.145, 0.263, 1}     -- #202543 - Obsidian tile hard light blend
+UI.Colors.RELIC_BLUE = {0.125, 0.145, 0.263, 1}     -- #202543 - Relic tile hard light blend
 UI.Colors.TENDER_PINK = {0.941, 0.576, 0.608, 1}       -- #F0939B - Tender tile hard light blend (system pink)
 
 -- Convenience functions for setting colors
@@ -56,11 +56,11 @@ function UI.Colors.resetWhite()
 end
 
 -- Get tile blend colors in 0-255 range (for pixel blending if needed)
-function UI.Colors.getObsidianBlue255()
+function UI.Colors.getRelicBlue255()
     return {
-        r = math.floor(UI.Colors.OBSIDIAN_BLUE[1] * 255),
-        g = math.floor(UI.Colors.OBSIDIAN_BLUE[2] * 255),
-        b = math.floor(UI.Colors.OBSIDIAN_BLUE[3] * 255)
+        r = math.floor(UI.Colors.RELIC_BLUE[1] * 255),
+        g = math.floor(UI.Colors.RELIC_BLUE[2] * 255),
+        b = math.floor(UI.Colors.RELIC_BLUE[3] * 255)
     }
 end
 

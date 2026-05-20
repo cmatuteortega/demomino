@@ -146,6 +146,9 @@ function love.load()
         tilesMenuMode = "shop",  -- "shop" or "fusion"
         fusionHand = {},  -- 7-tile hand for fusion mode
         fusionSlotTiles = {},  -- {tile1, tile2} - actual tiles in fusion slots
+        -- Tile pawn system
+        pawnHand = {},
+        pawnPlacedTile = nil,
         fusionDialogueState = {  -- Track fusion dialogue triggers
             enteredScreen = false,
             shownDragPrompt = false,
@@ -154,6 +157,14 @@ function love.load()
             shownFusionPrompt = false,
             idleTimer = 0,
             idleTriggerTime = 8.0  -- Show idle dialogue after 8s
+        },
+        -- Tile flatten system
+        flattenHand = {},
+        flattenSlotTile = nil,
+        flattenButton = nil,
+        flattenNextButton = nil,
+        flattenNextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
         -- Tile enhance system
         enhanceHand = {},       -- 7-tile hand for enhance mode
@@ -221,7 +232,7 @@ function love.load()
             toolContext = nil,    -- "stack" | "shop" for tool tooltips
             toolSpriteLeft = 0,   -- left-edge X of tool sprite (stack positioning)
         },
-        obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
+        relicTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to relic
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
         toolSpriteBounds = {},  -- Array of clickable bounds for tool sprites
@@ -431,6 +442,32 @@ function love.load()
     }
     gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
 
+    -- Pawn node dialogue (MAMMON)
+    gameState.dialogueContent.tiles_menu.pawn_greetings = {
+        "Everything has a price, mortal.",
+        "Sell me your burdens. I'll make it worth your while.",
+        "Ah, another desperate soul. My favourite kind of customer.",
+        "I deal in what others cast aside.",
+        "Bring me your tiles. I'll give you what they're worth... to me."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_sell = {
+        "A fair price for a fair trade.",
+        "Coins well earned, or tiles well lost?",
+        "Such a shame to part with it. I have no such qualms.",
+        "Into my collection it goes.",
+        "More coin for you, more treasure for me."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_reroll = {
+        "Not satisfied? That'll cost you.",
+        "Shuffling the bones... for a price.",
+        "Let's see what else you're willing to part with."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_idle = {
+        "Take your time. My patience is limitless.",
+        "Every tile tells a story. What's yours worth?",
+        "The boneyard never lies."
+    }
+
     -- Initialize enhance node dialogue
     gameState.dialogueContent.enhance_menu = {}
     gameState.dialogueContent.enhance_menu.greetings = {
@@ -449,10 +486,43 @@ function love.load()
         "FEEL THE POWER",
     }
     gameState.dialogueContent.enhance_menu.tender   = {"GONE SOFT...", "OH. THAT HAPPENS."}
-    gameState.dialogueContent.enhance_menu.obsidian = {"PERFECTION.", "NO GOING BACK NOW"}
+    gameState.dialogueContent.enhance_menu.relic = {"PERFECTION.", "NO GOING BACK NOW"}
     gameState.dialogueContent.enhance_menu.break_event = {"OOPS.", "TOO FRAGILE.", "IT COULDN'T HANDLE IT"}
     gameState.dialogueContent.enhance_menu.pip     = {"GROWING...", "MORE. MORE. MORE."}
     gameState.dialogueContent.enhance_menu.maxed   = {"AT ITS LIMIT.", "TAKE IT. IT IS DONE."}
+
+    -- Initialize flatten node dialogue
+    gameState.dialogueContent.flatten_menu = {}
+    gameState.dialogueContent.flatten_menu.greetings = {
+        "WEAK. ALL THINGS ARE WEAK.",
+        "I WILL REDUCE IT TO NOTHING.",
+        "BACK TO BASICS. AS IT SHOULD BE.",
+        "BRING ME YOUR STRONGEST. I WILL UNMAKE IT."
+    }
+    gameState.dialogueContent.flatten_menu.idle = {
+        "CHOOSE. OR DON'T.",
+        "THE STRONG FEAR WHAT I DO.",
+        "DESTRUCTION IS A KIND OF GIFT."
+    }
+    gameState.dialogueContent.flatten_menu.flatten = {
+        "FLATTENED.",
+        "REDUCED TO DUST.",
+        "AS IT WAS IN THE BEGINNING."
+    }
+    gameState.dialogueContent.flatten_menu.lucky = {
+        "FORTUNE FAVORS... OCCASIONALLY.",
+        "DUST WITH POTENTIAL.",
+        "EVEN RUINS HAVE THEIR USES."
+    }
+    gameState.dialogueContent.flatten_menu.relic = {
+        "RELIC FROM RUIN. UNEXPECTED.",
+        "DESTRUCTION BREEDS PERFECTION."
+    }
+    gameState.dialogueContent.flatten_menu.reroll = {
+        "AGAIN? FINE.",
+        "BRING ME SOMETHING WORTH DESTROYING.",
+        "THE WEAK ALWAYS WANT ANOTHER CHANCE."
+    }
 
     -- Start background music
     UI.Audio.playMusic()
@@ -483,6 +553,14 @@ function resetGameToFresh()
     gameState.tilesMenuMode = "shop"
     gameState.fusionHand = {}
     gameState.fusionSlotTiles = {}
+
+    -- Reset pawn state
+    gameState.pawnHand = {}
+    gameState.pawnPlacedTile = nil
+
+    -- Reset flatten state
+    gameState.flattenHand = {}
+    gameState.flattenSlotTile = nil
 
     -- Reset challenges
     gameState.activeChallenges = {}
@@ -1525,10 +1603,10 @@ function updateScoringSequence(dt)
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 
-                    -- Increment multiplier counter (1 for regular tile, +1 for obsidian) — skip if banned
+                    -- Increment multiplier counter (1 for regular tile, +1 for relic) — skip if banned
                     if not isBanned then
                         local multiplierIncrement = 1
-                        if tile.tileType == "obsidian" then
+                        if tile.tileType == "relic" then
                             multiplierIncrement = multiplierIncrement + 1
                         end
                         seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
@@ -1542,7 +1620,7 @@ function updateScoringSequence(dt)
                     -- Animate the tile with shake effect and per-tile scoring popup
                     local valueInfo = {
                         totalAdded = addedValue,
-                        isObsidian = tile.tileType == "obsidian",
+                        isRelic = tile.tileType == "relic",
                         isBanned   = isBanned,
                     }
                     animateTileScoring(tile, valueInfo)
@@ -1710,8 +1788,8 @@ function spawnTileScoringPopup(tile, valueInfo)
         })
     end
 
-    -- Obsidian multiplier boost — #ff8d99 (FONT_PINK), falls downward to distinguish from sum
-    if valueInfo.isObsidian then
+    -- Relic multiplier boost — #ff8d99 (FONT_PINK), falls downward to distinguish from sum
+    if valueInfo.isRelic then
         UI.Animation.createFloatingText("+1 mult", popX, tile.y + 22, {
             color        = UI.Colors.FONT_PINK,
             fontSize     = "large",
@@ -2521,6 +2599,22 @@ function love.update(dt)
                     Hand.updateDiscardAnimations(gameState.enhanceHand, dt)
                     Hand.updateIdleAnimations(gameState.enhanceHand, dt)
                 end
+            elseif tileNodeType == "pawn" then
+                -- Update pawn hand with all animations
+                if gameState.pawnHand then
+                    Hand.updatePositions(gameState.pawnHand, true)
+                    Hand.updateDrawAnimations(gameState.pawnHand, dt)
+                    Hand.updateDiscardAnimations(gameState.pawnHand, dt)
+                    Hand.updateIdleAnimations(gameState.pawnHand, dt)
+                end
+            elseif tileNodeType == "flatten" then
+                -- Update flatten hand with all animations
+                if gameState.flattenHand then
+                    Hand.updatePositions(gameState.flattenHand, true)
+                    Hand.updateDrawAnimations(gameState.flattenHand, dt)
+                    Hand.updateDiscardAnimations(gameState.flattenHand, dt)
+                    Hand.updateIdleAnimations(gameState.flattenHand, dt)
+                end
             else
                 -- Update shop hand tiles with all animations (like combat hand)
                 if gameState.offeredTiles then
@@ -3262,6 +3356,8 @@ function loadNodeSprites()
         artifacts = "artifact",
         contracts = "contract",
         enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
+        pawn = "tile",       -- PAWN nodes use tile sprite (same as alchemy/trade)
+        flatten = "tile",    -- FLATTEN nodes use tile sprite (same as enhance)
         start = "tile",      -- Fallback to tile sprite
         boss = "combat"      -- Fallback to combat sprite
     }
@@ -3301,11 +3397,11 @@ function loadDemonIconSprites()
     -- List of all demon icon names to load
     local demonNames = {
         -- Boss demons
-        "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN",
+        "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN",
         -- Shop demons
         "MAMMON", "PAIMON", "LILITH", "STOLAS",
         -- Other demons (for completeness)
-        "ASTAROTH", "PAZUZU",
+        "BELIAL", "PAZUZU",
         -- Intro dialogue
         "IMPLOYEE",
         -- Fallback
@@ -3387,7 +3483,7 @@ function loadToolSprites()
         bone = "sprites/dice/bone.png",      -- transformer
         brain = "sprites/dice/brain.png",    -- tileLoader, tileInjector
         guts = "sprites/dice/guts.png",      -- extraHand, extraDiscard, knife
-        void = "sprites/dice/void.png",      -- obsidianTransmuter, tenderTransmuter
+        void = "sprites/dice/void.png",      -- relicTransmuter, tenderTransmuter
         blood = "sprites/dice/blood.png"     -- demonReloader
     }
 
@@ -3447,7 +3543,7 @@ function getToolSpriteType(toolId)
         extraHand = "guts",
         extraDiscard = "guts",
         knife = "guts",
-        obsidianTransmuter = "void",
+        relicTransmuter = "void",
         tenderTransmuter = "void",
         demonReloader = "blood"
     }

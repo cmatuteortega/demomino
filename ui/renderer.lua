@@ -1,11 +1,11 @@
 UI = UI or {}
 UI.Renderer = {}
 
--- Obsidian hard light blend shader + Part 2 iridescent shine
-local obsidianShader = love.graphics.newShader([[
+-- Relic hard light blend shader + Part 2 iridescent shine
+local relicShader = love.graphics.newShader([[
     uniform float time;
 
-    // Obsidian blue color (#202543)
+    // Relic blue color (#202543)
     const vec3 overlayColor = vec3(0.125, 0.145, 0.263);
 
     float hardLightBlend(float base, float overlay) {
@@ -950,9 +950,9 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
             elseif applyNegative or domino.negative then
                 love.graphics.setShader(tileNegativeShader)
                 tileNegativeShader:send("time", love.timer.getTime())
-            elseif domino.tileType == "obsidian" then
-                love.graphics.setShader(obsidianShader)
-                obsidianShader:send("time", love.timer.getTime())
+            elseif domino.tileType == "relic" then
+                love.graphics.setShader(relicShader)
+                relicShader:send("time", love.timer.getTime())
             elseif domino.tileType == "tender" then
                 love.graphics.setShader(tenderShader)
             end
@@ -960,7 +960,7 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
             love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
 
-            if domino.fireImage or applyNegative or domino.negative or domino.tileType == "obsidian" or domino.tileType == "tender" then
+            if domino.fireImage or applyNegative or domino.negative or domino.tileType == "relic" or domino.tileType == "tender" then
                 love.graphics.setShader()
             end
 
@@ -3021,7 +3021,9 @@ function UI.Renderer.drawNodeConfirmation()
         alchemy_subtract = "ALCHEMY",
         artifacts = "ARTIFACTS",
         contracts = "MAGIK",
-        enhance = "ENHANCE"
+        enhance = "ENHANCE",
+        pawn = "PAWN",
+        flatten = "FLATTEN"
     }
 
     local nodeType = gameState.selectedNode.nodeType
@@ -3071,7 +3073,10 @@ function UI.Renderer.drawNodeConfirmation()
         alchemy = "FUSE YOUR BONES",
         alchemy_subtract = "SUBSTRACT BONES",
         artifacts = "USEFUL ARTIFACTS",
-        contracts = "DEAL WITH THE DEVIL"
+        contracts = "DEAL WITH THE DEVIL",
+        pawn = "PAYBACK",
+        enhance = "POWER COSTS",
+        flatten = "UNMAKE"
     }
 
     local subtitle = nodeSubtitles[nodeType] or ""
@@ -3178,6 +3183,14 @@ function UI.Renderer.drawTilesMenu()
     elseif nodeType == "enhance" then
         -- ENHANCE node - Enhance mode
         UI.Renderer.drawEnhanceMode()
+        return
+    elseif nodeType == "pawn" then
+        -- PAWN node - Sell tiles for coins
+        UI.Renderer.drawPawnMode()
+        return
+    elseif nodeType == "flatten" then
+        -- FLATTEN node - Flatten tiles under Pazuzu
+        UI.Renderer.drawFlattenMode()
         return
     else
         -- TRADE node - Shop mode (drag-to-board system like main game)
@@ -4201,6 +4214,248 @@ function UI.Renderer.drawShopNextButton()
         width = totalWidth + padding * 2,
         height = font:getHeight() + padding * 2
     }
+end
+
+-- ─────────────────────────────────────────────────────────────
+-- PAWN NODE RENDERING
+-- ─────────────────────────────────────────────────────────────
+
+function UI.Renderer.drawPawnMode()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    -- Hand area background strip
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    local time  = love.timer.getTime()
+    local rightX = screenWidth - UI.Layout.scale(40)
+    local leftX  = UI.Layout.scale(60)
+    local topY   = UI.Layout.scale(20)
+    local titleFont = UI.Fonts.get("formulaScore")
+
+    -- Right side: "PAWN" title with wave animation
+    local nodeTitle = "PAWN"
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
+    end
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char = nodeTitle:sub(i, i)
+        local charWidth = titleFont:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", UI.Colors.FONT_WHITE, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    -- Left side: MAMMON demon icon and name
+    local demonName = "MAMMON"
+    local demonColor = UI.Colors.FONT_RED
+    local font = UI.Fonts.get("demonName")
+    currentX = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite = demonIconSprites[demonName]
+        local fontHeight = font:getHeight()
+        local iconScale  = (fontHeight / iconSprite:getHeight()) * 1.3
+        local iconWidth  = iconSprite:getWidth() * iconScale
+        local phase = time * 2.5
+        local waveOffset = math.sin(phase) * 3
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    -- Demon subtitle (KING OF TRADE) below demon name
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subFont = UI.Fonts.get("large")
+        local subY = topY + font:getHeight() - UI.Layout.scale(5)
+        local iconWidth = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+            if iconSprite then
+                local fh = font:getHeight()
+                local is = (fh / iconSprite:getHeight()) * 1.3
+                iconWidth = iconSprite:getWidth() * is + UI.Layout.scale(8)
+            end
+        end
+        local sX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local cw = subFont:getWidth(char)
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1
+            UI.Fonts.drawAnimatedText(char, sX, subY + waveOffset, "large", UI.Colors.FONT_PINK, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            sX = sX + cw
+        end
+    end
+
+    -- Coin display
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+
+    -- Sell slot (board center area)
+    UI.Renderer.drawPawnSlot()
+
+    -- Pawn hand with sell price tags
+    if gameState.pawnHand and #gameState.pawnHand > 0 then
+        UI.Renderer.drawPawnHand()
+    end
+
+    -- Sell / Reroll buttons
+    UI.Renderer.drawPawnUI()
+
+    -- NEXT> button (reuse shop next button)
+    UI.Renderer.drawShopNextButton()
+end
+
+function UI.Renderer.drawPawnSlot()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local slotX = screenWidth / 2
+    local slotY = screenHeight / 2 - UI.Layout.scale(100)
+
+    local minScale    = math.min(screenWidth / 800, screenHeight / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local sampleH = dominoTiltedSprites and dominoTiltedSprites["00"]
+    local slotW = sampleH and (sampleH.sprite:getWidth()  * spriteScale) or UI.Layout.scale(100)
+    local slotH = sampleH and (sampleH.sprite:getHeight() * spriteScale) or UI.Layout.scale(50)
+
+    -- Store slot bounds for touch detection
+    gameState.pawnSlotButton = {
+        x = slotX - slotW / 2,
+        y = slotY - slotH / 2,
+        width  = slotW,
+        height = slotH
+    }
+
+    local tile = gameState.pawnPlacedTile
+    if tile then
+        if not tile.isDragging then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
+        end
+        -- Show sell price above the placed tile
+        local price = 2
+        if tile.tileType == "relic" then price = 3
+        elseif tile.tileType == "tender" then price = 1 end
+        UI.Fonts.drawText("SELL " .. price .. "$", slotX, slotY - slotH / 2 - UI.Layout.scale(20), "large", {0.2, 0.9, 0.3, 1}, "center")
+    else
+        -- Empty slot placeholder
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", slotX - slotW / 2, slotY - slotH / 2, slotW, slotH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+end
+
+function UI.Renderer.drawPawnHand()
+    if not gameState.pawnHand then return end
+
+    -- Sync visual positions for non-dragging tiles
+    for i, tile in ipairs(gameState.pawnHand) do
+        if tile.selectScale  == nil then tile.selectScale  = 1.0 end
+        if tile.selectOffset == nil then tile.selectOffset = 0 end
+        if tile.idleFloatOffset == nil then tile.idleFloatOffset = 0 end
+        if tile.idleRotation    == nil then tile.idleRotation = 0 end
+        if tile.idleShadowOffset == nil then tile.idleShadowOffset = 0 end
+        if tile.idlePhase == nil then tile.idlePhase = (i - 1) * (math.pi / 3) end
+        if tile.dragScale   == nil then tile.dragScale = 1.0 end
+        if tile.dragOpacity == nil then tile.dragOpacity = 1.0 end
+
+        local x, y = UI.Layout.getHandPosition(i - 1, #gameState.pawnHand)
+        if not tile.isDragging and not tile.isAnimating then
+            tile.visualX = x
+            tile.visualY = y
+        end
+    end
+
+    -- Layer 1: non-dragging tiles with price tags (demon tiles dimmed)
+    for i, tile in ipairs(gameState.pawnHand) do
+        if not tile.isDragging then
+            if tile.tileType == "demon" then
+                local orig = tile.dragOpacity
+                tile.dragOpacity = 0.4
+                UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
+                tile.dragOpacity = orig
+            else
+                UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
+                -- Price tag above tile
+                local x, y = UI.Layout.getHandPosition(i - 1, #gameState.pawnHand)
+                local price = 2
+                if tile.tileType == "relic" then price = 3
+                elseif tile.tileType == "tender" then price = 1 end
+                UI.Fonts.drawText(price .. "$", x, y - UI.Layout.scale(110), "large", {1, 0.9, 0.3, 1}, "center")
+            end
+        end
+    end
+
+    -- Layer 2: dragging tiles on top
+    for _, tile in ipairs(gameState.pawnHand) do
+        if tile.isDragging then
+            UI.Renderer.drawDomino(tile, nil, nil, nil, "vertical")
+        end
+    end
+end
+
+function UI.Renderer.drawPawnUI()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale   = buttonAnim and buttonAnim.scale or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    local tile    = gameState.pawnPlacedTile
+    local price   = tile and (tile.tileType == "relic" and 3 or tile.tileType == "tender" and 1 or 2) or 2
+    local enabled = tile ~= nil
+
+    -- SELL button
+    local buttonColor = enabled and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    local textColor  = enabled and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = tile and ("SELL (" .. price .. "$)") or "PLACE TILE"
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center", true)
+
+    -- REROLL button
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+    local discardAnim   = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local discardScale  = discardAnim and discardAnim.scale or 1.0
+    local discardYOff   = discardAnim and discardAnim.yOffset or 0
+    local canReroll     = gameState.coins >= 1 and #gameState.deck >= 7
+    local discardColor  = canReroll and UI.Colors.BACKGROUND_LIGHT
+        or {UI.Colors.BACKGROUND_LIGHT[1] * 0.5, UI.Colors.BACKGROUND_LIGHT[2] * 0.5,
+            UI.Colors.BACKGROUND_LIGHT[3] * 0.5, 0.5}
+    love.graphics.setColor(discardColor)
+    love.graphics.rectangle("fill", discardX, discardY + discardYOff, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + discardYOff, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+    local discardTextColor = canReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("REROLL (1$)", discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOff, "button", discardTextColor, "center", true)
 end
 
 function UI.Renderer.drawArtifactsNextButton()
@@ -5325,20 +5580,20 @@ function UI.Renderer.drawEnhanceButton()
     local canAfford  = gameState.coins >= cost
     local hasTile    = tile ~= nil
     local isMaxed    = count >= 5
-    local isObsidian = hasTile and tile.tileType == "obsidian"
+    local isRelic = hasTile and tile.tileType == "relic"
 
     -- Overload state: tile can still be pressed but it will be destroyed
-    local enabled = hasTile and not isObsidian and canAfford
+    local enabled = hasTile and not isRelic and canAfford
 
     local buttonColor, textColor, buttonText
     if not hasTile then
         buttonColor = UI.Colors.BACKGROUND_LIGHT
         textColor   = UI.Colors.FONT_RED
         buttonText  = "SELECT A TILE"
-    elseif isObsidian then
+    elseif isRelic then
         buttonColor = UI.Colors.BACKGROUND_LIGHT
         textColor   = UI.Colors.FONT_RED
-        buttonText  = "OBSIDIAN: FULL"
+        buttonText  = "RELIC: FULL"
     elseif not canAfford then
         buttonColor = UI.Colors.BACKGROUND_LIGHT
         textColor   = UI.Colors.FONT_RED
@@ -5406,6 +5661,261 @@ function UI.Renderer.drawEnhanceNextButton()
         x = textX - padding, y = textY - padding,
         width = totalWidth + padding * 2, height = font:getHeight() + padding * 2
     }
+end
+
+function UI.Renderer.drawFlattenMode()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    UI.Renderer.drawToolStack()
+
+    local rightX    = screenWidth - UI.Layout.scale(40)
+    local leftX     = UI.Layout.scale(60)
+    local topY      = UI.Layout.scale(20)
+    local time      = love.timer.getTime()
+    local titleFont = UI.Fonts.get("formulaScore")
+
+    local nodeTitle  = "FLATTEN"
+    local titleColor = UI.Colors.FONT_WHITE
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
+    end
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char      = nodeTitle:sub(i, i)
+        local charWidth = titleFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "formulaScore", titleColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local demonName  = "PAZUZU"
+    local demonColor = UI.Colors.FONT_RED
+    local font       = UI.Fonts.get("demonName")
+    currentX = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite  = demonIconSprites[demonName]
+        local fontHeight  = font:getHeight()
+        local iconScale   = (fontHeight / iconSprite:getHeight()) * 1.3
+        local iconWidth   = iconSprite:getWidth() * iconScale
+        local phase       = time * 2.5
+        local waveOffset  = math.sin(phase) * 3
+        local shadowOff   = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOff, topY + waveOffset + shadowOff, 0, iconScale, iconScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char      = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont  = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY     = topY + font:getHeight() - UI.Layout.scale(5)
+        local iconWidth     = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local s = demonIconSprites[demonName]
+            local sc = (font:getHeight() / s:getHeight()) * 1.3
+            iconWidth = s:getWidth() * sc + UI.Layout.scale(8)
+        end
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char      = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+            local phase     = time * 2.5 + (i - 1) * 0.4
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + math.sin(phase) * 1, "large", subtitleColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subtitleX = subtitleX + charWidth
+        end
+    end
+
+    UI.Renderer.drawFlattenArea()
+
+    if gameState.flattenHand then
+        UI.Renderer.drawHand(gameState.flattenHand)
+    end
+
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+
+    UI.Renderer.drawFlattenButton()
+    UI.Renderer.drawFlattenRerollButton()
+    UI.Renderer.drawFlattenNextButton()
+end
+
+function UI.Renderer.drawFlattenArea()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY   = boardArea.y + boardArea.height / 2
+
+    local minScale    = math.min(screenWidth / 800, screenHeight / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    local sampleVert = dominoSprites and dominoSprites["00"]
+    local tileW = sampleVert and (sampleVert.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
+    local tileH = sampleVert and (sampleVert.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+
+    gameState.flattenSlotButton = {
+        x      = centerX - tileW / 2,
+        y      = centerY - tileH / 2,
+        width  = tileW,
+        height = tileH,
+    }
+
+    local tile = gameState.flattenSlotTile
+    if tile then
+        UI.Renderer.drawDomino(tile, centerX, centerY, gameState.screen.scale, "vertical", 1.0)
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line",
+            centerX - tileW / 2,
+            centerY - tileH / 2,
+            tileW, tileH, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+
+    end
+end
+
+function UI.Renderer.drawFlattenButton()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale   = buttonAnim and buttonAnim.scale  or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    local tile       = gameState.flattenSlotTile
+    local hasTile    = tile ~= nil
+    local isRelic = hasTile and tile.tileType == "relic"
+    local isDemon    = hasTile and tile.tileType == "demon"
+    local canAfford  = gameState.coins >= 1
+
+    local enabled = hasTile and not isRelic and not isDemon and canAfford
+
+    local buttonColor, textColor, buttonText
+    if not hasTile then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "PLACE TILE"
+    elseif isRelic then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "RELIC: SKIP"
+    elseif isDemon then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "DEMON: SKIP"
+    elseif not canAfford then
+        buttonColor = UI.Colors.BACKGROUND_LIGHT
+        textColor   = UI.Colors.FONT_RED
+        buttonText  = "NOT ENOUGH $"
+    else
+        buttonColor = UI.Colors.FONT_PINK
+        textColor   = UI.Colors.FONT_WHITE
+        buttonText  = "FLATTEN (1$)"
+    end
+
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center", true)
+
+    gameState.flattenButton = {
+        x = playX, y = playY + yOffset,
+        width = buttonWidth * scale, height = buttonHeight * scale,
+        enabled = enabled
+    }
+end
+
+function UI.Renderer.drawFlattenNextButton()
+    if not gameState.flattenNextButtonAnimation then
+        gameState.flattenNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local font         = UI.Fonts.get("formulaScore")
+    local time         = love.timer.getTime()
+    local text         = "NEXT>"
+    local textColor    = gameState.flattenNextButtonAnimation.color
+
+    local hMargin = UI.Layout.scale(40)
+    local vMargin = UI.Layout.scale(80)
+    local totalWidth = 0
+    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) end
+
+    local textX = screenWidth  - totalWidth - hMargin
+    local textY = screenHeight - font:getHeight() - vMargin
+
+    local currentX = textX
+    for i = 1, #text do
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        UI.Fonts.drawAnimatedText(char, currentX, textY + math.sin(phase) * 3, "formulaScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4)
+        })
+        currentX = currentX + charWidth
+    end
+
+    local padding = UI.Layout.scale(20)
+    gameState.flattenNextButton = {
+        x = textX - padding, y = textY - padding,
+        width = totalWidth + padding * 2, height = font:getHeight() + padding * 2
+    }
+end
+
+function UI.Renderer.drawFlattenRerollButton()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+
+    local discardAnim = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local scale   = discardAnim and discardAnim.scale  or 1.0
+    local yOffset = discardAnim and discardAnim.yOffset or 0
+
+    local canReroll = gameState.coins >= 1 and #(gameState.deck or {}) >= 7
+    local buttonColor = canReroll
+        and UI.Colors.BACKGROUND_LIGHT
+        or {UI.Colors.BACKGROUND_LIGHT[1]*0.5, UI.Colors.BACKGROUND_LIGHT[2]*0.5,
+            UI.Colors.BACKGROUND_LIGHT[3]*0.5, 0.5}
+
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", discardX, discardY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    local textColor = canReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    UI.Fonts.drawText("REROLL (1$)", discardX + buttonWidth / 2, discardY + buttonHeight / 2 + yOffset, "button", textColor, "center", true)
 end
 
 -- Draw fusion area showing selected tiles and preview
@@ -5839,13 +6349,13 @@ function UI.Renderer.drawTooltip()
 
     if tt.type == "tile" and tt.data then
         local tile      = tt.data
-        local typeNames = {regular = "BONE", obsidian = "OBSIDIAN", tender = "TENDER", demon = "DEMON"}
-        local typeName  = (tile.isAnchor or tile.tileType == "demon") and "DEMON" or (typeNames[tile.tileType] or "TILE")
+        local typeNames = {regular = "BONE", relic = "RELIC", tender = "TENDER", demon = "CURSED"}
+        local typeName  = (tile.isAnchor or tile.tileType == "demon") and "CURSED" or (typeNames[tile.tileType] or "TILE")
         local typeDescs = {
             BONE     = "",
             TENDER   = "Breaks on use",
-            OBSIDIAN = "Scores double,\ncan't upgrade or discard",
-            DEMON    = "Cursed. Does not score.",
+            RELIC    = "Scores double,\ncan't upgrade\nor discard",
+            CURSED   = "Cannot score",
         }
         local typeDesc  = typeDescs[typeName] or ""
         local descLines = {}
@@ -5860,20 +6370,26 @@ function UI.Renderer.drawTooltip()
         local sumStr    = "+" .. contrib.totalSum
         local multStr   = "x" .. contrib.mult
 
-        local fLarge = UI.Fonts.get("large")
-        local fMed   = UI.Fonts.get("medium")
-        local largeH = fLarge:getHeight()
-        local medH   = fMed:getHeight()
-        local sumW   = fLarge:getWidth(sumStr)
-        local multW  = fLarge:getWidth(multStr)
+        local fLarge  = UI.Fonts.get("large")
+        local fLarger = UI.Fonts.get("larger")
+        local fMed    = UI.Fonts.get("medium")
+        local largeH  = fLarge:getHeight()
+        local largerH = fLarger:getHeight()
+        local medH    = fMed:getHeight()
+        local scoreH  = largerH
+        local sumW    = fLarger:getWidth(sumStr)
+        local multW   = fLarge:getWidth(multStr)
 
-        -- Panel width is determined by other rows only; description wraps to fit
+        -- Panel width: widest of title, pips, score row, and any description lines
         local smGap    = scale * 8
         local contentW = math.max(fLarge:getWidth(typeName), fLarge:getWidth(pipStr), sumW + multW + smGap)
+        for _, line in ipairs(descLines) do
+            contentW = math.max(contentW, fMed:getWidth(line))
+        end
         local totalW   = contentW + pad * 2  -- pad left + pad right
         -- Description block: lines + separator below (same sepPad as the pips/score separator)
         local descH    = #descLines > 0 and (#descLines * medH + sepPad) or 0
-        local contentH = largeH * 3 + sepPad + descH
+        local contentH = largeH * 2 + scoreH + sepPad + descH
         local totalH   = pad + contentH + pad
 
         -- Use the caller-supplied spriteHalfH when available (handles rotated/scaled tiles
@@ -5927,9 +6443,14 @@ function UI.Renderer.drawTooltip()
         drawSep(bx, curY, totalW)
         curY = curY + sepPad / 2
 
-        -- Row 3: sum left-aligned, mult right-aligned at same inner margins as separator
-        UI.Fonts.drawText(sumStr,  bx + pad,          curY, "large", C_BODY,  "left")
-        UI.Fonts.drawText(multStr, bx + totalW - pad, curY, "large", C_TITLE, "right")
+        -- Row 3: sum (larger) and mult (large) side-by-side, pair centered between separator and panel bottom
+        local remainingH = (by + totalH) - curY
+        local blockY     = curY + (remainingH - scoreH) / 2
+        local pairW      = sumW + smGap + multW
+        local sumX       = cx - pairW / 2
+        local multX      = sumX + sumW + smGap
+        UI.Fonts.drawText(sumStr,  sumX,  blockY,                          "larger", C_BODY,  "left")
+        UI.Fonts.drawText(multStr, multX, blockY + (largerH - largeH) / 2, "large",  C_TITLE, "left")
 
     elseif tt.type == "tool" and tt.data then
         local def       = Tools.getDefinition(tt.data.id) or tt.data
@@ -6070,9 +6591,8 @@ end
 function UI.Renderer.drawTilesCountButton()
     local screenWidth = gameState.screen.width
 
-    local deckLeft = gameState.deck and #gameState.deck or 0
     local total    = gameState.tileCollection and #gameState.tileCollection or 0
-    local tilesText = "Tiles: " .. deckLeft .. "/" .. total
+    local tilesText = "Tiles: " .. total
     local textColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
 
     local margin      = UI.Layout.scale(40)

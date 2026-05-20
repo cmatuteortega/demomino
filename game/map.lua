@@ -201,8 +201,8 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "boss" then
                 -- Assign boss demon name
                 node.demonName = Map.selectDemonName(map.usedDemonNames, true)
-            elseif node.nodeType == "trade" then
-                -- TRADE node - always MAMMON
+            elseif node.nodeType == "trade" or node.nodeType == "pawn" then
+                -- TRADE / PAWN node - always MAMMON
                 node.demonName = "MAMMON"
             elseif node.nodeType == "alchemy" then
                 -- ALCHEMY node - always PAIMON
@@ -216,8 +216,8 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "contracts" then
                 -- CONTRACTS node - always STOLAS
                 node.demonName = "STOLAS"
-            elseif node.nodeType == "enhance" then
-                -- ENHANCE node - always PAZUZU
+            elseif node.nodeType == "enhance" or node.nodeType == "flatten" then
+                -- ENHANCE / FLATTEN node - always PAZUZU
                 node.demonName = "PAZUZU"
             end
         end
@@ -238,7 +238,7 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
     -- Weighted non-combat selection
     local roll = love.math.random()
     if roll < 0.40 then
-        local shopGroup = {"trade", "alchemy", "alchemy_subtract", "enhance"}
+        local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten"}
         return shopGroup[love.math.random(1, #shopGroup)]
     elseif roll < 0.70 then
         return "contracts"

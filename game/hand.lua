@@ -151,11 +151,11 @@ function Hand.getTileAt(hand, x, y)
 end
 
 function Hand.selectTile(hand, tile)
-    -- Obsidian tiles cannot be selected/discarded
-    if tile.tileType == "obsidian" then
-        -- Show feedback that obsidian tiles can't be discarded
+    -- Relic tiles cannot be selected/discarded
+    if tile.tileType == "relic" then
+        -- Show feedback that relic tiles can't be discarded
         if UI.Animation and UI.Animation.createFloatingText then
-            UI.Animation.createFloatingText("OBSIDIAN TILES CANNOT BE DISCARDED",
+            UI.Animation.createFloatingText("RELIC TILES CANNOT BE DISCARDED",
                 gameState.screen.width / 2,
                 gameState.screen.height / 2 - UI.Layout.scale(100), {
                 color = {0.125, 0.145, 0.263, 1},

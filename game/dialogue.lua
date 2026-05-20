@@ -78,7 +78,7 @@ function Dialogue.calculateMaxWidth()
             demonName = "STOLAS"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             demonName = "LILITH"
-        elseif phase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
+        elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "enhance" or gameState.currentTilesNodeType == "flatten") then
             demonName = "PAZUZU"
         end
 
@@ -131,7 +131,7 @@ function Dialogue.calculateMaxWidth()
         -- Tile shop: "TRADE", "ALCHEMY", or "ENHANCE" title (right-aligned from rightX)
         local nodeType = gameState.currentTilesNodeType
         local nodeTitle = (nodeType == "alchemy" or nodeType == "alchemy_subtract") and "ALCHEMY"
-                       or (nodeType == "enhance") and "ENHANCE"
+                       or (nodeType == "enhance" or nodeType == "flatten") and "ENHANCE"
                        or "TRADE"
         local titleFont = UI.Fonts.get("formulaScore")
         local rightX = screenWidth - UI.Layout.scale(40)

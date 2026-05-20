@@ -57,16 +57,16 @@ function Scoring.getScoreBreakdown(tiles)
     -- Calculate base value (sum of all tile values + 10 per double)
     local tileValues = 0
     local doubleCount = 0
-    local obsidianCount = 0
+    local relicCount = 0
 
     for _, tile in ipairs(tiles) do
         tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
         if Domino.isDouble(tile) then
             doubleCount = doubleCount + 1
         end
-        -- Count obsidian tiles for multiplier bonus
-        if tile.tileType == "obsidian" then
-            obsidianCount = obsidianCount + 1
+        -- Count relic tiles for multiplier bonus
+        if tile.tileType == "relic" then
+            relicCount = relicCount + 1
         end
     end
 
@@ -98,8 +98,8 @@ function Scoring.getScoreBreakdown(tiles)
 
     baseValue = baseValue + contractTilePipBonus + contractBaseBonus
 
-    -- Calculate multiplier (number of tiles on board + 1 per obsidian tile + contract bonus)
-    local multiplier = #tiles + obsidianCount + contractMultBonus
+    -- Calculate multiplier (number of tiles on board + 1 per relic tile + contract bonus)
+    local multiplier = #tiles + relicCount + contractMultBonus
     local total = baseValue * multiplier
 
     return {
@@ -107,7 +107,7 @@ function Scoring.getScoreBreakdown(tiles)
         tileValues = tileValues,
         doubleBonus = doubleCount * 10,
         multiplier = multiplier,
-        obsidianBonus = obsidianCount,  -- Track obsidian multiplier bonus
+        relicBonus = relicCount,  -- Track relic multiplier bonus
         contractTilePipBonus = contractTilePipBonus,  -- Track contract tile pip bonus (Lucky Five)
         contractBaseBonus = contractBaseBonus,  -- Track contract base bonus (Greedy)
         contractMultBonus = contractMultBonus,  -- Track contract multiplier bonus (Perfect Loop)
@@ -153,7 +153,7 @@ function Scoring.getTileContribution(tile, activeContracts)
             end
         end
     end
-    local multBonus = tile.tileType == "obsidian" and 1 or 0
+    local multBonus = tile.tileType == "relic" and 1 or 0
     return {
         pipSum             = pipSum,
         enhanceBonus       = tile.enhanceBonus or 0,

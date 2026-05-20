@@ -51,12 +51,12 @@ local toolDefinitions = {
         cost = 2,
         color = {0.9, 0.9, 0.9, 1}  -- Silver/White
     },
-    obsidianTransmuter = {
-        id = "obsidianTransmuter",
-        name = "OBSIDIAN TRANSMUTER",
-        description = "Turn a tile into\nObsidian permanently",
+    relicTransmuter = {
+        id = "relicTransmuter",
+        name = "RELIC TRANSMUTER",
+        description = "Turn a tile into\nRelic permanently",
         cost = 2,
-        color = {0.125, 0.145, 0.263, 1}  -- Obsidian Blue
+        color = {0.125, 0.145, 0.263, 1}  -- Relic Blue
     },
     tenderTransmuter = {
         id = "tenderTransmuter",
@@ -160,7 +160,7 @@ function Tools.canUse(toolId, gameState)
     elseif toolId == "knife" then
         -- Can always use knife (no special conditions)
         return true, nil
-    elseif toolId == "obsidianTransmuter" then
+    elseif toolId == "relicTransmuter" then
         -- Can only use if hand has tiles
         if not gameState.hand or #gameState.hand < 1 then
             return false, "No tiles in hand"
@@ -209,8 +209,8 @@ function Tools.use(toolId, gameState)
         Tools.useExtraDiscard(gameState)
     elseif toolId == "knife" then
         Tools.useKnife(gameState)
-    elseif toolId == "obsidianTransmuter" then
-        Tools.useObsidianTransmuter(gameState)
+    elseif toolId == "relicTransmuter" then
+        Tools.useRelicTransmuter(gameState)
     elseif toolId == "tenderTransmuter" then
         Tools.useTenderTransmuter(gameState)
     end
@@ -573,10 +573,10 @@ function Tools.useKnife(gameState)
     })
 end
 
--- Obsidian Transmuter: Enter selection mode for turning a tile into obsidian
-function Tools.useObsidianTransmuter(gameState)
-    -- Set obsidian transmuter selection mode
-    gameState.obsidianTransmuterSelectionMode = true
+-- Relic Transmuter: Enter selection mode for turning a tile into relic
+function Tools.useRelicTransmuter(gameState)
+    -- Set relic transmuter selection mode
+    gameState.relicTransmuterSelectionMode = true
 
     -- Show floating text
     local centerX = gameState.screen.width / 2
@@ -593,18 +593,18 @@ function Tools.useObsidianTransmuter(gameState)
     })
 end
 
--- Transmute a specific tile to obsidian (permanent within current run)
-function Tools.transmuteTileToObsidian(tile)
-    -- Set tile type to obsidian on this instance
-    Domino.setTileType(tile, "obsidian")
+-- Transmute a specific tile to relic (permanent within current run)
+function Tools.transmuteTileToRelic(tile)
+    -- Set tile type to relic on this instance
+    Domino.setTileType(tile, "relic")
 
-    -- IMPORTANT: Also mark the matching tile in the collection as obsidian
-    -- This ensures the obsidian type persists when deck is recreated from collection
+    -- IMPORTANT: Also mark the matching tile in the collection as relic
+    -- This ensures the relic type persists when deck is recreated from collection
     if gameState.tileCollection then
         for _, collectionTile in ipairs(gameState.tileCollection) do
             -- Match by ID (which is "left-right")
             if collectionTile.id == tile.id then
-                Domino.setTileType(collectionTile, "obsidian")
+                Domino.setTileType(collectionTile, "relic")
                 break
             end
         end
@@ -619,7 +619,7 @@ function Tools.transmuteTileToObsidian(tile)
     local centerX = gameState.screen.width / 2
     local centerY = gameState.screen.height / 2
 
-    UI.Animation.createFloatingText("TILE TRANSMUTED TO OBSIDIAN!", centerX, centerY - UI.Layout.scale(50), {
+    UI.Animation.createFloatingText("TILE TRANSMUTED TO RELIC!", centerX, centerY - UI.Layout.scale(50), {
         color = {0.125, 0.145, 0.263, 1},
         fontSize = "large",
         duration = 1.5,
@@ -694,7 +694,7 @@ function Tools.resetUsages(gameState)
     -- Reset selection modes
     -- Tools are consumable, so no need to reset usage tracking
     gameState.transformerSelectionMode = false
-    gameState.obsidianTransmuterSelectionMode = false
+    gameState.relicTransmuterSelectionMode = false
     gameState.tenderTransmuterSelectionMode = false
 end
 

@@ -15,7 +15,7 @@ function Domino.new(left, right, leftScore, rightScore)
         placedOrder = 0,
         flipped = false,
         orientation = "vertical",
-        tileType = "regular",  -- "regular", "demon", "obsidian", "tender"
+        tileType = "regular",  -- "regular", "demon", "relic", "tender"
         negative = false,   -- true if result of a subtraction that produced a negative value
         enhanceBonus = 0,   -- cumulative flat scoring bonus from Enhance node
         enhanceCount = 0,   -- number of times enhanced (max 5)
@@ -161,8 +161,8 @@ function Domino.generateShopTileOffers(count)
         local tileType, basePrice
 
         if roll <= 0.10 then
-            -- 10% chance: Obsidian (expensive)
-            tileType = "obsidian"
+            -- 10% chance: Relic (expensive)
+            tileType = "relic"
             basePrice = 3
         elseif roll <= 0.30 then
             -- 20% chance: Tender (cheap)
@@ -504,9 +504,9 @@ function Domino.removeFromCollection(collection, index)
     return false
 end
 
--- Set tile type (regular, demon, obsidian, tender)
+-- Set tile type (regular, demon, relic, tender)
 function Domino.setTileType(domino, tileType)
-    if tileType == "regular" or tileType == "demon" or tileType == "obsidian" or tileType == "tender" then
+    if tileType == "regular" or tileType == "demon" or tileType == "relic" or tileType == "tender" then
         domino.tileType = tileType
         return true
     end
