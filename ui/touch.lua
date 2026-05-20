@@ -869,7 +869,7 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
     
-    if isInHandArea(x, y) then
+    if (gameState.gamePhase == "playing" or gameState.gamePhase == "won") and isInHandArea(x, y) then
         local tile, index = Hand.getTileAt(gameState.hand, x, y)
         if tile then
             touchState.draggedTile = tile
