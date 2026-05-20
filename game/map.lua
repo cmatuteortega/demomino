@@ -44,11 +44,11 @@ function Map.selectDemonName(usedNames, isBoss)
 end
 
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
-function Map.generateMap(screenWidth, screenHeight, currentRound)
+function Map.generateMap(screenWidth, screenHeight, currentNight)
     -- Use default dimensions if not provided for backward compatibility
     screenWidth = screenWidth or 800
     screenHeight = screenHeight or 600
-    currentRound = currentRound or 1
+    currentNight = currentNight or 1
     local map = {
         nodes = {},        -- All nodes in the DAG
         levels = {},       -- Nodes organized by depth level
@@ -78,7 +78,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
         -- Store generation parameters for potential regeneration
         screenWidth = screenWidth,
         screenHeight = screenHeight,
-        currentRound = currentRound,
+        currentNight = currentNight,
 
         -- Legacy compatibility for renderer
         columns = {}
@@ -119,7 +119,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
 
         -- Generate nodes for selected rows only
         for _, rowNumber in ipairs(selectedRows) do
-            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentRound)
+            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentNight)
             local node = Map.createNode(depth, rowNumber, nodeType)
             map.nodes[node.id] = node
             table.insert(map.levels[depth], node)
@@ -131,7 +131,7 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
     Map.generateDAGConnections(map, minConnections, maxConnections)
 
     -- Validate DAG structure and ensure all paths lead to boss
-    Map.validateAndFixDAG(map, currentRound)
+    Map.validateAndFixDAG(map, currentNight)
     
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
@@ -156,6 +156,9 @@ function Map.generateMap(screenWidth, screenHeight, currentRound)
 
     -- Initialize candle lighting state
     Map.updateCandleLighting(map)
+
+    -- Generate scattered map item sprites (food/misc decorations)
+    Map.generateMapItems(map, screenWidth, screenHeight)
 
     return map
 end
@@ -198,11 +201,14 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "boss" then
                 -- Assign boss demon name
                 node.demonName = Map.selectDemonName(map.usedDemonNames, true)
-            elseif node.nodeType == "trade" then
-                -- TRADE node - always MAMMON
+            elseif node.nodeType == "trade" or node.nodeType == "pawn" then
+                -- TRADE / PAWN node - always MAMMON
                 node.demonName = "MAMMON"
             elseif node.nodeType == "alchemy" then
                 -- ALCHEMY node - always PAIMON
+                node.demonName = "PAIMON"
+            elseif node.nodeType == "alchemy_subtract" then
+                -- ALCHEMY SUBTRACT node - always PAIMON
                 node.demonName = "PAIMON"
             elseif node.nodeType == "artifacts" then
                 -- ARTIFACTS node - always LILITH
@@ -210,41 +216,34 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "contracts" then
                 -- CONTRACTS node - always STOLAS
                 node.demonName = "STOLAS"
+            elseif node.nodeType == "enhance" or node.nodeType == "flatten" then
+                -- ENHANCE / FLATTEN node - always PAZUZU
+                node.demonName = "PAZUZU"
             end
         end
     end
 end
 
 -- Select a random node type for regular nodes with balanced distribution
--- For Round 1 (Night 1): Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels starting from 2)
--- For Round 2+: Combat nodes must be separated by at least 1 non-combat level
-function Map.selectRandomNodeType(depth, numLevels, currentRound)
-    currentRound = currentRound or 1
+-- Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels) on all nights.
+-- Non-combat nodes are weighted: 40% shop-group, 30% contracts, 30% artifacts.
+function Map.selectRandomNodeType(depth, numLevels, currentNight)
+    -- Deterministic combat spacing: depths where depth % 3 == 2 (2, 5, 8, 11…)
+    local isCombatLevel = (depth % 3 == 2)
 
-    if currentRound == 1 then
-        -- Round 1: Deterministic combat at levels 2, 5, 8, 11, etc.
-        -- Level 2 is the first playable node since level 1 is the start node
-        local isCombatLevel = (depth % 3 == 2)
+    if isCombatLevel then
+        return "combat"
+    end
 
-        if isCombatLevel then
-            return "combat"
-        else
-            -- Non-combat levels: randomly select from other node types
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
-            return otherTypes[love.math.random(1, #otherTypes)]
-        end
+    -- Weighted non-combat selection
+    local roll = love.math.random()
+    if roll < 0.40 then
+        local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten"}
+        return shopGroup[love.math.random(1, #shopGroup)]
+    elseif roll < 0.70 then
+        return "contracts"
     else
-        -- Round 2+: Random placement with at least 1 level separation
-        -- This will be validated/corrected by ensuring no two consecutive combat levels
-        local nodeTypes = {"combat", "trade", "alchemy", "artifacts", "contracts"}
-        local combatChance = 0.4  -- Base 40% chance for combat
-
-        if love.math.random() < combatChance then
-            return "combat"
-        else
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
-            return otherTypes[love.math.random(1, #otherTypes)]
-        end
+        return "artifacts"
     end
 end
 
@@ -615,44 +614,38 @@ function Map.removeUnreachableNodes(map)
 end
 
 -- Validate and fix DAG structure to ensure proper connectivity
-function Map.validateAndFixDAG(map, currentRound)
+function Map.validateAndFixDAG(map, currentNight)
     local numLevels = #map.levels
-    currentRound = currentRound or 1
-    
+
     -- Remove unreachable nodes first (forward reachability from start)
     Map.removeUnreachableNodes(map)
-    
+
     -- Check if boss node still exists after unreachable node removal
     if #map.levels[numLevels] == 0 then
         -- Boss was removed, regenerate map (this should be rare)
         print("Warning: Boss node was unreachable, regenerating map...")
-        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration
     end
-    
+
     local bossNode = map.levels[numLevels][1] -- Boss is always the single node at final level
-    
+
     -- Ensure all remaining nodes can reach the boss node (backward connectivity)
     Map.ensureAllPathsReachBoss(map, bossNode)
-    
+
     -- Verify DAG structure (no cycles)
     Map.validateAcyclicStructure(map)
-    
+
     -- Ensure boss node has incoming connections
     Map.ensureBossHasConnections(map, bossNode)
-    
-    -- NEW: Validate and improve path balance
-    Map.validatePathBalance(map)
 
-    -- For Round 2+, validate that no two combat levels are consecutive
-    if map.currentRound > 1 then
-        Map.validateConsecutiveCombatLevels(map)
-    end
+    -- Validate and improve path balance
+    Map.validatePathBalance(map)
 
     -- FINAL: Comprehensive connectivity validation with regeneration fallback
     local connectivityValid = Map.performFinalConnectivityCheck(map)
     if not connectivityValid then
         print("Critical: Final connectivity check failed, regenerating map...")
-        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentRound) -- Recursive regeneration as last resort
+        return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration as last resort
     end
 end
 
@@ -960,7 +953,10 @@ function Map.moveToNode(map, nodeId)
 
     -- Update available nodes for next move
     Map.updateAvailableNodes(map)
-    
+
+    -- Update map item states: food eaten, dead-branch items revealed
+    Map.updateMapItemsOnMove(map, fromNode, targetNode)
+
     -- Trigger smooth camera animation to focus on the newly selected node
     -- Only animate if we have screen width available and the node depth changed
     if gameState and gameState.screen and gameState.screen.width and gameState.screen.width > 0 then
@@ -2386,6 +2382,253 @@ function Map.createCandles(map, screenWidth, screenHeight)
     end
 end
 
+-- Generate map item sprites in empty node slots (4 rows x N columns grid)
+function Map.generateMapItems(map, screenWidth, screenHeight)
+    if not map or not map.levels or #map.levels == 0 then return end
+    map.mapItems = {}
+
+    -- Same spacing constants as calculateNodePositions / createCandles
+    local marginX = UI.Layout.scale(60)
+    local marginY = UI.Layout.scale(120)
+
+    local tempNodeTile = Domino.new(1, 1)
+    tempNodeTile.orientation = "vertical"
+    tempNodeTile.isMapTile = true
+
+    local tempHorizontalTile = Domino.new(1, 2)
+    tempHorizontalTile.orientation = "horizontal"
+    tempHorizontalTile.isMapTile = true
+
+    local tempVerticalTile = Domino.new(1, 2)
+    tempVerticalTile.orientation = "vertical"
+    tempVerticalTile.isMapTile = true
+
+    local nodeWidth     = Map.getMapTileDisplayWidth(tempNodeTile)
+    local horizontalWidth = Map.getMapTileDisplayWidth(tempHorizontalTile)
+    local verticalHeight  = Map.getMapTileDisplayHeight(tempVerticalTile)
+    local levelSpacing  = nodeWidth + 2 * horizontalWidth - UI.Layout.scale(2)
+    local tileGap       = UI.Layout.scale(2)
+    local pathSpacing   = math.max(UI.Layout.scale(90), 2 * verticalHeight + 3 * tileGap)
+    pathSpacing = pathSpacing - verticalHeight * 0.2 - UI.Layout.scale(2)
+
+    local startY          = marginY + UI.Layout.scale(50)
+    local availableHeight = screenHeight - 2 * marginY - UI.Layout.scale(100)
+    local totalPossibleHeight = 3 * pathSpacing
+    local levelStartY     = startY + (availableHeight - totalPossibleHeight) / 2
+
+    -- Mark which (depth, row) slots are occupied by a node
+    local occupied = {}
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            occupied[node.depth .. "_" .. node.path] = true
+        end
+    end
+
+    -- Collect path tile centers for clearance checks (golden rule: never overlap paths)
+    local pathTilePositions = {}
+    for _, tile in ipairs(map.tiles) do
+        if tile.isPathTile then
+            table.insert(pathTilePositions, {x = tile.worldX, y = tile.worldY})
+        end
+    end
+    -- item half-size (32px * scale 4.0) + path tile half-diagonal (~22) = ~90 reference units
+    local pathClearanceSq = UI.Layout.scale(90) ^ 2
+    local function isNearPath(x, y)
+        for _, pt in ipairs(pathTilePositions) do
+            local dx, dy = x - pt.x, y - pt.y
+            if dx * dx + dy * dy < pathClearanceSq then return true end
+        end
+        return false
+    end
+
+    -- Track placed positions to prevent jitter from stacking two sprites
+    -- Sprites render at 32px * scale(4.0) ≈ 100px wide; require ~100px center clearance
+    local placedPositions = {}
+    local minSpacingSq = UI.Layout.scale(100) ^ 2
+    local function isTooClose(x, y)
+        for _, p in ipairs(placedPositions) do
+            local dx, dy = x - p.x, y - p.y
+            if dx * dx + dy * dy < minSpacingSq then return true end
+        end
+        return false
+    end
+
+    local function pickCategory()
+        local r = love.math.random()
+        if r < 0.90 then return "food-common"
+        elseif r < 0.95 then return "food-rare"
+        elseif r < 0.98 then return "misc-common"
+        else return "misc-rare"
+        end
+    end
+
+    local function spriteCount(cat)
+        if not mapItemSprites or not mapItemSprites[cat] then return 0 end
+        return #mapItemSprites[cat]
+    end
+    local emptyCount = spriteCount("empty-food")
+
+    local function placeItem(wx, wy)
+        local cat = pickCategory()
+        local sc = spriteCount(cat)
+        if sc > 0 then
+            table.insert(map.mapItems, {
+                worldX     = wx, worldY = wy, category = cat,
+                spriteIndex = love.math.random(1, sc),
+                emptyFoodIndex = (emptyCount > 0) and love.math.random(1, emptyCount) or 1,
+                visible = true, isEmpty = false,
+            })
+            table.insert(placedPositions, {x = wx, y = wy})
+        end
+    end
+
+    local jitterX = levelSpacing * 0.22
+    local jitterY = pathSpacing  * 0.22
+
+    -- For every empty slot in the 4-row x N-column grid, place a jittered sprite
+    local numLevels = #map.levels
+    for depth = 1, numLevels do
+        for row = 1, 4 do
+            if not occupied[depth .. "_" .. row] then
+                local baseX = marginX + (depth - 1) * levelSpacing
+                local baseY = levelStartY + (row - 1) * pathSpacing
+                for attempt = 1, 4 do
+                    local wx = baseX + (love.math.random() * 2 - 1) * jitterX
+                    local wy = baseY + (love.math.random() * 2 - 1) * jitterY
+                    if not isNearPath(wx, wy) and not isTooClose(wx, wy) then
+                        placeItem(wx, wy)
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- Add a handful of edge-bleeding sprites above row 1 and below row 4
+    local edgeCount = love.math.random(4, 6)
+    for _ = 1, edgeCount do
+        local depth = love.math.random(2, numLevels - 1)
+        local wx = marginX + (depth - 1) * levelSpacing + (love.math.random() * 2 - 1) * jitterX
+        local edgeFraction = 1.6 + love.math.random() * 0.6
+        local wy
+        if love.math.random() < 0.5 then
+            wy = levelStartY - pathSpacing * edgeFraction
+        else
+            wy = levelStartY + 3 * pathSpacing + pathSpacing * edgeFraction
+        end
+        if not isNearPath(wx, wy) and not isTooClose(wx, wy) then
+            placeItem(wx, wy)
+        end
+    end
+end
+
+-- Scatter sprites near nodes that just became permanently unreachable.
+-- Called after every move and after loading a saved game.
+function Map.refreshDiscardedNodeSprites(map)
+    if not map or not map.currentNode or not map.levels or not map.mapItems then return end
+
+    local reachable = Map.getReachableNodes(map, map.currentNode)
+
+    -- Collect path tile centers for clearance (relaxed radius vs the grid placement)
+    local pathTilePositions = {}
+    for _, tile in ipairs(map.tiles or {}) do
+        if tile.isPathTile then
+            table.insert(pathTilePositions, {x = tile.worldX, y = tile.worldY})
+        end
+    end
+    -- Same clearance as grid items — diagonal cross-row path tiles sweep into the Y
+    -- space around nodes and need the full buffer to avoid visual overlap
+    local discardedClearanceSq = UI.Layout.scale(90) ^ 2
+
+    -- Collect existing sprite positions to prevent stacking
+    local placedPositions = {}
+    for _, item in ipairs(map.mapItems) do
+        table.insert(placedPositions, {x = item.worldX, y = item.worldY})
+    end
+    local minSpacingSq = UI.Layout.scale(100) ^ 2
+
+    local function spriteCount(cat)
+        if not mapItemSprites or not mapItemSprites[cat] then return 0 end
+        return #mapItemSprites[cat]
+    end
+    local emptyCount = spriteCount("empty-food")
+
+    local function tryPlace(wx, wy)
+        for _, pt in ipairs(pathTilePositions) do
+            local dx, dy = wx - pt.x, wy - pt.y
+            if dx * dx + dy * dy < discardedClearanceSq then return false end
+        end
+        for _, p in ipairs(placedPositions) do
+            local dx, dy = wx - p.x, wy - p.y
+            if dx * dx + dy * dy < minSpacingSq then return false end
+        end
+        local r = love.math.random()
+        local cat
+        if r < 0.90 then cat = "food-common"
+        elseif r < 0.95 then cat = "food-rare"
+        elseif r < 0.98 then cat = "misc-common"
+        else cat = "misc-rare"
+        end
+        local sc = spriteCount(cat)
+        if sc > 0 then
+            table.insert(map.mapItems, {
+                worldX = wx, worldY = wy, category = cat,
+                spriteIndex = love.math.random(1, sc),
+                emptyFoodIndex = (emptyCount > 0) and love.math.random(1, emptyCount) or 1,
+                visible = true, isEmpty = false
+            })
+            table.insert(placedPositions, {x = wx, y = wy})
+            return true
+        end
+        return false
+    end
+
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            if not reachable[node.id] and
+               not map.completedNodes[node.id] and
+               not node.discardedSpriteAdded then
+
+                node.discardedSpriteAdded = true
+
+                local numToPlace = love.math.random(1, 2)
+                local placed = 0
+                -- Larger radius so positions land outside the path-tile clearance zone;
+                -- 12 attempts to find the angular gap between the node's connections
+                for _ = 1, 12 do
+                    if placed >= numToPlace then break end
+                    local angle = love.math.random() * math.pi * 2
+                    local dist = UI.Layout.scale(85) + love.math.random() * UI.Layout.scale(40)
+                    if tryPlace(
+                        node.position.x + math.cos(angle) * dist,
+                        node.position.y + math.sin(angle) * dist
+                    ) then
+                        placed = placed + 1
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Update map items when player moves: food to the left gets "eaten"
+function Map.updateMapItemsOnMove(map, fromNode, targetNode)
+    if not map or not map.mapItems then return end
+    local currentX = map.currentNode.position.x
+    for _, item in ipairs(map.mapItems) do
+        if not item.isEmpty and
+           (item.category == "food-common" or item.category == "food-rare") then
+            if item.worldX < currentX - UI.Layout.scale(30) then
+                if love.math.random() < 0.70 then
+                    item.isEmpty = true
+                end
+            end
+        end
+    end
+
+    Map.refreshDiscardedNodeSprites(map)
+end
+
 -- Update candle lighting state based on current node position
 function Map.updateCandleLighting(map)
     if not map or not map.currentNode or not map.candles then
@@ -2549,7 +2792,7 @@ function Map.validateConsecutiveCombatLevels(map)
 
         -- If both levels have combat, convert the next level's combat nodes to non-combat
         if currentLevelHasCombat and nextLevelHasCombat then
-            local otherTypes = {"trade", "alchemy", "artifacts", "contracts"}
+            local otherTypes = {"trade", "alchemy", "alchemy_subtract", "artifacts", "contracts"}
             for _, node in ipairs(map.levels[depth + 1]) do
                 if node.nodeType == "combat" then
                     node.nodeType = otherTypes[love.math.random(1, #otherTypes)]

@@ -34,7 +34,7 @@ DemonData.REGULAR_DEMON_SUBTITLES = {
 
 -- Boss demon names
 DemonData.BOSS_DEMON_NAMES = {
-    "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN"
+    "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN"
 }
 
 -- Boss demon subtitles (matching order)
@@ -55,6 +55,14 @@ DemonData.SPECIAL_DEMONS = {
     LILITH = {
         name = "LILITH",
         subtitle = "NIGHT LADY"  -- Placeholder - user will update manually
+    },
+    STOLAS = {
+        name = "STOLAS",
+        subtitle = "PRINCE OF HELL"
+    },
+    PAZUZU = {
+        name = "PAZUZU",
+        subtitle = "STORM BRINGER"
     }
 }
 

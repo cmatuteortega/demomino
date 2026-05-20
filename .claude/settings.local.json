@@ -9,7 +9,15 @@
       "Bash(done)",
       "Bash(rm:*)",
       "Bash(find:*)",
-      "Bash(luac:*)"
+      "Bash(luac:*)",
+      "Bash(xargs -n1 basename)",
+      "Bash(grep -n \"^end$\" /Users/cmatute1/demomino/ui/renderer.lua)",
+      "Bash(awk 'NR>=1 && NR<=300 {print}')",
+      "Bash(awk '/^function UI\\\\.Renderer\\\\.drawArtifactsShopDebug\\\\\\(\\\\\\)/{start=NR} start && /^end$/{print start\"-\"NR; start=0}' /Users/cmatute1/demomino/ui/renderer.lua)",
+      "Bash(awk '/^function UI\\\\.Renderer\\\\.drawShopRerollButton\\\\\\(\\\\\\)/{start=NR} start && /^end$/{print start\"-\"NR; start=0}' /Users/cmatute1/demomino/ui/renderer.lua)",
+      "Bash(awk '/^function UI\\\\.Renderer\\\\.drawReturnToMapButton\\\\\\(\\\\\\)/{start=NR} start && /^end$/{print start\"-\"NR; start=0}' /Users/cmatute1/demomino/ui/renderer.lua)",
+      "Bash(awk '/^function UI\\\\.Renderer\\\\.drawMapScrollIndicators/{start=NR} start && /^end$/{print start\"-\"NR; start=0}' /Users/cmatute1/demomino/ui/renderer.lua)",
+      "Bash(awk '/^function UI\\\\.Renderer\\\\.drawFusionDebugInfo\\\\\\(\\\\\\)/{start=NR} start && /^end$/{print start\"-\"NR; start=0}' /Users/cmatute1/demomino/ui/renderer.lua)"
     ],
     "deny": []
   }

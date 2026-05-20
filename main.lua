@@ -28,6 +28,7 @@ function love.load()
     require("game.map")
     require("game.save")
     require("game.tools")
+    require("game.contracts")
     require("game.dialogue")
     require("ui.touch")
     require("ui.layout")
@@ -47,6 +48,7 @@ function love.load()
     loadCandleSprites()
     loadToolSprites()
     loadCupSprites()
+    loadMapItemSprites()
     
     gameState = {
         screen = {
@@ -54,9 +56,9 @@ function love.load()
             height = screenHeight,
             scale = math.min(screenWidth / 800, screenHeight / 600)
         },
+        debugFireHand = false,  -- set true to draw fire on every hand tile (for testing)
         deck = {},
         hand = {},
-        board = {},
         placedTiles = {},
         score = 0,
         gamePhase = "playing",
@@ -73,6 +75,7 @@ function love.load()
         currentMap = nil,
         selectedNode = nil,  -- For node confirmation dialog
         isBossRound = false,  -- Track if current combat is the boss round
+        isEndlessMode = false,  -- True after beating Night 5
         currentDay = 1,  -- Track which map/day the player is on
         scoreAnimation = {    -- Animation properties for score display
             scale = 1.0,
@@ -107,11 +110,14 @@ function love.load()
         formulaDisplayValue = 0,  -- Currently displayed formula value (for counting animation)
         formulaTargetValue = 0,  -- Target value to count toward
         formulaCountSpeed = 0,  -- Speed of formula counting (points per second)
+        multiplierDisplayValue = 0,  -- Currently displayed multiplier value (for two-line display)
+        multiplierTargetValue = 0,  -- Target multiplier value
         formulaAnimation = {  -- Animation properties for formula display
             scale = 1.0,
             shake = 0,
             opacity = 1.0,
             yOffset = 0,  -- For transfer animation
+            fusionProgress = 0,  -- For multiplier fusion animation (0 = separated, 1 = fused)
             color = {1, 0.8, 0.2, 1}  -- Gold by default
         },
         -- Currency system
@@ -140,6 +146,9 @@ function love.load()
         tilesMenuMode = "shop",  -- "shop" or "fusion"
         fusionHand = {},  -- 7-tile hand for fusion mode
         fusionSlotTiles = {},  -- {tile1, tile2} - actual tiles in fusion slots
+        -- Tile pawn system
+        pawnHand = {},
+        pawnPlacedTile = nil,
         fusionDialogueState = {  -- Track fusion dialogue triggers
             enteredScreen = false,
             shownDragPrompt = false,
@@ -148,6 +157,29 @@ function love.load()
             shownFusionPrompt = false,
             idleTimer = 0,
             idleTriggerTime = 8.0  -- Show idle dialogue after 8s
+        },
+        -- Tile flatten system
+        flattenHand = {},
+        flattenSlotTile = nil,
+        flattenButton = nil,
+        flattenNextButton = nil,
+        flattenNextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        -- Tile enhance system
+        enhanceHand = {},       -- 7-tile hand for enhance mode
+        enhanceSlotTile = nil,  -- single tile in the center enhance slot
+        enhanceCurrentCost = 1, -- cost of next Enhance press; resets to 1 on menu entry
+        enhanceButton = nil,    -- {x, y, width, height, enabled}
+        enhanceNextButton = nil,
+        enhanceNextButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        enhanceDialogueState = {
+            enteredScreen = false,
+            shownDragPrompt = false,
+            idleTimer = 0,
+            idleTriggerTime = 8.0,
         },
         -- Challenge system
         activeChallenges = {},  -- Active challenges for current combat
@@ -168,10 +200,39 @@ function love.load()
         settingsCloseButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
+        -- Deck preview overlay
+        deckPreviewOpen = false,
+        deckPreviewTilesBounds = nil,
+        deckPreviewTilesButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        deckPreviewBackButtonBounds = nil,
+        deckPreviewBackButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
+        },
+        deckPreviewBackButtonPressed = false,
+        deckPreviewTiles = {},
         -- Tools/Artifacts system
         ownedTools = {},  -- Array of owned tool IDs (max 3, can have duplicates)
         transformerSelectionMode = false,  -- Track if player is selecting a tile to transform
-        obsidianTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to obsidian
+        -- Contracts system
+        activeContracts = {},  -- Currently active contracts (max 2)
+        offeredContracts = {},  -- Contracts being offered in shop (always 3)
+        combatCandleBounds = {},  -- [{x,y,w,h,contractIndex}] populated each frame by drawCombatCandles
+        tooltip = {
+            visible = false,
+            type = nil,     -- "tile" | "tool" | "contract"
+            data = nil,
+            x = 0, y = 0,
+            opacity = 0.0,
+            animScale = 1.0,
+            fadeIn = false,
+            fadeOut = false,
+            spriteHalfH = 0,      -- actual sprite half-height in px, set by touch
+            toolContext = nil,    -- "stack" | "shop" for tool tooltips
+            toolSpriteLeft = 0,   -- left-edge X of tool sprite (stack positioning)
+        },
+        relicTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to relic
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
         toolSpriteBounds = {},  -- Array of clickable bounds for tool sprites
@@ -240,6 +301,15 @@ function love.load()
             autoDissmissTime = 2.0,  -- Time before auto-dismiss (if not requiring action)
             waitingTimer = 0  -- Timer for auto-dismiss
         },
+        irisAnimation = {
+            active   = false,
+            phase    = "idle",   -- "closing" | "opening"
+            elapsed  = 0,
+            progress = 0,        -- 0→1
+            centerX  = 0,
+            centerY  = 0,
+            pendingAction = nil, -- called when fully closed
+        },
         -- Dialogue content storage (populated by user prompts)
         dialogueContent = {
             playing = {  -- Combat nodes (existing system)
@@ -276,8 +346,26 @@ function love.load()
                 actions = {}
             },
             contracts_menu = {  -- Contracts node
-                greetings = {},
-                idle = {},
+                greetings = {
+                    "Welcome, mortal...",
+                    "Ah, another soul seeking power...",
+                    "You dare make a deal?",
+                    "What price are you willing to pay?"
+                },
+                idle = {
+                    "Choose wisely...",
+                    "These contracts are binding...",
+                    "Power comes at a cost...",
+                    "Two contracts maximum...",
+                    "Your soul is valuable..."
+                },
+                purchase = {
+                    "The pact is sealed!",
+                    "Your fate is bound now...",
+                    "Excellent choice, mortal...",
+                    "The contract is yours...",
+                    "Power flows through you..."
+                },
                 actions = {}
             }
         },
@@ -327,6 +415,7 @@ function love.load()
 
     -- Load CRT shader and create render canvas with depth/stencil support for fog of war
     crtShader = love.graphics.newShader("shaders/background_crt.glsl")
+    mapItemPaletteShader = love.graphics.newShader("shaders/map_item_palette.glsl")
     mainCanvas = love.graphics.newCanvas(screenWidth, screenHeight, {format = "rgba8", readable = true, msaa = 0})
 
     -- Load settings from disk
@@ -353,6 +442,88 @@ function love.load()
     }
     gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
 
+    -- Pawn node dialogue (MAMMON)
+    gameState.dialogueContent.tiles_menu.pawn_greetings = {
+        "Everything has a price, mortal.",
+        "Sell me your burdens. I'll make it worth your while.",
+        "Ah, another desperate soul. My favourite kind of customer.",
+        "I deal in what others cast aside.",
+        "Bring me your tiles. I'll give you what they're worth... to me."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_sell = {
+        "A fair price for a fair trade.",
+        "Coins well earned, or tiles well lost?",
+        "Such a shame to part with it. I have no such qualms.",
+        "Into my collection it goes.",
+        "More coin for you, more treasure for me."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_reroll = {
+        "Not satisfied? That'll cost you.",
+        "Shuffling the bones... for a price.",
+        "Let's see what else you're willing to part with."
+    }
+    gameState.dialogueContent.tiles_menu.pawn_idle = {
+        "Take your time. My patience is limitless.",
+        "Every tile tells a story. What's yours worth?",
+        "The boneyard never lies."
+    }
+
+    -- Initialize enhance node dialogue
+    gameState.dialogueContent.enhance_menu = {}
+    gameState.dialogueContent.enhance_menu.greetings = {
+        "POWER HAS A PRICE",
+        "I CAN MAKE IT STRONGER",
+        "EVERYTHING HAS ITS LIMIT",
+    }
+    gameState.dialogueContent.enhance_menu.idle = {
+        "CHOOSE CAREFULLY",
+        "THE STORM WAITS FOR NO ONE",
+        "WEAKNESS DISGUSTS ME",
+    }
+    gameState.dialogueContent.enhance_menu.enhance = {
+        "STRONGER!",
+        "YES. THAT'S IT.",
+        "FEEL THE POWER",
+    }
+    gameState.dialogueContent.enhance_menu.tender   = {"GONE SOFT...", "OH. THAT HAPPENS."}
+    gameState.dialogueContent.enhance_menu.relic = {"PERFECTION.", "NO GOING BACK NOW"}
+    gameState.dialogueContent.enhance_menu.break_event = {"OOPS.", "TOO FRAGILE.", "IT COULDN'T HANDLE IT"}
+    gameState.dialogueContent.enhance_menu.pip     = {"GROWING...", "MORE. MORE. MORE."}
+    gameState.dialogueContent.enhance_menu.maxed   = {"AT ITS LIMIT.", "TAKE IT. IT IS DONE."}
+
+    -- Initialize flatten node dialogue
+    gameState.dialogueContent.flatten_menu = {}
+    gameState.dialogueContent.flatten_menu.greetings = {
+        "WEAK. ALL THINGS ARE WEAK.",
+        "I WILL REDUCE IT TO NOTHING.",
+        "BACK TO BASICS. AS IT SHOULD BE.",
+        "BRING ME YOUR STRONGEST. I WILL UNMAKE IT."
+    }
+    gameState.dialogueContent.flatten_menu.idle = {
+        "CHOOSE. OR DON'T.",
+        "THE STRONG FEAR WHAT I DO.",
+        "DESTRUCTION IS A KIND OF GIFT."
+    }
+    gameState.dialogueContent.flatten_menu.flatten = {
+        "FLATTENED.",
+        "REDUCED TO DUST.",
+        "AS IT WAS IN THE BEGINNING."
+    }
+    gameState.dialogueContent.flatten_menu.lucky = {
+        "FORTUNE FAVORS... OCCASIONALLY.",
+        "DUST WITH POTENTIAL.",
+        "EVEN RUINS HAVE THEIR USES."
+    }
+    gameState.dialogueContent.flatten_menu.relic = {
+        "RELIC FROM RUIN. UNEXPECTED.",
+        "DESTRUCTION BREEDS PERFECTION."
+    }
+    gameState.dialogueContent.flatten_menu.reroll = {
+        "AGAIN? FINE.",
+        "BRING ME SOMETHING WORTH DESTROYING.",
+        "THE WEAK ALWAYS WANT ANOTHER CHANCE."
+    }
+
     -- Start background music
     UI.Audio.playMusic()
 end
@@ -364,6 +535,8 @@ function resetGameToFresh()
 
     -- Reset ALL game state completely
     gameState.currentRound = 1
+    gameState.currentDay = 1
+    gameState.isEndlessMode = false
     gameState.targetScore = TARGET_SCORE
     gameState.coins = 0
     gameState.startRoundCoins = 0
@@ -381,12 +554,24 @@ function resetGameToFresh()
     gameState.fusionHand = {}
     gameState.fusionSlotTiles = {}
 
+    -- Reset pawn state
+    gameState.pawnHand = {}
+    gameState.pawnPlacedTile = nil
+
+    -- Reset flatten state
+    gameState.flattenHand = {}
+    gameState.flattenSlotTile = nil
+
     -- Reset challenges
     gameState.activeChallenges = {}
     gameState.challengeStates = {}
 
     -- Reset tools/artifacts
     gameState.ownedTools = {}
+
+    -- Reset contracts
+    gameState.activeContracts = {}
+    gameState.offeredContracts = {}
 
     -- Reset coin animation state
     gameState.coinsAnimation = {
@@ -403,7 +588,7 @@ function resetGameToFresh()
     initializeGame(false)
 
     -- Generate new map
-    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentRound)
+    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
 end
 
 function initializeGame(isNewRound)
@@ -421,15 +606,8 @@ function initializeGame(isNewRound)
     -- Initialize empty hand first
     gameState.hand = {}
 
-    -- Draw tiles from deck
-    for i = 1, 7 do
-        local tile = table.remove(gameState.deck, 1)
-        if tile then
-            tile.selected = false
-            tile.placed = false
-            table.insert(gameState.hand, tile)
-        end
-    end
+    -- Draw tiles: fill until 7 non-negative tiles are present (negative tiles don't count as slots)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
     -- Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -439,7 +617,6 @@ function initializeGame(isNewRound)
     -- Animate initial tiles drawing from right
     Hand.animateTilesDraw(gameState.hand, 0)
 
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.score = 0
     gameState.previousScore = 0
@@ -487,7 +664,6 @@ function initializeCombatRound()
     -- Reset only combat-specific state while preserving map progress and tile collection
 
     -- STEP 1: Clear old combat state FIRST
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.hand = {}
     gameState.score = 0
@@ -568,15 +744,8 @@ function initializeCombatRound()
     -- STEP 3: Initialize challenges (can now take a tile from deck for anchor)
     Challenges.initialize(gameState)
 
-    -- STEP 4: Draw tiles from deck to hand
-    for i = 1, 7 do
-        local tile = table.remove(gameState.deck, 1)
-        if tile then
-            tile.selected = false
-            tile.placed = false
-            table.insert(gameState.hand, tile)
-        end
-    end
+    -- STEP 4: Draw tiles from deck to hand (negative tiles don't consume a hand slot)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
     -- STEP 5: Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -629,7 +798,10 @@ function initializeRoundIntro()
     local screenHeight = gameState.screen.height
 
     -- Build the text to display
-    local nightText = "Night " .. tostring(gameState.currentDay)
+    local nightSubtitles = { "Entree", "Sorbet", "Main dish", "Dessert", "The Check" }
+    local subtitle = nightSubtitles[gameState.currentDay]
+    local baseText = "Night " .. tostring(gameState.currentDay)
+    local nightText = subtitle and (baseText .. ": " .. subtitle) or baseText
 
     -- Calculate center position
     local centerX = screenWidth / 2
@@ -638,6 +810,14 @@ function initializeRoundIntro()
     -- Calculate final position (top-left corner, matching map screen)
     local finalX = UI.Layout.scale(60)
     local finalY = UI.Layout.scale(20)
+
+    -- Pre-compute text dimensions so targetX/targetY can account for the centering
+    -- offset that the renderer always applies (startX = currentX - totalWidth/2).
+    -- At the end of the tween: currentX = targetX, so rendered left edge = targetX - fullW/2.
+    -- Setting targetX = finalX + fullW/2 makes the text land exactly at finalX.
+    local font = UI.Fonts.get("formulaScore")
+    local fullTextWidth = font:getWidth(nightText)
+    local fontHeight = font:getHeight()
 
     -- Reset animation state
     gameState.roundIntroAnimation = {
@@ -648,10 +828,14 @@ function initializeRoundIntro()
         charsPerSecond = 8,
         pauseTimer = 0,
         pauseDuration = 0.8,
+        midPauseAt = subtitle and #baseText or 0,
+        midPauseDuration = 0.6,
+        midPauseTimer = 0,
+        midPauseDone = false,
         currentX = centerX,
         currentY = centerY,
-        targetX = finalX,
-        targetY = finalY,
+        targetX = finalX + fullTextWidth / 2,
+        targetY = finalY + fontHeight / 2,
         opacity = 1.0,
         candleGrowth = 0
     }
@@ -912,6 +1096,15 @@ function updateFormulaCountAnimation(dt)
             gameState.formulaDisplayValue = gameState.formulaTargetValue
             gameState.formulaCountSpeed = 0
         end
+    end
+
+    -- Animate multiplier display value (counts up by whole numbers)
+    if gameState.multiplierDisplayValue < gameState.multiplierTargetValue then
+        -- Count up (instant increment by 1 per tile)
+        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+    elseif gameState.multiplierDisplayValue > gameState.multiplierTargetValue then
+        -- Count down if needed
+        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
     end
 end
 
@@ -1268,13 +1461,17 @@ function startScoringSequence(tiles)
         tiles = tiles,
         currentTileIndex = 1,
         accumulatedValue = 0,
+        accumulatedMultiplier = 0,  -- Track multiplier as it builds
         showingMultiplier = false,
         showingFinal = false,
-        phase = "scoring_tiles",  -- "scoring_tiles", "multiplying", "final", "transferring"
+        phase = "scoring_tiles",  -- "scoring_tiles", "contract_bonuses", "show_multiplier", "multiplying", "final", "transferring"
         timer = 0,
         tileAnimDelay = 0.4,
         finalTileAnimating = false,
-        waitingForFinalTile = false
+        waitingForFinalTile = false,
+        contractBonusIndex = 1,  -- Track which contract bonus to animate
+        contractBonuses = {},  -- Will be populated with individual contract bonuses
+        waitingForCounterToReach = false
     }
 
     -- Initialize formula display at 0
@@ -1286,8 +1483,13 @@ function startScoringSequence(tiles)
         shake = 0,
         opacity = 1.0,
         yOffset = 0,
+        fusionProgress = 0,  -- For multiplier fusion animation
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1}  -- White for summing phase
     }
+
+    -- Initialize multiplier display
+    gameState.multiplierDisplayValue = 0
+    gameState.multiplierTargetValue = 0
 
     -- Sort tiles from left to right for visual consistency
     table.sort(gameState.scoringSequence.tiles, function(a, b)
@@ -1304,11 +1506,66 @@ function updateScoringSequence(dt)
     if seq.phase == "scoring_tiles" then
         -- Check if we're waiting for final tile to finish
         if seq.waitingForFinalTile and not seq.finalTileAnimating then
-            -- Final tile finished, move to multiplier phase
-            seq.phase = "multiplying"
-            seq.showingMultiplier = true
-            seq.timer = 0
-            seq.waitingForFinalTile = false
+            -- Final tile finished, prepare contract bonuses
+            seq.contractBonuses = {}
+
+            -- Add Greedy bonus if active
+            local greedyBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
+            if greedyBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "GREEDY",
+                    value = greedyBonus,
+                    multiplierBonus = 0,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Add Low Stakes conditional base bonus if active
+            local lowStakesBonus = Contracts.calculateConditionalBaseBonus(seq.tiles, gameState.activeContracts)
+            if lowStakesBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "LOW STAKES",
+                    value = lowStakesBonus,
+                    multiplierBonus = 0,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Add Perfect Loop multiplier bonus if active
+            local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
+            if perfectLoopBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "PERFECT LOOP",
+                    value = 0,  -- Doesn't add to base
+                    multiplierBonus = perfectLoopBonus,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Add Small Hand conditional multiplier bonus if active
+            local smallHandBonus = Contracts.calculateConditionalMultiplier(seq.tiles, gameState.activeContracts)
+            if smallHandBonus > 0 then
+                table.insert(seq.contractBonuses, {
+                    name = "SMALL HAND",
+                    value = 0,  -- Doesn't add to base
+                    multiplierBonus = smallHandBonus,
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                })
+            end
+
+            -- Check if we have any contract bonuses to animate
+            if #seq.contractBonuses > 0 then
+                seq.phase = "contract_bonuses"
+                seq.contractBonusIndex = 1
+                seq.timer = 0
+                seq.waitingForFinalTile = false
+                seq.waitingForCounterToReach = false
+            else
+                -- No contract bonuses, pause then show multiplier
+                seq.phase = "show_multiplier"
+                seq.timer = 0
+                seq.waitingForFinalTile = false
+            end
         else
             -- Check if it's time to animate the next tile
             local tileDelay = (seq.currentTileIndex - 1) * seq.tileAnimDelay
@@ -1320,15 +1577,53 @@ function updateScoringSequence(dt)
                     -- Add this tile's value to accumulated
                     local tileValue = Domino.getValue(tile)
                     local isDouble = Domino.isDouble(tile)
-                    local addedValue = tileValue + (isDouble and 10 or 0)
+                    local doubleBonus = isDouble and 10 or 0
+                    local enhanceBonus = tile.enhanceBonus or 0
+                    local addedValue = tileValue + doubleBonus + enhanceBonus
+
+                    -- Check banned number challenge — banned tiles contribute nothing visually
+                    local bannedNumber = Challenges and Challenges.getBannedNumber(gameState)
+                    local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
+                    if isBanned then addedValue = 0 end
+
+                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip) — skip if banned
+                    local contractBonus = 0
+                    if not isBanned then
+                        contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                        addedValue = addedValue + contractBonus
+                    end
+
+                    -- Check for coin rewards from "One Dollar" contract
+                    local coinReward = Contracts.calculateCoinReward(tile, gameState.activeContracts)
+                    if coinReward > 0 then
+                        -- Award coins with falling animation
+                        local currentTarget = gameState.coinsAnimation.targetCoins or gameState.coins
+                        updateCoins(currentTarget + coinReward, {hasBonus = false})
+                    end
+
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
+
+                    -- Increment multiplier counter (1 for regular tile, +1 for relic) — skip if banned
+                    if not isBanned then
+                        local multiplierIncrement = 1
+                        if tile.tileType == "relic" then
+                            multiplierIncrement = multiplierIncrement + 1
+                        end
+                        seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
+                        gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                    end
 
                     -- Set formula target and trigger counting animation
                     gameState.formulaTargetValue = seq.accumulatedValue
                     gameState.formulaCountSpeed = math.max(100, addedValue * 3)  -- Speed based on added value
 
-                    -- Animate the tile with shake effect
-                    animateTileScoring(tile)
+                    -- Animate the tile with shake effect and per-tile scoring popup
+                    local valueInfo = {
+                        totalAdded = addedValue,
+                        isRelic = tile.tileType == "relic",
+                        isBanned   = isBanned,
+                    }
+                    animateTileScoring(tile, valueInfo)
                     
                     seq.currentTileIndex = seq.currentTileIndex + 1
                 else
@@ -1337,41 +1632,94 @@ function updateScoringSequence(dt)
                 end
             end
         end
-    elseif seq.phase == "multiplying" then
-        -- Wait for formula to reach accumulated value, then show multiplier
-        if gameState.formulaDisplayValue >= seq.accumulatedValue - 1 then
-            -- Show multiplier and calculate final score
-            local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-            local finalScore = breakdown.total
+    elseif seq.phase == "contract_bonuses" then
+        -- Animate contract bonuses one at a time, like individual tiles
+        if seq.contractBonusIndex <= #seq.contractBonuses then
+            local bonus = seq.contractBonuses[seq.contractBonusIndex]
+            local bonusDelay = (seq.contractBonusIndex - 1) * seq.tileAnimDelay
 
-            -- Animate to final multiplied value
-            gameState.formulaTargetValue = finalScore
-            gameState.formulaCountSpeed = math.max(150, (finalScore - seq.accumulatedValue) * 2)
+            if seq.timer >= bonusDelay then
+                if not seq.waitingForCounterToReach then
+                    -- Trigger this bonus animation
+                    seq.accumulatedValue = seq.accumulatedValue + bonus.value
+                    gameState.formulaTargetValue = seq.accumulatedValue
+                    gameState.formulaCountSpeed = math.max(150, bonus.value * 2)
 
-            -- Change color to pink for multiplication
-            gameState.formulaAnimation.color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+                    -- Add multiplier bonus if present
+                    if bonus.multiplierBonus and bonus.multiplierBonus > 0 then
+                        seq.accumulatedMultiplier = seq.accumulatedMultiplier + bonus.multiplierBonus
+                        gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                    end
 
-            seq.phase = "final"
-            seq.showingFinal = true
+                    -- Set color for this bonus
+                    gameState.formulaAnimation.color = bonus.color
+
+                    seq.waitingForCounterToReach = true
+                else
+                    -- Wait for counter to reach target before moving to next bonus
+                    local baseReached = (bonus.value == 0 or gameState.formulaDisplayValue >= seq.accumulatedValue - 1)
+                    local multReached = (bonus.multiplierBonus == 0 or gameState.multiplierDisplayValue >= seq.accumulatedMultiplier - 0.5)
+
+                    if baseReached and multReached then
+                        seq.contractBonusIndex = seq.contractBonusIndex + 1
+                        seq.waitingForCounterToReach = false
+                        seq.timer = 0
+                    end
+                end
+            end
+        else
+            -- All contract bonuses animated, pause then show multiplier
+            seq.phase = "show_multiplier"
             seq.timer = 0
         end
-    elseif seq.phase == "final" then
-        -- Wait for formula to reach final value, then transfer
-        local breakdown = Scoring.getScoreBreakdown(seq.tiles)
-        if gameState.formulaDisplayValue >= breakdown.total - 1 then
-            -- Brief wait before transferring
-            if seq.timer >= 0.2 then
-                seq.phase = "transferring"
-                seq.timer = 0
+    elseif seq.phase == "show_multiplier" then
+        -- Pause for 0.5s before showing multiplier
+        if seq.timer >= 0.5 then
+            seq.phase = "multiplying"
+            seq.showingMultiplier = true
+            seq.timer = 0
+        end
+    elseif seq.phase == "multiplying" then
+        -- Substage 1: Animate multiplier moving up to score position
+        if not seq.multiplierFusing then
+            seq.multiplierFusing = true
 
-                -- Start transfer animation: move formula up and fade out (faster)
-                UI.Animation.animateTo(gameState.formulaAnimation, {yOffset = -50, opacity = 0}, 0.5, "easeOutQuart", function()
-                    -- Transfer complete, update score
-                    completeScoringSequence()
-                end)
+            -- Animate multiplier fusion (move up to score position over 0.6 seconds, then disappear)
+            UI.Animation.animateTo(gameState.formulaAnimation, {fusionProgress = 1}, 0.6, "easeOutQuart", function()
+                -- When multiplier reaches score and disappears, start counting score up
+                seq.multiplierFused = true
 
-                -- Change color to black (outline) for transfer
-                gameState.formulaAnimation.color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1}
+                local finalScore = Scoring.calculateScore(seq.tiles)
+
+                -- Start animating score from base to final multiplied value
+                gameState.formulaTargetValue = finalScore
+                gameState.formulaCountSpeed = math.max(150, (finalScore - gameState.formulaDisplayValue) * 2)
+            end)
+        end
+
+        -- Substage 2: Wait for score to finish counting up
+        if seq.multiplierFused then
+            local finalScore = Scoring.calculateScore(seq.tiles)
+            if gameState.formulaDisplayValue >= finalScore - 1 then
+                -- Score finished counting, wait 0.5s then transfer
+                if not seq.waitingForTransfer then
+                    seq.waitingForTransfer = true
+                    seq.timer = 0
+                end
+
+                if seq.timer >= 0.5 then
+                    seq.phase = "transferring"
+                    seq.timer = 0
+
+                    -- Start transfer animation: move formula up and fade out
+                    UI.Animation.animateTo(gameState.formulaAnimation, {yOffset = -50, opacity = 0}, 0.5, "easeOutQuart", function()
+                        -- Transfer complete, update score
+                        completeScoringSequence()
+                    end)
+
+                    -- Change color to black (outline) for transfer
+                    gameState.formulaAnimation.color = {UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1}
+                end
             end
         end
     elseif seq.phase == "transferring" then
@@ -1379,7 +1727,7 @@ function updateScoringSequence(dt)
     end
 end
 
-function animateTileScoring(tile)
+function animateTileScoring(tile, valueInfo)
     -- Create satisfying punch-out shake effect
     tile.scoreScale = tile.scoreScale or 1.0
     tile.scoreShake = tile.scoreShake or 0
@@ -1389,11 +1737,11 @@ function animateTileScoring(tile)
 
     local seq = gameState.scoringSequence
     local isFinalTile = (seq.currentTileIndex == #seq.tiles)
-    
+
     if isFinalTile then
         seq.finalTileAnimating = true
     end
-    
+
     UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
         UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack", function()
             -- If this was the final tile, mark that it's done animating
@@ -1402,20 +1750,57 @@ function animateTileScoring(tile)
             end
         end)
     end)
-    
+
     -- Add shake effect
     tile.scoreShake = 5
     UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
-    
+
     -- Animate the formula counter as well
     seq.formulaAnimation = seq.formulaAnimation or {scale = 1.0, shake = 0}
     seq.formulaAnimation.scale = 1.0
     seq.formulaAnimation.shake = 3
-    
+
     UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.2}, 0.1, "easeOutBack", function()
         UI.Animation.animateTo(seq.formulaAnimation, {scale = 1.0}, 0.2, "easeOutBack")
     end)
     UI.Animation.animateTo(seq.formulaAnimation, {shake = 0}, 0.3, "easeOutQuart")
+
+    spawnTileScoringPopup(tile, valueInfo)
+end
+
+function spawnTileScoringPopup(tile, valueInfo)
+    if not valueInfo or valueInfo.isBanned then return end
+
+    local popX = tile.x
+    local popY = tile.y - 40
+
+    -- Combined sum (pips + enhance + double + contract) — #ffd7d7 (FONT_WHITE)
+    if valueInfo.totalAdded > 0 then
+        UI.Animation.createFloatingText("+" .. valueInfo.totalAdded, popX, popY, {
+            color        = UI.Colors.FONT_WHITE,
+            fontSize     = "counter",
+            duration     = 1.5,
+            riseDistance = 50,
+            startScale   = 0.4,
+            endScale     = 1.3,
+            easing       = "easeOutBack",
+            bounce       = true,
+        })
+    end
+
+    -- Relic multiplier boost — #ff8d99 (FONT_PINK), falls downward to distinguish from sum
+    if valueInfo.isRelic then
+        UI.Animation.createFloatingText("+1 mult", popX, tile.y + 22, {
+            color        = UI.Colors.FONT_PINK,
+            fontSize     = "large",
+            duration     = 1.5,
+            riseDistance = -50,
+            startScale   = 0.4,
+            endScale     = 1.2,
+            easing       = "easeOutBack",
+            bounce       = true,
+        })
+    end
 end
 
 function completeScoringSequence()
@@ -1515,7 +1900,7 @@ function completeScoringSequence()
 
     if not isGameEnding then
         -- Only refill hand if game is continuing
-        local drawnCount, drawnTiles = Hand.refillHand(gameState.hand, gameState.deck, 7)
+        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then
@@ -1548,12 +1933,28 @@ function updateRoundIntro(dt)
             -- Play a random typewriter sound for each character
             UI.Audio.playTypewriter()
 
+            -- Dramatic pause between "Night X" and ": Subtitle" for nights 1-5
+            if anim.midPauseAt > 0
+               and anim.currentCharIndex == anim.midPauseAt
+               and not anim.midPauseDone then
+                anim.phase = "mid_pausing"
+                anim.midPauseTimer = 0
+                return
+            end
+
             -- Check if we've typed all characters
             if anim.currentCharIndex >= #anim.text then
                 anim.currentCharIndex = #anim.text
                 anim.phase = "pausing"
                 anim.pauseTimer = 0
             end
+        end
+
+    elseif anim.phase == "mid_pausing" then
+        anim.midPauseTimer = anim.midPauseTimer + dt
+        if anim.midPauseTimer >= anim.midPauseDuration then
+            anim.midPauseDone = true
+            anim.phase = "typing"
         end
 
     elseif anim.phase == "pausing" then
@@ -1619,7 +2020,8 @@ function updateFusionDialogue(dt)
     local dialogue = gameState.dialogueAnimation
 
     -- Only run during fusion menu
-    if gameState.gamePhase ~= "tiles_menu" or gameState.currentTilesNodeType ~= "alchemy" then
+    if gameState.gamePhase ~= "tiles_menu" or
+       (gameState.currentTilesNodeType ~= "alchemy" and gameState.currentTilesNodeType ~= "alchemy_subtract") then
         return
     end
 
@@ -1658,6 +2060,67 @@ function updateFusionDialogue(dt)
     end
 
     -- Use centralized dialogue update for animation logic
+    Dialogue.update(dt)
+end
+
+
+function updateEnhanceDialogue(dt)
+    local enhState = gameState.enhanceDialogueState
+    local dialogue = gameState.dialogueAnimation
+
+    if gameState.gamePhase ~= "tiles_menu" or gameState.currentTilesNodeType ~= "enhance" then
+        return
+    end
+
+    -- 1. Show initial greeting ~1s after entering screen
+    if not enhState.enteredScreen then
+        enhState.idleTimer = enhState.idleTimer + dt
+        if enhState.idleTimer >= 1.0 and not dialogue.isActive then
+            local greetText = Dialogue.getRandomPhrase("enhance_menu", "greetings")
+            if greetText then
+                Dialogue.show(greetText, {
+                    category = "enhance_greeting",
+                    skipDelay = true,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
+            enhState.enteredScreen = true
+            enhState.idleTimer = 0
+        end
+        return
+    end
+
+    -- 2. Once greeting dismissed, show drag prompt if no tile in slot yet
+    if not enhState.shownDragPrompt and not gameState.enhanceSlotTile and not dialogue.isActive then
+        Dialogue.show("DRAG A TILE TO ENHANCE IT", {
+            category = "enhance_drag",
+            skipDelay = true,
+            requiresAction = true,
+            autoDissmissTime = nil
+        })
+        enhState.shownDragPrompt = true
+        enhState.idleTimer = 0
+        return
+    end
+
+    -- 3. Idle random remarks
+    if not dialogue.isActive then
+        enhState.idleTimer = enhState.idleTimer + dt
+        if enhState.idleTimer >= enhState.idleTriggerTime then
+            local idleText = Dialogue.getRandomPhrase("enhance_menu", "idle")
+            if idleText then
+                Dialogue.show(idleText, {
+                    category = "enhance_idle",
+                    skipDelay = true,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
+            enhState.idleTimer = 0
+        end
+    end
+
     Dialogue.update(dt)
 end
 
@@ -1871,8 +2334,165 @@ function updateCandleLightAnimation(dt)
     end
 end
 
+local function updateIrisAnimation(dt)
+    local ia = gameState.irisAnimation
+    if not ia.active then return end
+
+    ia.elapsed = ia.elapsed + dt
+    local duration = (ia.phase == "closing") and 0.8 or 0.7
+    ia.progress = math.min(ia.elapsed / duration, 1)
+
+    if ia.progress >= 1 then
+        if ia.phase == "closing" then
+            if ia.pendingAction then
+                ia.pendingAction()
+                ia.pendingAction = nil
+            end
+            ia.phase    = "opening"
+            ia.elapsed  = 0
+            ia.progress = 0
+            ia.centerX  = gameState.screen.width  / 2
+            ia.centerY  = gameState.screen.height / 2
+        else
+            ia.active = false
+            ia.phase  = "idle"
+        end
+    end
+end
+
+-- ── Hand tile fire simulation ─────────────────────────────────────────────────
+-- 2× coarser grid = 2× larger flame pixels. TILE_FIRE_H > TILE_FIRE_SPRITE_H lets
+-- flames overflow above tile. Visual output size is unchanged (renderer scales to fit).
+local TILE_FIRE_W        = 10   -- fire grid width  (controls horizontal pixel size)
+local TILE_FIRE_SPRITE_H = 20   -- fire rows that map to the sprite height
+local TILE_FIRE_H        = 30   -- total fire rows (30-20=10 rows extend above sprite)
+
+-- Heat-source mask derived from the domino sprite's alpha channel.
+-- All standard tiles share the same outer rounded-rectangle boundary, so 00.png
+-- gives the correct per-column mask for every tile in the deck.
+local heatSourceMask = (function()
+    local imgData = love.image.newImageData("sprites/tiles/00.png")
+    local imgW, imgH = imgData:getWidth(), imgData:getHeight()
+    local mask = {}
+    for fx = 1, TILE_FIRE_W do
+        local px = math.max(0, math.min(imgW - 1,
+                    math.floor((fx - 0.5) / TILE_FIRE_W * imgW)))
+        local inside = false
+        for row = 0, 4 do
+            local _, _, _, a = imgData:getPixel(px, imgH - 1 - row)
+            if a > 0.1 then inside = true; break end
+        end
+        mask[fx] = inside and 36 or 0
+    end
+    return mask
+end)()
+
+local tileFirePalette = (function()
+    local stops = {
+        {0,  {0,    0,    0,    0   }},
+        {5,  {0.22, 0,    0,    0.50}},
+        {15, {1,    0,    0,    0.60}},
+        {26, {1,    0.55, 0,    0.65}},
+        {35, {1,    1,    0,    0.65}},
+        {36, {1,    1,    1,    0.65}},
+    }
+    local p = {}
+    for heat = 0, 36 do
+        local lo, hi
+        for i = 1, #stops - 1 do
+            if heat >= stops[i][1] and heat <= stops[i + 1][1] then
+                lo, hi = stops[i], stops[i + 1]
+                break
+            end
+        end
+        local t  = (heat - lo[1]) / (hi[1] - lo[1])
+        local lc, hc = lo[2], hi[2]
+        p[heat + 1] = {
+            lc[1] + t * (hc[1] - lc[1]),
+            lc[2] + t * (hc[2] - lc[2]),
+            lc[3] + t * (hc[3] - lc[3]),
+            lc[4] + t * (hc[4] - lc[4]),
+        }
+    end
+    return p
+end)()
+
+local function initTileFire(domino)
+    domino.fireGrid = {}
+    for y = 1, TILE_FIRE_H do
+        domino.fireGrid[y] = {}
+        for x = 1, TILE_FIRE_W do
+            domino.fireGrid[y][x] = 0
+        end
+    end
+    for seedY = TILE_FIRE_H - 2, TILE_FIRE_H do
+        for x = 1, TILE_FIRE_W do
+            domino.fireGrid[seedY][x] = heatSourceMask[x]
+        end
+    end
+    domino.fireData  = love.image.newImageData(TILE_FIRE_W, TILE_FIRE_H)
+    domino.fireImage = love.graphics.newImage(domino.fireData)
+    domino.fireImage:setFilter("nearest", "nearest")
+end
+
+local function stepTileFire(domino)
+    local grid = domino.fireGrid
+    for x = 1, TILE_FIRE_W do
+        grid[TILE_FIRE_H][x] = heatSourceMask[x]
+    end
+    -- Scatter toward center with alternating scan direction.
+    -- Alternating left↔right each step cancels the iteration-order bias that
+    -- causes persistent directional lean in scatter mode.
+    -- Inward bias (35%) makes flames taper toward the centre as they rise.
+    local mid = (TILE_FIRE_W + 1) * 0.5
+    domino._fireScanLeft = not (domino._fireScanLeft ~= false)
+    local x0, x1, dx = domino._fireScanLeft and 1 or TILE_FIRE_W,
+                        domino._fireScanLeft and TILE_FIRE_W or 1,
+                        domino._fireScanLeft and 1 or -1
+    -- bodyThreshold: bottom 2/3 of sprite = near-vertical, low decay → solid body
+    -- rows above it (top 1/3 + above-sprite rows): fast decay → flames vanish ~20px up
+    local bodyThreshold = TILE_FIRE_H - math.floor(TILE_FIRE_SPRITE_H * 2 / 3)  -- row 34
+    for y = 2, TILE_FIRE_H do
+        for x = x0, x1, dx do
+            local heat = grid[y][x]
+            local xOff, decay
+            if y > bodyThreshold then
+                -- Body: near-vertical columns, minimal decay
+                xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
+                decay = love.math.random() < 0.60 and 1 or 0
+            else
+                -- Tips: center-inward scatter, faster decay so flames die naturally
+                local inward = x < mid and 1 or -1
+                xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
+                decay = love.math.random(2, 3)
+            end
+            local tx = math.max(1, math.min(TILE_FIRE_W, x + xOff))
+            grid[y - 1][tx] = math.max(0, heat - decay)
+        end
+    end
+    local data = domino.fireData
+    for y = 1, TILE_FIRE_H do
+        for x = 1, TILE_FIRE_W do
+            local col = tileFirePalette[grid[y][x] + 1]
+            data:setPixel(x - 1, y - 1, col[1], col[2], col[3], col[4])
+        end
+    end
+    domino.fireImage:replacePixels(data)
+end
+
+local _fireFrame = 0
+local function updateHandFire()
+    if not gameState.debugFireHand then return end
+    _fireFrame = (_fireFrame + 1) % 6
+    for _, domino in ipairs(gameState.hand) do
+        if not domino.fireGrid then initTileFire(domino) end
+        if _fireFrame == 0 then stepTileFire(domino) end
+    end
+end
+
 function love.update(dt)
     Touch.update(dt)
+    updateIrisAnimation(dt)
     UI.Animation.update(dt)
     UI.Animation.updateShadowFlicker(dt)
     UI.Animation.updateDiePhysics(dt)
@@ -1920,26 +2540,29 @@ function love.update(dt)
 
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
-            Board.update(dt)
+            updateHandFire()
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" then
-        -- Handle fusion-specific dialogue when in alchemy mode
-        if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "alchemy" then
+        -- Handle mode-specific dialogue for tiles_menu sub-modes
+        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
+        elseif gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
+            updateEnhanceDialogue(dt)
         else
             -- Update dialogue for regular shop screens
             Dialogue.update(dt)
 
-            -- Handle idle timer for shop flavour text
+            -- Handle idle timer for shop/contracts flavour text
             local dialogue = gameState.dialogueAnimation
-            if not dialogue.isActive and gameState.gamePhase == "tiles_menu" then
+            local idlePhase = gameState.gamePhase
+            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu") then
                 dialogue.idleTimer = dialogue.idleTimer + dt
 
                 -- Trigger random idle remark after 10 seconds
                 if dialogue.idleTimer >= 10.0 then
-                    local idleText = Dialogue.getRandomPhrase("tiles_menu", "idle")
+                    local idleText = Dialogue.getRandomPhrase(idlePhase, "idle")
                     if idleText then
                         Dialogue.show(idleText, {
                             category = "idle",
@@ -1959,14 +2582,38 @@ function love.update(dt)
         end
 
         if gameState.gamePhase == "tiles_menu" then
-            local isFusionMode = (gameState.currentTilesNodeType == "alchemy")
-            if isFusionMode then
+            local tileNodeType = gameState.currentTilesNodeType
+            if tileNodeType == "alchemy" or tileNodeType == "alchemy_subtract" then
                 -- Update fusion hand with all animations (like combat/shop hand)
                 if gameState.fusionHand then
                     Hand.updatePositions(gameState.fusionHand)
                     Hand.updateDrawAnimations(gameState.fusionHand, dt)  -- Draw animation (tiles sliding in from right)
                     Hand.updateDiscardAnimations(gameState.fusionHand, dt)  -- Discard animation (tiles falling down)
                     Hand.updateIdleAnimations(gameState.fusionHand, dt)  -- Idle floating/rotation
+                end
+            elseif tileNodeType == "enhance" then
+                -- Update enhance hand with all animations
+                if gameState.enhanceHand then
+                    Hand.updatePositions(gameState.enhanceHand)
+                    Hand.updateDrawAnimations(gameState.enhanceHand, dt)
+                    Hand.updateDiscardAnimations(gameState.enhanceHand, dt)
+                    Hand.updateIdleAnimations(gameState.enhanceHand, dt)
+                end
+            elseif tileNodeType == "pawn" then
+                -- Update pawn hand with all animations
+                if gameState.pawnHand then
+                    Hand.updatePositions(gameState.pawnHand, true)
+                    Hand.updateDrawAnimations(gameState.pawnHand, dt)
+                    Hand.updateDiscardAnimations(gameState.pawnHand, dt)
+                    Hand.updateIdleAnimations(gameState.pawnHand, dt)
+                end
+            elseif tileNodeType == "flatten" then
+                -- Update flatten hand with all animations
+                if gameState.flattenHand then
+                    Hand.updatePositions(gameState.flattenHand, true)
+                    Hand.updateDrawAnimations(gameState.flattenHand, dt)
+                    Hand.updateDiscardAnimations(gameState.flattenHand, dt)
+                    Hand.updateIdleAnimations(gameState.flattenHand, dt)
                 end
             else
                 -- Update shop hand tiles with all animations (like combat hand)
@@ -2025,11 +2672,27 @@ function love.update(dt)
             UI.Audio.stopMapAmbiance()
         end
     end
+
+    -- Tooltip fade animation (no auto-dismiss; dismissed only by tap)
+    local tt = gameState.tooltip
+    if tt.fadeIn then
+        local t = math.min(1.0, tt.opacity + dt * 10)
+        tt.opacity = t
+        -- easeOutBack-ish: overshoot then settle
+        local s = t * t * (3 - 2 * t)  -- smoothstep
+        tt.animScale = 0.82 + s * 0.22  -- 0.82 → 1.04 → ~1.0 (slight overshoot via smoothstep)
+        if tt.opacity >= 1.0 then tt.fadeIn = false; tt.animScale = 1.0 end
+    elseif tt.fadeOut then
+        local t = math.max(0.0, tt.opacity - dt * 14)
+        tt.opacity = t
+        tt.animScale = 0.88 + t * 0.12  -- shrinks as it fades
+        if tt.opacity <= 0.0 then tt.fadeOut = false; tt.visible = false; tt.animScale = 1.0 end
+    end
 end
 
 function love.draw()
     -- PASS 1: Render entire game to canvas
-    love.graphics.setCanvas(mainCanvas)
+    love.graphics.setCanvas({mainCanvas, stencil = true})
     -- Don't clear here - let each screen phase handle its own background properly
     
     UI.Layout.begin()
@@ -2045,11 +2708,10 @@ function love.draw()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
         UI.Renderer.drawBackground()
         UI.Renderer.drawCombatCandles()  -- Draw candles in hand area
-        UI.Renderer.drawBoard(gameState.board)
         UI.Renderer.drawPlacedTiles()
         UI.Animation.drawDiePhysics()  -- Draw flying/settling dice
         UI.Renderer.drawActiveDieSprites()  -- Draw settled dice on board
-        UI.Renderer.drawToolButtons()  -- Draw tool buttons (tool stack)
+        UI.Renderer.drawToolSprites()  -- Draw tool stack
         UI.Renderer.drawHand(gameState.hand)  -- Draw hand on top of tool stack
         UI.Renderer.drawScore(gameState.score)
         UI.Renderer.drawUI()
@@ -2066,45 +2728,66 @@ function love.draw()
 
         UI.Renderer.drawDialogue()  -- Draw demon dialogue at top (includes tutorial when enabled)
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
         -- Draw game over overlay for won state (button only, no full overlay)
-        if gameState.gamePhase == "won" then
+        if gameState.gamePhase == "won" and not gameState.deckPreviewOpen then
             UI.Renderer.drawGameOver()
         end
     elseif gameState.gamePhase == "map" then
         UI.Renderer.drawMap()
         UI.Renderer.drawDialogue()  -- Draw dialogue on map screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "node_confirmation" then
         UI.Renderer.drawMap()  -- Draw map background
         UI.Renderer.drawNodeConfirmation()  -- Draw confirmation dialog on top
         UI.Renderer.drawDialogue()  -- Draw dialogue on node confirmation screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "artifacts_menu" then
         UI.Renderer.drawArtifactsMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on artifacts shop screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "contracts_menu" then
         UI.Renderer.drawContractsMenu()
+        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on contracts screen
+        UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "lost" then
         UI.Renderer.drawGameOver()
+    elseif gameState.gamePhase == "run_complete" then
+        UI.Renderer.drawRunCompleteScreen()
     end
     
     UI.Animation.drawFloatingTexts()
-    
+    UI.Renderer.drawTooltip()
+
+    if gameState.irisAnimation.active then
+        UI.Renderer.drawIrisOverlay()
+    end
+
     UI.Layout.finish()
-    
+
     -- PASS 2: Apply CRT shader and render canvas to screen
     love.graphics.setCanvas()  -- Reset to screen
     
@@ -2404,7 +3087,7 @@ function loadDominoSprites()
         if dominoSprites[key] and dominoSprites[key].sprite then
             dominoSprites[reverseKey] = {
                 sprite = dominoSprites[key].sprite,
-                inverted = true
+                inverted = false
             }
         end
     end
@@ -2424,7 +3107,7 @@ function loadDominoSprites()
         if dominoSprites[key] and dominoSprites[key].sprite then
             dominoSprites[reverseKey] = {
                 sprite = dominoSprites[key].sprite,
-                inverted = true
+                inverted = false
             }
         end
     end
@@ -2500,7 +3183,7 @@ function loadDominoSprites()
     if dominoSprites["oddeven"] and dominoSprites["oddeven"].sprite then
         dominoSprites["evenodd"] = {
             sprite = dominoSprites["oddeven"].sprite,
-            inverted = true
+            inverted = false
         }
     end
 
@@ -2517,7 +3200,7 @@ function loadDominoSprites()
             local reverseKey = "even" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = true
+                flipped = false
             }
         end
     end
@@ -2534,7 +3217,7 @@ function loadDominoSprites()
             local reverseKey = "odd" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = true
+                flipped = false
             }
         end
     end
@@ -2574,7 +3257,7 @@ function loadDominoSprites()
         -- Create reverse mapping (x-odd)
         dominoTiltedSprites["xodd"] = {
             sprite = rawTiltedSprites["oddx"],
-            flipped = true
+            flipped = false
         }
     end
     if rawTiltedSprites["evenx"] then
@@ -2585,7 +3268,7 @@ function loadDominoSprites()
         -- Create reverse mapping (x-even)
         dominoTiltedSprites["xeven"] = {
             sprite = rawTiltedSprites["evenx"],
-            flipped = true
+            flipped = false
         }
     end
 
@@ -2603,7 +3286,7 @@ function loadDominoSprites()
     if rawTiltedSprites["oddeven"] then
         dominoTiltedSprites["evenodd"] = {
             sprite = rawTiltedSprites["oddeven"],
-            flipped = true
+            flipped = false
         }
     end
 end
@@ -2668,9 +3351,13 @@ function loadNodeSprites()
         combat = "combat",
         tiles = "tile",      -- Legacy node type (backward compatibility)
         trade = "tile",      -- TRADE nodes use tile sprite
-        alchemy = "tile",    -- ALCHEMY nodes use tile sprite
+        alchemy = "tile",          -- ALCHEMY nodes use tile sprite
+        alchemy_subtract = "tile", -- ALCHEMY SUBTRACT nodes use tile sprite
         artifacts = "artifact",
         contracts = "contract",
+        enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
+        pawn = "tile",       -- PAWN nodes use tile sprite (same as alchemy/trade)
+        flatten = "tile",    -- FLATTEN nodes use tile sprite (same as enhance)
         start = "tile",      -- Fallback to tile sprite
         boss = "combat"      -- Fallback to combat sprite
     }
@@ -2710,11 +3397,11 @@ function loadDemonIconSprites()
     -- List of all demon icon names to load
     local demonNames = {
         -- Boss demons
-        "LUCIFER", "BEELZEBUB", "BELIAL", "ASMODEUS", "LEVIATHAN",
+        "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN",
         -- Shop demons
         "MAMMON", "PAIMON", "LILITH", "STOLAS",
         -- Other demons (for completeness)
-        "ASTAROTH", "PAZUZU",
+        "BELIAL", "PAZUZU",
         -- Intro dialogue
         "IMPLOYEE",
         -- Fallback
@@ -2796,7 +3483,7 @@ function loadToolSprites()
         bone = "sprites/dice/bone.png",      -- transformer
         brain = "sprites/dice/brain.png",    -- tileLoader, tileInjector
         guts = "sprites/dice/guts.png",      -- extraHand, extraDiscard, knife
-        void = "sprites/dice/void.png",      -- obsidianTransmuter, tenderTransmuter
+        void = "sprites/dice/void.png",      -- relicTransmuter, tenderTransmuter
         blood = "sprites/dice/blood.png"     -- demonReloader
     }
 
@@ -2821,6 +3508,32 @@ function loadCupSprites()
     end
 end
 
+function loadMapItemSprites()
+    mapItemSprites = {}
+    local categories = {
+        "food-common", "food-rare", "empty-food",
+        "misc-common", "misc-rare",
+        "shop", "fuse", "contracts", "tools"
+    }
+    for _, category in ipairs(categories) do
+        mapItemSprites[category] = {}
+        local dir = "sprites/map-items/" .. category
+        local files = love.filesystem.getDirectoryItems(dir)
+        if files then
+            for _, filename in ipairs(files) do
+                if filename:match("%.png$") then
+                    local path = dir .. "/" .. filename
+                    if love.filesystem.getInfo(path) then
+                        local img = love.graphics.newImage(path)
+                        img:setFilter("nearest", "nearest")
+                        table.insert(mapItemSprites[category], {image = img, filename = filename})
+                    end
+                end
+            end
+        end
+    end
+end
+
 -- Map tool IDs to their sprite types
 function getToolSpriteType(toolId)
     local spriteMap = {
@@ -2830,7 +3543,7 @@ function getToolSpriteType(toolId)
         extraHand = "guts",
         extraDiscard = "guts",
         knife = "guts",
-        obsidianTransmuter = "void",
+        relicTransmuter = "void",
         tenderTransmuter = "void",
         demonReloader = "blood"
     }

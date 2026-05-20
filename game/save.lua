@@ -28,9 +28,14 @@ function Save.saveGame(gameState)
         -- Tools/Artifacts (player's owned tools)
         ownedTools = gameState.ownedTools or {},
 
+        -- Contracts (player's active contracts)
+        activeContracts = gameState.activeContracts or {},
+        offeredContracts = gameState.offeredContracts or {},
+
         -- Map state
         mapData = nil,
         isBossRound = gameState.isBossRound or false,
+        isEndlessMode = gameState.isEndlessMode or false,
 
         -- Timestamp
         saveTime = os.time()
@@ -44,7 +49,8 @@ function Save.saveGame(gameState)
                 right = tile.right,
                 leftScore = tile.leftScore,    -- Preserve score overrides (for fused tiles)
                 rightScore = tile.rightScore,  -- Preserve score overrides (for fused tiles)
-                tileType = tile.tileType       -- Preserve tile type (regular/demon/obsidian)
+                tileType = tile.tileType,      -- Preserve tile type (regular/demon/relic)
+                negative = tile.negative       -- Preserve negative flag
             })
         end
     end
@@ -133,7 +139,7 @@ function Save.serializeMap(map)
         traversedConnections = {},  -- Save path history
         screenWidth = map.screenWidth or 800,
         screenHeight = map.screenHeight or 600,
-        currentRound = map.currentRound or 1,
+        currentNight = map.currentNight or 1,
         candles = {},  -- Save candle states
         levels = {}
     }
@@ -219,7 +225,7 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         candles = {},  -- Will be restored after node positioning
         screenWidth = mapData.screenWidth or screenWidth or 800,
         screenHeight = mapData.screenHeight or screenHeight or 600,
-        currentRound = mapData.currentRound or 1,
+        currentNight = mapData.currentNight or 1,
         columns = {}  -- Legacy compatibility
     }
 
@@ -337,6 +343,12 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
 
     -- Update path visibility to show traversed paths
     Map.updatePathVisibility(map)
+
+    -- Map items are never serialized; regenerate from the restored map structure
+    Map.generateMapItems(map, map.screenWidth, map.screenHeight)
+
+    -- Populate sprites near nodes that are already unreachable at load time
+    Map.refreshDiscardedNodeSprites(map)
 
     return map
 end

@@ -464,10 +464,15 @@ function UI.TitleScreen.continueGame()
     gameState.baseTargetScore = TARGET_SCORE
     gameState.coins = saveData.coins or 0
     gameState.isBossRound = saveData.isBossRound or false
+    gameState.isEndlessMode = saveData.isEndlessMode or false
     gameState.currentDay = saveData.currentDay or 1
 
     -- Restore owned tools
     gameState.ownedTools = saveData.ownedTools or {}
+
+    -- Restore contracts
+    gameState.activeContracts = saveData.activeContracts or {}
+    gameState.offeredContracts = saveData.offeredContracts or {}
 
     -- Restore tile collection
     gameState.tileCollection = {}
@@ -475,8 +480,9 @@ function UI.TitleScreen.continueGame()
         for _, tileData in ipairs(saveData.tileCollection) do
             -- Use Domino.new to ensure ID is properly assigned, then restore all properties
             local tile = Domino.new(tileData.left, tileData.right, tileData.leftScore, tileData.rightScore)
-            -- Restore tile type (regular/demon/obsidian) - important for visual persistence
+            -- Restore tile type and negative flag - important for visual persistence
             tile.tileType = tileData.tileType or "regular"
+            tile.negative = tileData.negative or false
             table.insert(gameState.tileCollection, tile)
         end
     else
@@ -495,7 +501,6 @@ function UI.TitleScreen.continueGame()
     -- Initialize combat-specific state (in case player was mid-combat)
     gameState.deck = {}
     gameState.hand = {}
-    gameState.board = {}
     gameState.placedTiles = {}
     gameState.score = 0
     gameState.gamePhase = "playing"
