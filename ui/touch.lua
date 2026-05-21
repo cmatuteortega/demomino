@@ -36,6 +36,7 @@ local touchState = {
     casinoHitPressed           = false,
     casinoStandPressed         = false,
     casinoNextPressed          = false,
+    casinoAgainPressed         = false,
     -- Tool sprite press tracking (for touch release selection)
     pressedToolIndex = nil,
     pressedToolId = nil
@@ -478,19 +479,11 @@ function Touch.pressed(x, y, istouch, touchId)
             if casino.phase == "player_turn" and not casino.waitingForHitAnim then
                 if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
                     UI.Audio.playButtonTap()
-                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
-                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
-                    }, 0.3, "easeOutQuart")
                     touchState.casinoHitPressed = true
                     return
                 end
                 if casino.standButton and isPointInRect(x, y, casino.standButton) then
                     UI.Audio.playButtonTap()
-                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
-                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
-                    }, 0.3, "easeOutQuart")
                     touchState.casinoStandPressed = true
                     return
                 end
@@ -498,11 +491,12 @@ function Touch.pressed(x, y, istouch, touchId)
             if casino.phase == "done" then
                 if casino.nextButton and isPointInRect(x, y, casino.nextButton) then
                     UI.Audio.playButtonTap()
-                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
-                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
-                    }, 0.3, "easeOutQuart")
                     touchState.casinoNextPressed = true
+                    return
+                end
+                if casino.againButton and isPointInRect(x, y, casino.againButton) then
+                    UI.Audio.playButtonTap()
+                    touchState.casinoAgainPressed = true
                     return
                 end
             end
@@ -2034,21 +2028,7 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.casinoHitPressed = false
                 if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
                     UI.Audio.playButtonRelease()
-                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
-                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
-                    }, 0.1, "easeOutQuart", function()
-                        casinoPlayerHit()
-                        UI.Animation.animateTo(casino.hitButtonAnimation.color, {
-                            [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                            [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-                        }, 0.2, "easeOutQuart")
-                    end)
-                else
-                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-                    }, 0.3, "easeOutQuart")
+                    casinoPlayerHit()
                 end
                 touchState.isPressed = false
                 touchState.touchId   = nil
@@ -2058,21 +2038,7 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.casinoStandPressed = false
                 if casino.standButton and isPointInRect(x, y, casino.standButton) then
                     UI.Audio.playButtonRelease()
-                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
-                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
-                    }, 0.1, "easeOutQuart", function()
-                        casinoPlayerStand()
-                        UI.Animation.animateTo(casino.standButtonAnimation.color, {
-                            [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                            [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-                        }, 0.2, "easeOutQuart")
-                    end)
-                else
-                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-                    }, 0.3, "easeOutQuart")
+                    casinoPlayerStand()
                 end
                 touchState.isPressed = false
                 touchState.touchId   = nil
@@ -2082,20 +2048,21 @@ function Touch.released(x, y, istouch, touchId)
                 touchState.casinoNextPressed = false
                 if casino.nextButton and isPointInRect(x, y, casino.nextButton) then
                     UI.Audio.playButtonRelease()
-                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
-                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
-                    }, 0.1, "easeOutQuart", function()
-                        gameState.hand = {}
-                        gameState.casino.dealerTiles = {}
-                        Dialogue.clear()
-                        gameState.gamePhase = "map"
-                    end)
-                else
-                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
-                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-                    }, 0.3, "easeOutQuart")
+                    gameState.hand = {}
+                    gameState.casino.dealerTiles = {}
+                    Dialogue.clear()
+                    gameState.gamePhase = "map"
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+            if touchState.casinoAgainPressed then
+                touchState.casinoAgainPressed = false
+                if casino.againButton and isPointInRect(x, y, casino.againButton) then
+                    UI.Audio.playButtonRelease()
+                    gameState.hand = {}
+                    initializeCasino()
                 end
                 touchState.isPressed = false
                 touchState.touchId   = nil

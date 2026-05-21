@@ -71,14 +71,14 @@ DemonData.REGULAR_DEMON_SUBTITLES = {
     "SORRY DEMON"
 }
 
--- Boss demon names
+-- Boss demon names, pending to add baal, belphegor, moloch, baphomet, azazel
 DemonData.BOSS_DEMON_NAMES = {
     "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN"
 }
 
 -- Boss demon subtitles (matching order)
 DemonData.BOSS_DEMON_SUBTITLES = {
-    "LORD OF HELL", "LORD OF FLIES", "TOO COOL FOR HELL", "THE CALAMITY", "THE TITAN"
+    "LORD OF HELL", "LORD OF FLIES", "DUKE OF HELL", "THE CALAMITY", "THE TITAN"
 }
 
 -- Special demon data (shop keepers, etc.)

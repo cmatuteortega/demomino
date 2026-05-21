@@ -2438,8 +2438,18 @@ end
 
 function initializeCasino()
     local casino = gameState.casino
+
+    -- Broke player charity
+    if gameState.coins <= 0 then
+        updateCoins(1)
+        -- Special intro dialogue is set below after state reset; flag it here
+        casino._brokeIntro = true
+    else
+        casino._brokeIntro = false
+    end
+
     casino.phase = "dialogue"
-    casino.betAmount = math.max(0, math.ceil(gameState.coins / 3))
+    casino.betAmount = math.max(1, math.ceil(gameState.coins / 3))
     casino.betPaid = false
     casino.dealerTiles = {}
     casino.dealerPips = 0
@@ -2452,18 +2462,25 @@ function initializeCasino()
     casino.waitingForHitAnim = false
     casino.displayedDealerPips = 0
     casino.displayedPlayerPips = 0
-    casino.hitButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.hitButtonAnimation   = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
     casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
-    casino.nextButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
-    casino.hitButton = nil
+    casino.nextButtonAnimation  = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.againButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.hitButton   = nil
     casino.standButton = nil
-    casino.nextButton = nil
+    casino.nextButton  = nil
+    casino.againButton = nil
 
     gameState.hand = {}
 
     Dialogue.clear()
     local betText = casino.betAmount == 1 and "1 COIN" or (casino.betAmount .. " COINS")
-    local introText = "BELIAL GRINS. YOUR BET: " .. betText .. "."
+    local introText
+    if casino._brokeIntro then
+        introText = "BELIAL ROLLS HIS EYES. FINE. FROM MY OWN POCKET. BET: 1 COIN."
+    else
+        introText = "BELIAL GRINS. YOUR BET: " .. betText .. "."
+    end
     Dialogue.show(introText, {
         category = "casino_intro",
         skipDelay = true,
@@ -2532,7 +2549,7 @@ local function casinoDrawPlayerTile()
     -- Pick from collection
     local validTiles = {}
     for _, ct in ipairs(gameState.tileCollection) do
-        local pips = (ct.left or 0) + (ct.right or 0)
+        local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
         if pips <= 21 then
             table.insert(validTiles, ct)
         end
@@ -2554,7 +2571,7 @@ local function casinoDrawPlayerTile()
     chosenTile.enhanceBonus = source.enhanceBonus or 0
 
     table.insert(gameState.hand, chosenTile)
-    local pipsAdded = (source.left or 0) + (source.right or 0)
+    local pipsAdded = Domino.getNumericValue(source.left or 0) + Domino.getNumericValue(source.right or 0)
     casino.playerPips = casino.playerPips + pipsAdded
     chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
 
@@ -2576,7 +2593,7 @@ function casinoPlayerHit()
     chosenTile.enhanceBonus = source.enhanceBonus or 0
 
     table.insert(gameState.hand, chosenTile)
-    local pipsAdded = (source.left or 0) + (source.right or 0)
+    local pipsAdded = Domino.getNumericValue(source.left or 0) + Domino.getNumericValue(source.right or 0)
     casino.playerPips = casino.playerPips + pipsAdded
     chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
 
