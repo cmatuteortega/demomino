@@ -102,6 +102,10 @@ DemonData.SPECIAL_DEMONS = {
     PAZUZU = {
         name = "PAZUZU",
         subtitle = "STORM BRINGER"
+    },
+    BELIAL = {
+        name = "BELIAL",
+        subtitle = "THE GAMBLER"
     }
 }
 

@@ -172,7 +172,7 @@ function Map.createNode(depth, path, nodeType)
         id = nodeId,           -- Unique identifier for DAG
         depth = depth,         -- Level in the DAG (1-12)
         path = path,           -- Path index (1-6)
-        nodeType = nodeType,   -- "start", "combat", "trade", "alchemy", "artifacts", "contracts", "boss"
+        nodeType = nodeType,   -- "start", "combat", "trade", "alchemy", "artifacts", "contracts", "boss", "gamble"
         completed = false,
         connections = {},      -- Array of connected node IDs (directed edges)
         position = {x = 0, y = 0}, -- Position coordinates
@@ -219,10 +219,16 @@ function Map.assignDemonNames(map)
             elseif node.nodeType == "enhance" or node.nodeType == "flatten" then
                 -- ENHANCE / FLATTEN node - always PAZUZU
                 node.demonName = "PAZUZU"
+            elseif node.nodeType == "gamble" then
+                -- GAMBLE node - always BELIAL
+                node.demonName = "BELIAL"
             end
         end
     end
 end
+
+-- Debug flag: force every non-combat node to be a gamble node
+Map.DEBUG_FORCE_GAMBLE = true
 
 -- Select a random node type for regular nodes with balanced distribution
 -- Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels) on all nights.
@@ -235,6 +241,10 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
         return "combat"
     end
 
+    if Map.DEBUG_FORCE_GAMBLE then
+        return "gamble"
+    end
+
     -- Weighted non-combat selection
     local roll = love.math.random()
     if roll < 0.40 then
@@ -244,8 +254,10 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
         return "contracts"
     elseif roll < 0.70 then
         return "deal"
-    else
+    elseif roll < 0.90 then
         return "artifacts"
+    else
+        return "gamble"
     end
 end
 

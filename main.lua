@@ -314,6 +314,31 @@ function love.load()
             centerY  = 0,
             pendingAction = nil, -- called when fully closed
         },
+        -- Casino / Gamble node state
+        casino = {
+            phase = "idle",         -- "dialogue"|"dealer_draw"|"player_draw"|"player_turn"|"dealer_turn"|"resolving"|"done"
+            betAmount = 0,
+            betPaid = false,
+            dealerTiles = {},       -- demon tiles on board, each has visualX/targetX slide animation fields
+            dealerPips = 0,
+            playerPips = 0,
+            playerBusted = false,
+            dealerBusted = false,
+            result = nil,           -- "win"|"lose"|"push"
+            resolved = false,
+            dealerDrawTimer = 0,
+            dealerDrawDelay = 0.6,
+            waitingForHitAnim = false,
+            displayedDealerPips = 0,
+            displayedPlayerPips = 0,
+            pipCountSpeed = 30,
+            hitButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
+            standButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
+            nextButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
+            hitButton = nil,
+            standButton = nil,
+            nextButton = nil,
+        },
         -- Dialogue content storage (populated by user prompts)
         dialogueContent = {
             playing = {  -- Combat nodes (existing system)
@@ -553,6 +578,29 @@ function love.load()
         "AGAIN? FINE.",
         "BRING ME SOMETHING WORTH DESTROYING.",
         "THE WEAK ALWAYS WANT ANOTHER CHANCE."
+    }
+
+    -- Initialize casino node dialogue (BELIAL)
+    gameState.dialogueContent.casino_menu = {}
+    gameState.dialogueContent.casino_menu.win = {
+        "LUCK FAVORS THE BOLD.",
+        "ENJOY YOUR WINNINGS, MORTAL.",
+        "WELL PLAYED. FOR NOW.",
+        "THE HOUSE MOURNS ITS LOSS.",
+        "BEGINNER'S LUCK. SURELY.",
+    }
+    gameState.dialogueContent.casino_menu.lose = {
+        "THE HOUSE ALWAYS WINS.",
+        "PERHAPS NEXT TIME, WORM.",
+        "YOUR COINS ARE MINE NOW.",
+        "A DONATION. HOW GENEROUS.",
+        "EXPECTED NOTHING. RECEIVED NOTHING.",
+    }
+    gameState.dialogueContent.casino_menu.push = {
+        "NEITHER OF US WON. HOW BORING.",
+        "A TIE. FATE IS INDECISIVE TODAY.",
+        "KEEP YOUR COINS. I WANT YOUR SOUL.",
+        "DEAD EVEN. HOW UNSATISFYING.",
     }
 
     -- Start background music
@@ -2386,6 +2434,312 @@ function updateCandleLightAnimation(dt)
     end
 end
 
+-- ── Casino / Gamble node ──────────────────────────────────────────────────────
+
+function initializeCasino()
+    local casino = gameState.casino
+    casino.phase = "dialogue"
+    casino.betAmount = math.max(0, math.ceil(gameState.coins / 3))
+    casino.betPaid = false
+    casino.dealerTiles = {}
+    casino.dealerPips = 0
+    casino.playerPips = 0
+    casino.playerBusted = false
+    casino.dealerBusted = false
+    casino.result = nil
+    casino.resolved = false
+    casino.dealerDrawTimer = 0
+    casino.waitingForHitAnim = false
+    casino.displayedDealerPips = 0
+    casino.displayedPlayerPips = 0
+    casino.hitButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.nextButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.hitButton = nil
+    casino.standButton = nil
+    casino.nextButton = nil
+
+    gameState.hand = {}
+
+    Dialogue.clear()
+    local betText = casino.betAmount == 1 and "1 COIN" or (casino.betAmount .. " COINS")
+    local introText = "BELIAL GRINS. YOUR BET: " .. betText .. "."
+    Dialogue.show(introText, {
+        category = "casino_intro",
+        skipDelay = true,
+        requiresAction = false,
+        autoDissmissTime = 3.0
+    })
+end
+
+local function casinoGetTileSize()
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local sampleSprite = dominoSprites and dominoSprites["00"]
+    local tileW = sampleSprite and (sampleSprite.sprite:getWidth() * spriteScale) or UI.Layout.scale(50)
+    local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+    return tileW, tileH
+end
+
+local function casinoSpawnDealerTile()
+    local casino = gameState.casino
+    -- Build standard 28-tile pool
+    local pool = {}
+    for i = 0, 6 do
+        for j = i, 6 do
+            table.insert(pool, {left = i, right = j})
+        end
+    end
+    local pick = pool[love.math.random(#pool)]
+    local tile = Domino.new(pick.left, pick.right, pick.left, pick.right)
+    tile.tileType = "demon"
+    tile.id = tostring(pick.left) .. tostring(pick.right) .. "_d" .. (#casino.dealerTiles + 1)
+
+    local boardArea = UI.Layout.getBoardArea()
+    local tileW, tileH = casinoGetTileSize()
+    local tileGap = UI.Layout.scale(8)
+    local targetY = boardArea.y + boardArea.height / 2
+
+    tile.visualX  = -(tileW)
+    tile.visualY  = targetY
+    tile.startX   = -(tileW)
+    tile.targetX  = 0  -- recalculated below after insert
+    tile.slideProgress = 0
+    tile.slideDuration = 0.5
+    tile.sliding  = true
+
+    casino.dealerPips = casino.dealerPips + pick.left + pick.right
+    table.insert(casino.dealerTiles, tile)
+
+    -- Recenter all dealer tiles around board midpoint
+    local boardMidX = boardArea.x + boardArea.width / 2
+    local n = #casino.dealerTiles
+    local totalGroupW = n * tileW + (n - 1) * tileGap
+    local groupStartX = boardMidX - totalGroupW / 2
+    for idx, t in ipairs(casino.dealerTiles) do
+        local newTargetX = groupStartX + (idx - 1) * (tileW + tileGap) + tileW / 2
+        if math.abs((t.targetX or 0) - newTargetX) > 1 then
+            t.startX = t.visualX
+            t.targetX = newTargetX
+            t.slideProgress = 0
+            t.sliding = true
+        end
+    end
+end
+
+local function casinoDrawPlayerTile()
+    local casino = gameState.casino
+    -- Pick from collection
+    local validTiles = {}
+    for _, ct in ipairs(gameState.tileCollection) do
+        local pips = (ct.left or 0) + (ct.right or 0)
+        if pips <= 21 then
+            table.insert(validTiles, ct)
+        end
+    end
+
+    local source
+    if #validTiles > 0 then
+        source = validTiles[love.math.random(#validTiles)]
+    else
+        -- Fallback: 0-0 relic tile; add it to collection permanently
+        local relicTile = Domino.new(0, 0, 0, 0)
+        relicTile.tileType = "relic"
+        table.insert(gameState.tileCollection, relicTile)
+        source = relicTile
+    end
+
+    local chosenTile = Domino.new(source.left, source.right, source.left, source.right)
+    chosenTile.tileType = source.tileType or "regular"
+    chosenTile.enhanceBonus = source.enhanceBonus or 0
+
+    table.insert(gameState.hand, chosenTile)
+    local pipsAdded = (source.left or 0) + (source.right or 0)
+    casino.playerPips = casino.playerPips + pipsAdded
+    chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
+
+    Hand.updatePositions(gameState.hand, true)  -- skipSort: preserve insertion order
+    Hand.animateTilesDraw(gameState.hand, 0, {chosenTile})
+end
+
+-- Called by touch.lua when player presses HIT
+function casinoPlayerHit()
+    local casino = gameState.casino
+    if casino.phase ~= "player_turn" or casino.waitingForHitAnim then return end
+
+    -- Pick any tile from collection
+    local col = gameState.tileCollection
+    if #col == 0 then return end
+    local source = col[love.math.random(#col)]
+    local chosenTile = Domino.new(source.left, source.right, source.left, source.right)
+    chosenTile.tileType = source.tileType or "regular"
+    chosenTile.enhanceBonus = source.enhanceBonus or 0
+
+    table.insert(gameState.hand, chosenTile)
+    local pipsAdded = (source.left or 0) + (source.right or 0)
+    casino.playerPips = casino.playerPips + pipsAdded
+    chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
+
+    Hand.updatePositions(gameState.hand, true)  -- skipSort: preserve insertion order
+    Hand.animateTilesDraw(gameState.hand, 0, {chosenTile})
+    casino.waitingForHitAnim = true
+
+    if casino.playerPips > 21 then
+        casino.playerBusted = true
+    end
+end
+
+-- Called by touch.lua when player presses STAND
+function casinoPlayerStand()
+    local casino = gameState.casino
+    if casino.phase ~= "player_turn" or casino.waitingForHitAnim then return end
+    casino.phase = "dealer_turn"
+    casino.dealerDrawTimer = 0.3
+end
+
+function updateCasino(dt)
+    local casino = gameState.casino
+    if not casino then return end
+
+    -- Advance slide animations for all dealer tiles
+    for _, tile in ipairs(casino.dealerTiles) do
+        if tile.sliding then
+            tile.slideProgress = math.min(1.0, tile.slideProgress + dt / tile.slideDuration)
+            local t = 1.0 - (1.0 - tile.slideProgress) ^ 4  -- easeOutQuart
+            tile.visualX = tile.startX + (tile.targetX - tile.startX) * t
+            if tile.slideProgress >= 1.0 then
+                tile.sliding = false
+                UI.Audio.playTilePlaced()
+            end
+        end
+    end
+
+    -- Animate pip count displays
+    if casino.displayedDealerPips < casino.dealerPips then
+        casino.displayedDealerPips = math.min(casino.dealerPips,
+            casino.displayedDealerPips + casino.pipCountSpeed * dt)
+    end
+    if casino.displayedPlayerPips < casino.playerPips then
+        casino.displayedPlayerPips = math.min(casino.playerPips,
+            casino.displayedPlayerPips + casino.pipCountSpeed * dt)
+    end
+
+    local phase = casino.phase
+
+    if phase == "dialogue" then
+        -- Wait for bet dialogue to be dismissed, then deduct bet and spawn dealer tile
+        local d = gameState.dialogueAnimation
+        if not casino.betPaid and not d.isActive then
+            casino.betPaid = true
+            if casino.betAmount > 0 then
+                updateCoins(gameState.coins - casino.betAmount)
+            end
+            casinoSpawnDealerTile()
+            casino.phase = "dealer_draw"
+        end
+
+    elseif phase == "dealer_draw" then
+        -- Wait for tile slide and pip counter to settle, then draw player's first tile
+        local allSlidesDone = true
+        for _, tile in ipairs(casino.dealerTiles) do
+            if tile.sliding then allSlidesDone = false; break end
+        end
+        if allSlidesDone and casino.displayedDealerPips >= casino.dealerPips then
+            casinoDrawPlayerTile()
+            casino.phase = "player_draw"
+        end
+
+    elseif phase == "player_draw" then
+        -- Wait for hand draw animation and pip counter, then enable player input
+        local handDone = true
+        for _, tile in ipairs(gameState.hand) do
+            if tile.isDrawing then handDone = false; break end
+        end
+        if handDone and casino.displayedPlayerPips >= casino.playerPips then
+            casino.phase = "player_turn"
+        end
+
+    elseif phase == "player_turn" then
+        -- Handle post-hit animation wait
+        if casino.waitingForHitAnim then
+            local handDone = true
+            for _, tile in ipairs(gameState.hand) do
+                if tile.isDrawing then handDone = false; break end
+            end
+            if handDone and casino.displayedPlayerPips >= casino.playerPips then
+                casino.waitingForHitAnim = false
+                if casino.playerBusted then
+                    casino.phase = "resolving"
+                end
+                -- else stay in player_turn, buttons reappear
+            end
+        end
+
+    elseif phase == "dealer_turn" then
+        casino.dealerDrawTimer = casino.dealerDrawTimer - dt
+        if casino.dealerDrawTimer <= 0 then
+            -- Only proceed once all current slides and pip count are done
+            local allSlidesDone = true
+            for _, tile in ipairs(casino.dealerTiles) do
+                if tile.sliding then allSlidesDone = false; break end
+            end
+            local pipsDone = (casino.displayedDealerPips >= casino.dealerPips)
+            if allSlidesDone and pipsDone then
+                if casino.dealerPips >= 17 or casino.dealerPips > 21 then
+                    casino.dealerBusted = casino.dealerPips > 21
+                    casino.phase = "resolving"
+                else
+                    casinoSpawnDealerTile()
+                    casino.dealerDrawTimer = casino.dealerDrawDelay
+                end
+            end
+        end
+
+    elseif phase == "resolving" then
+        if not casino.resolved then
+            casino.resolved = true
+
+            if casino.playerBusted then
+                casino.result = "lose"
+            elseif casino.dealerBusted then
+                casino.result = "win"
+            elseif casino.playerPips > casino.dealerPips then
+                casino.result = "win"
+            elseif casino.playerPips == casino.dealerPips then
+                casino.result = "push"
+            else
+                casino.result = "lose"
+            end
+
+            -- Award coins: win or push returns/doubles bet
+            if casino.result == "win" or casino.result == "push" then
+                updateCoins(gameState.coins + casino.betAmount)
+            end
+
+            -- Show result dialogue
+            local phrases = gameState.dialogueContent.casino_menu and
+                            gameState.dialogueContent.casino_menu[casino.result] or {}
+            local resultText
+            if #phrases > 0 then
+                resultText = phrases[love.math.random(#phrases)]
+            else
+                resultText = casino.result == "win" and "YOU WIN!" or
+                             casino.result == "push" and "PUSH." or "YOU LOSE."
+            end
+            Dialogue.show(resultText, {
+                category = "casino_result",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 3.5
+            })
+
+            casino.phase = "done"
+        end
+    end
+end
+
+-- ── End casino ────────────────────────────────────────────────────────────────
+
 local function updateIrisAnimation(dt)
     local ia = gameState.irisAnimation
     if not ia.active then return end
@@ -2596,6 +2950,15 @@ function love.update(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
+    elseif gameState.gamePhase == "casino" then
+        Dialogue.update(dt)
+        updateCasino(dt)
+        -- Dampen map ambiance inside casino
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.dampenMapAmbiance()
+        end
+        -- Update hand tile animations
+        Hand.update(dt)
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" then
         -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
@@ -2827,6 +3190,14 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "deal_menu" then
         UI.Renderer.drawDealMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "casino" then
+        UI.Renderer.drawCasino()
         UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()
         UI.Renderer.drawTilesCountButton()

@@ -4756,6 +4756,260 @@ function UI.Renderer.drawDealMenu()
     UI.Renderer.drawCoinText()
 end
 
+-- ── Casino / Gamble node renderer ────────────────────────────────────────────
+
+function UI.Renderer.drawCasino()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local time         = love.timer.getTime()
+    local leftX        = UI.Layout.scale(60)
+    local rightX       = screenWidth - UI.Layout.scale(40)
+    local topY         = UI.Layout.scale(20)
+    local titleFont    = UI.Fonts.get("formulaScore")
+
+    -- Background
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Hand area strip
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    UI.Renderer.drawToolStack()
+
+    -- Right side: "CASINO" title with wave animation
+    local nodeTitle = "CASINO"
+    local totalWidth = 0
+    for i = 1, #nodeTitle do
+        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
+    end
+    local currentX = rightX - totalWidth
+    for i = 1, #nodeTitle do
+        local char      = nodeTitle:sub(i, i)
+        local charWidth = titleFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        local waveOff   = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "formulaScore", UI.Colors.FONT_WHITE, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    -- Left side: BELIAL icon + name + subtitle
+    local demonName  = "BELIAL"
+    local demonColor = UI.Colors.FONT_RED
+    local demonFont  = UI.Fonts.get("demonName")
+    currentX = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local icon      = demonIconSprites[demonName]
+        local fontH     = demonFont:getHeight()
+        local iScale    = (fontH / icon:getHeight()) * 1.3
+        local iWidth    = icon:getWidth() * iScale
+        local waveOff   = math.sin(time * 2.5) * 3
+        local shOff     = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(icon, currentX + shOff, topY + waveOff + shOff, 0, iScale, iScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(icon, currentX, topY + waveOff, 0, iScale, iScale)
+        currentX = currentX + iWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char      = demonName:sub(i, i)
+        local charWidth = demonFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        local waveOff   = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    -- Subtitle
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subFont  = UI.Fonts.get("large")
+        local subColor = UI.Colors.FONT_PINK
+        local subY     = topY + demonFont:getHeight() - UI.Layout.scale(5)
+        local iconW    = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local icon   = demonIconSprites[demonName]
+            local fontH  = demonFont:getHeight()
+            local iScale = (fontH / icon:getHeight()) * 1.3
+            iconW = icon:getWidth() * iScale + UI.Layout.scale(8)
+        end
+        local subX = leftX + iconW
+        for i = 1, #subtitle do
+            local char      = subtitle:sub(i, i)
+            local charWidth = subFont:getWidth(char)
+            local phase     = time * 2.5 + (i - 1) * 0.4
+            local waveOff   = math.sin(phase) * 1
+            UI.Fonts.drawAnimatedText(char, subX, subY + waveOff, "large", subColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subX = subX + charWidth
+        end
+    end
+
+    -- Dealer tile area: draw sliding tiles in board region
+    UI.Renderer.drawCasinoDealerTiles()
+
+    -- Dealer pip counter (top-right, below title, reusing score-style display)
+    UI.Renderer.drawCasinoPipCounts()
+
+    -- Player hand
+    UI.Renderer.drawHand(gameState.hand)
+
+    -- HIT / STAND buttons (only during player_turn)
+    local casino = gameState.casino
+    if casino and (casino.phase == "player_turn") and not casino.waitingForHitAnim then
+        UI.Renderer.drawCasinoHitButton()
+        UI.Renderer.drawCasinoStandButton()
+    end
+
+    -- NEXT> button (only when done)
+    if casino and casino.phase == "done" then
+        UI.Renderer.drawCasinoNextButton()
+    end
+
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+end
+
+function UI.Renderer.drawCasinoDealerTiles()
+    local casino = gameState.casino
+    if not casino or not casino.dealerTiles then return end
+
+    local minScale   = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    for _, tile in ipairs(casino.dealerTiles) do
+        UI.Renderer.drawDomino(tile, tile.visualX, tile.visualY, gameState.screen.scale, "vertical", 1.0)
+    end
+end
+
+function UI.Renderer.drawCasinoPipCounts()
+    local casino = gameState.casino
+    if not casino then return end
+
+    local time      = love.timer.getTime()
+    local leftX     = UI.Layout.scale(60)
+    local titleFont = UI.Fonts.get("formulaScore")
+    local bigFont   = UI.Fonts.get("bigScore")
+
+    -- Position below BELIAL name + subtitle (name at scale(20), two lines of titleFont)
+    local pipStartY = UI.Layout.scale(20) + titleFont:getHeight() * 2 + UI.Layout.scale(8)
+
+    -- Big number: player pips
+    local playerVal   = math.floor(casino.displayedPlayerPips)
+    local scoreText   = string.format("%03d", playerVal)
+    local playerColor = casino.playerBusted and UI.Colors.FONT_RED or UI.Colors.FONT_WHITE
+    local cx = leftX
+    for i = 1, #scoreText do
+        local digit = scoreText:sub(i, i)
+        local dw    = bigFont:getWidth(digit)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local wo    = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(digit, cx, pipStartY + wo, "bigScore", playerColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        cx = cx + dw
+    end
+
+    -- Small "vs XXX": dealer pips below player number
+    local vsY       = pipStartY + bigFont:getHeight() + UI.Layout.scale(2)
+    local dealerVal = math.floor(casino.displayedDealerPips)
+    local vsText    = "vs " .. string.format("%03d", dealerVal)
+    local vsColor   = casino.dealerBusted and UI.Colors.FONT_RED or {0.7, 0.7, 0.7, 1}
+    local vx = leftX
+    for i = 1, #vsText do
+        local char = vsText:sub(i, i)
+        local cw   = titleFont:getWidth(char)
+        local phase = time * 2.0 + (i - 1) * 0.35
+        local wo    = math.sin(phase) * 2
+        UI.Fonts.drawAnimatedText(char, vx, vsY + wo, "formulaScore", vsColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(3), scale = 1.0, shake = 0
+        })
+        vx = vx + cw
+    end
+end
+
+function UI.Renderer.drawCasinoHitButton()
+    local casino = gameState.casino
+    if not casino then return end
+    if not casino.hitButtonAnimation then
+        casino.hitButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    end
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local bx, by = UI.Layout.getDiscardButtonPosition()
+    local color = casino.hitButtonAnimation.color
+    love.graphics.setColor(color)
+    love.graphics.rectangle("fill", bx, by, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", bx, by, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Fonts.drawText("HIT", bx + buttonWidth / 2, by + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center", true)
+    casino.hitButton = { x = bx, y = by, width = buttonWidth, height = buttonHeight }
+end
+
+function UI.Renderer.drawCasinoStandButton()
+    local casino = gameState.casino
+    if not casino then return end
+    if not casino.standButtonAnimation then
+        casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    end
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local bx, by = UI.Layout.getPlayButtonPosition()
+    local color = casino.standButtonAnimation.color
+    love.graphics.setColor(color)
+    love.graphics.rectangle("fill", bx, by, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", bx, by, buttonWidth, buttonHeight, UI.Layout.scale(5))
+    UI.Fonts.drawText("STAND", bx + buttonWidth / 2, by + buttonHeight / 2, "button", UI.Colors.FONT_WHITE, "center", true)
+    casino.standButton = { x = bx, y = by, width = buttonWidth, height = buttonHeight }
+end
+
+function UI.Renderer.drawCasinoNextButton()
+    local casino = gameState.casino
+    if not casino then return end
+
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local time         = love.timer.getTime()
+    local font         = UI.Fonts.get("formulaScore")
+    local btnText          = "NEXT>"
+    local horizontalMargin = UI.Layout.scale(40)
+    local verticalMargin   = UI.Layout.scale(80)
+
+    if not casino.nextButtonAnimation then
+        casino.nextButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    end
+    local color = casino.nextButtonAnimation.color
+
+    local totalW = 0
+    for i = 1, #btnText do totalW = totalW + font:getWidth(btnText:sub(i, i)) end
+    local btnX = screenWidth - totalW - horizontalMargin
+    local btnY = screenHeight - font:getHeight() - verticalMargin
+
+    local cx = btnX
+    for i = 1, #btnText do
+        local char  = btnText:sub(i, i)
+        local cw    = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local wo    = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, cx, btnY + wo, "formulaScore", color, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        cx = cx + cw
+    end
+
+    local padding = UI.Layout.scale(20)
+    casino.nextButton = { x = btnX - padding, y = btnY - padding, width = totalW + padding * 2, height = font:getHeight() + padding * 2 }
+end
+
+-- ── End casino renderer ───────────────────────────────────────────────────────
+
 function UI.Renderer.drawDealArea()
     if gameState.dealAccepted then return end
     local boardArea  = UI.Layout.getBoardArea()

@@ -33,6 +33,9 @@ local touchState = {
     contractsNextButtonPressed = false,
     dealNextButtonPressed      = false,
     dealAcceptButtonPressed    = false,
+    casinoHitPressed           = false,
+    casinoStandPressed         = false,
+    casinoNextPressed          = false,
     -- Tool sprite press tracking (for touch release selection)
     pressedToolIndex = nil,
     pressedToolId = nil
@@ -208,9 +211,11 @@ function Touch.pressed(x, y, istouch, touchId)
        (gameState.dialogueAnimation.phase == "waiting" or gameState.dialogueAnimation.phase == "typing") then
         local screenHeight = gameState.screen.height
         local upperThirdHeight = screenHeight / 3
+        local isCasinoDialogue = gameState.gamePhase == "casino" and
+            gameState.casino and gameState.casino.phase == "dialogue"
 
-        -- Check if press is in upper third
-        if y <= upperThirdHeight then
+        -- Full-screen tap for casino opening dialogue; upper-third only otherwise
+        if isCasinoDialogue or y <= upperThirdHeight then
             gameState.dialogueAnimation.isPressed = true
             return
         end
@@ -461,6 +466,45 @@ function Touch.pressed(x, y, istouch, touchId)
                 UI.Audio.playButtonTap()
                 touchState.dealAcceptButtonPressed = true
                 return
+            end
+        end
+        return
+    end
+
+    -- Handle casino button presses
+    if gameState.gamePhase == "casino" then
+        local casino = gameState.casino
+        if casino then
+            if casino.phase == "player_turn" and not casino.waitingForHitAnim then
+                if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
+                    UI.Audio.playButtonTap()
+                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+                    }, 0.3, "easeOutQuart")
+                    touchState.casinoHitPressed = true
+                    return
+                end
+                if casino.standButton and isPointInRect(x, y, casino.standButton) then
+                    UI.Audio.playButtonTap()
+                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+                    }, 0.3, "easeOutQuart")
+                    touchState.casinoStandPressed = true
+                    return
+                end
+            end
+            if casino.phase == "done" then
+                if casino.nextButton and isPointInRect(x, y, casino.nextButton) then
+                    UI.Audio.playButtonTap()
+                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                        [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+                    }, 0.3, "easeOutQuart")
+                    touchState.casinoNextPressed = true
+                    return
+                end
             end
         end
         return
@@ -1029,9 +1073,11 @@ function Touch.released(x, y, istouch, touchId)
         local isDraggingTile = touchState.draggedTile ~= nil
         local isDraggingTool = touchState.draggedTool ~= nil
         local isTutorial = gameState.currentRound == 1 and gameState.tutorialEnabled
+        local isCasinoDialogue = gameState.gamePhase == "casino" and
+            gameState.casino and gameState.casino.phase == "dialogue"
 
-        -- Only act if released in upper third AND dialogue was pressed AND not dragging
-        if y <= upperThirdHeight and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
+        -- Only act if released in upper third (or full screen for casino) AND dialogue was pressed AND not dragging
+        if (isCasinoDialogue or y <= upperThirdHeight) and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
             if gameState.dialogueAnimation.phase == "typing" then
                 -- Skip to end of typing animation - show full message instantly
                 gameState.dialogueAnimation.currentCharIndex = #gameState.dialogueAnimation.text
@@ -1977,6 +2023,84 @@ function Touch.released(x, y, istouch, touchId)
             touchState.isPressed = false
             touchState.touchId   = nil
             return
+        end
+        touchState.isPressed = false
+        touchState.touchId   = nil
+        return
+    elseif gameState.gamePhase == "casino" then
+        local casino = gameState.casino
+        if casino then
+            if touchState.casinoHitPressed then
+                touchState.casinoHitPressed = false
+                if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
+                    UI.Audio.playButtonRelease()
+                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
+                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
+                    }, 0.1, "easeOutQuart", function()
+                        casinoPlayerHit()
+                        UI.Animation.animateTo(casino.hitButtonAnimation.color, {
+                            [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                            [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                        }, 0.2, "easeOutQuart")
+                    end)
+                else
+                    UI.Animation.animateTo(casino.hitButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.3, "easeOutQuart")
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+            if touchState.casinoStandPressed then
+                touchState.casinoStandPressed = false
+                if casino.standButton and isPointInRect(x, y, casino.standButton) then
+                    UI.Audio.playButtonRelease()
+                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
+                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
+                    }, 0.1, "easeOutQuart", function()
+                        casinoPlayerStand()
+                        UI.Animation.animateTo(casino.standButtonAnimation.color, {
+                            [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                            [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                        }, 0.2, "easeOutQuart")
+                    end)
+                else
+                    UI.Animation.animateTo(casino.standButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.3, "easeOutQuart")
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+            if touchState.casinoNextPressed then
+                touchState.casinoNextPressed = false
+                if casino.nextButton and isPointInRect(x, y, casino.nextButton) then
+                    UI.Audio.playButtonRelease()
+                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
+                        [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
+                    }, 0.1, "easeOutQuart", function()
+                        gameState.hand = {}
+                        gameState.casino.dealerTiles = {}
+                        Dialogue.clear()
+                        gameState.gamePhase = "map"
+                    end)
+                else
+                    UI.Animation.animateTo(casino.nextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.3, "easeOutQuart")
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
         end
         touchState.isPressed = false
         touchState.touchId   = nil
@@ -3842,6 +3966,12 @@ function Touch.executeNodeEntry(node)
                 autoDissmissTime = 8.0
             })
         end
+    elseif nodeType == "gamble" then
+        -- GAMBLE node - casino blackjack screen
+        gameState.currentDemonName = node.demonName  -- "BELIAL"
+        Dialogue.clear()
+        initializeCasino()
+        gameState.gamePhase = "casino"
     else
         -- Unknown node type, return to map
         -- Clear any thrown tool sprites
@@ -3850,7 +3980,7 @@ function Touch.executeNodeEntry(node)
         Dialogue.clear()
         gameState.gamePhase = "map"
     end
-    
+
     -- Clear selected node
     gameState.selectedNode = nil
 end

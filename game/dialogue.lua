@@ -69,6 +69,14 @@ function Dialogue.calculateMaxWidth()
         local nameWidth = dayFont:getWidth(dayText)
 
         leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+    elseif phase == "casino" then
+        -- Casino: BELIAL demon name
+        local demonName = "BELIAL"
+        local demonFont = UI.Fonts.get("demonName")
+        local leftX = UI.Layout.scale(60)
+        local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
+        local nameWidth = demonFont:getWidth(demonName)
+        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40
     elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" then
         -- Shop screens: demon name (MAMMON, PAIMON, LILITH, STOLAS) + shadow
         local demonName = "MAMMON"  -- Default for shops (longest name)
@@ -167,6 +175,15 @@ function Dialogue.calculateMaxWidth()
 
         local titleStartX = rightX - titleWidth
         rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+
+    elseif phase == "casino" then
+        -- Casino: "CASINO" title (right-aligned from rightX)
+        local titleFont = UI.Fonts.get("formulaScore")
+        local rightX = screenWidth - UI.Layout.scale(40)
+        local titleWidth = titleFont:getWidth("CASINO")
+
+        local titleStartX = rightX - titleWidth
+        rightBoundary = titleStartX - 40
 
     else
         -- Default: use standard right margin
