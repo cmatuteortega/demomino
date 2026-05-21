@@ -33,6 +33,7 @@ local touchState = {
     contractsNextButtonPressed = false,
     dealNextButtonPressed      = false,
     dealAcceptButtonPressed    = false,
+    titleBelialButtonPressed   = false,
     casinoHitPressed           = false,
     casinoStandPressed         = false,
     casinoNextPressed          = false,
@@ -275,7 +276,7 @@ function Touch.pressed(x, y, istouch, touchId)
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
         "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu",
-        "title_screen"
+        "title_screen", "casino"
     }
 
     for _, phase in ipairs(phasesWithSettings) do
@@ -291,7 +292,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Check for deck preview tiles button press (mark pressed; open fires on release)
-    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "playing", "won"}
+    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "playing", "won", "casino"}
     for _, phase in ipairs(phasesWithTilesButton) do
         if gameState.gamePhase == phase then
             if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
@@ -558,6 +559,16 @@ function Touch.pressed(x, y, istouch, touchId)
 
             -- Mark that we pressed the button
             touchState.titleContinueButtonPressed = true
+        end
+
+        -- Check for BELIAL'S GAMEROOM button press
+        if gameState.titleBelialButtonBounds and isPointInRect(x, y, gameState.titleBelialButtonBounds) then
+            UI.Audio.playButtonTap()
+            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.titleBelialButtonPressed = true
         end
         return
     end
@@ -1072,7 +1083,14 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Only act if released in upper third (or full screen for casino) AND dialogue was pressed AND not dragging
         if (isCasinoDialogue or y <= upperThirdHeight) and gameState.dialogueAnimation.isPressed and not isDraggingTile and not isDraggingTool then
-            if gameState.dialogueAnimation.phase == "typing" then
+            if isCasinoDialogue and gameState.dialogueAnimation.phase == "typing" then
+                -- Casino intro: one tap completes typing AND dismisses
+                gameState.dialogueAnimation.currentCharIndex = #gameState.dialogueAnimation.text
+                UI.Audio.playDismissDialogue()
+                gameState.dialogueAnimation.phase = "dismissing"
+                gameState.dialogueAnimation.dismissTimer = 0
+                gameState.dialogueAnimation.idleTimer = 0
+            elseif gameState.dialogueAnimation.phase == "typing" then
                 -- Skip to end of typing animation - show full message instantly
                 gameState.dialogueAnimation.currentCharIndex = #gameState.dialogueAnimation.text
                 gameState.dialogueAnimation.phase = "waiting"
@@ -1199,10 +1217,31 @@ function Touch.released(x, y, istouch, touchId)
             }, 0.3, "easeOutQuart")
         end
 
+        -- Handle BELIAL'S GAMEROOM button release
+        if touchState.titleBelialButtonPressed and gameState.titleBelialButtonBounds and isPointInRect(x, y, gameState.titleBelialButtonBounds) then
+            UI.Audio.playButtonRelease()
+            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
+                [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
+                [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
+            }, 0.1, "easeOutQuart", function()
+                UI.TitleScreen.openBelialGameroom()
+                gameState.titleBelialButtonAnimation.color = {
+                    UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2],
+                    UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]
+                }
+            end)
+        elseif touchState.titleBelialButtonPressed then
+            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
+                [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+            }, 0.3, "easeOutQuart")
+        end
+
         touchState.isPressed = false
         touchState.touchId = nil
         touchState.titleNewGameButtonPressed = false
         touchState.titleContinueButtonPressed = false
+        touchState.titleBelialButtonPressed = false
         return
     end
 
@@ -2051,7 +2090,12 @@ function Touch.released(x, y, istouch, touchId)
                     gameState.hand = {}
                     gameState.casino.dealerTiles = {}
                     Dialogue.clear()
-                    gameState.gamePhase = "map"
+                    if gameState.gameroomMode then
+                        gameState.gameroomMode = false
+                        gameState.gamePhase = "title_screen"
+                    else
+                        gameState.gamePhase = "map"
+                    end
                 end
                 touchState.isPressed = false
                 touchState.touchId   = nil

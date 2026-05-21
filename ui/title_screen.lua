@@ -424,6 +424,57 @@ function UI.TitleScreen.drawTitleButtons(hasSave)
         width = newGameWidth + padding * 2,
         height = font:getHeight() * fontScale + padding * 2
     }
+
+    -- CASINO button — centered between title tiles and NEW/RESUME row
+    local gFont = UI.Fonts.get("title")
+    local gameroomText = "BELIAL'S CASINO>"
+    local gameroomTextWidth = 0
+    for i = 1, #gameroomText do
+        gameroomTextWidth = gameroomTextWidth + gFont:getWidth(gameroomText:sub(i, i))
+    end
+
+    -- Belial icon scaled to match font height
+    local belialIcon = demonIconSprites and demonIconSprites["BELIAL"]
+    local iconH = gFont:getHeight()
+    local iconScale = belialIcon and (iconH / belialIcon:getHeight()) or 0
+    local iconW = belialIcon and (belialIcon:getWidth() * iconScale) or 0
+    local iconGap = belialIcon and UI.Layout.scale(8) or 0
+
+    local gameroomWidth = iconW + iconGap + gameroomTextWidth
+    -- Midpoint between title tile center (28% of screen) and buttons row
+    local gameroomY = screenHeight * 0.28 + (textY - screenHeight * 0.28) / 2 - gFont:getHeight() / 2
+    local groupStartX = screenWidth / 2 - gameroomWidth / 2
+    local gameroomColor = gameState.titleBelialButtonAnimation and gameState.titleBelialButtonAnimation.color or UI.Colors.FONT_PINK
+
+    -- Draw Belial icon
+    if belialIcon then
+        local avgWave = math.sin(time * 2.5) * 3
+        local iconCY = gameroomY + iconH / 2 + avgWave
+        love.graphics.setColor(gameroomColor[1], gameroomColor[2], gameroomColor[3], gameroomColor[4])
+        love.graphics.draw(belialIcon, groupStartX + iconW / 2, iconCY, 0, iconScale, iconScale,
+            belialIcon:getWidth() / 2, belialIcon:getHeight() / 2)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- Draw "-CASINO-" text
+    local currentX = groupStartX + iconW + iconGap
+    for i = 1, #gameroomText do
+        local char = gameroomText:sub(i, i)
+        local charWidth = gFont:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, gameroomY + waveOffset, "title", gameroomColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(3)
+        })
+        currentX = currentX + charWidth
+    end
+
+    gameState.titleBelialButtonBounds = {
+        x = groupStartX - padding,
+        y = gameroomY - padding,
+        width = gameroomWidth + padding * 2,
+        height = gFont:getHeight() + padding * 2
+    }
 end
 
 -- Start a new game
@@ -445,6 +496,27 @@ function UI.TitleScreen.startNewGame()
 
     -- Go to intro dialogue phase instead of round intro
     gameState.gamePhase = "intro_dialogue"
+end
+
+-- Enter Belial's Gameroom (endless casino, 5-coin starting pot, isolated from save)
+function UI.TitleScreen.openBelialGameroom()
+    gameState.gameroomMode = true
+    -- Set coins directly so initializeCasino sees 5 immediately (no falling-coin animation race)
+    gameState.coins = 5
+    gameState.coinsAnimation.settledCoins = 5
+    gameState.coinsAnimation.targetCoins  = 5
+    -- Seed a standard tile collection if none exists (player hasn't started a run)
+    if not gameState.tileCollection or #gameState.tileCollection == 0 then
+        local starter = {}
+        for i = 0, 6 do
+            for j = i, 6 do
+                table.insert(starter, Domino.new(i, j, i, j))
+            end
+        end
+        gameState.tileCollection = starter
+    end
+    initializeCasino()
+    gameState.gamePhase = "casino"
 end
 
 -- Continue saved game

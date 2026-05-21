@@ -227,9 +227,6 @@ function Map.assignDemonNames(map)
     end
 end
 
--- Debug flag: force every non-combat node to be a gamble node
-Map.DEBUG_FORCE_GAMBLE = true
-
 -- Select a random node type for regular nodes with balanced distribution
 -- Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels) on all nights.
 -- Non-combat nodes are weighted: 40% shop-group, 30% contracts, 30% artifacts.
@@ -239,10 +236,6 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
 
     if isCombatLevel then
         return "combat"
-    end
-
-    if Map.DEBUG_FORCE_GAMBLE then
-        return "gamble"
     end
 
     -- Weighted non-combat selection

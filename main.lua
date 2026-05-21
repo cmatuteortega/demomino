@@ -267,6 +267,10 @@ function love.load()
         titleContinueButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
         },
+        titleBelialButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        },
+        gameroomMode = false,
         -- Round introduction animation system
         roundIntroAnimation = {
             phase = "typing",  -- "typing", "pausing", "moving", "revealing", "complete"
@@ -2452,6 +2456,32 @@ function initializeCasino()
     casino.betAmount = math.max(1, math.ceil(gameState.coins / 3))
     casino.betPaid = false
     casino.dealerTiles = {}
+
+    -- Dealer deck: standard 28 tiles, shuffled
+    casino.dealerDeck = {}
+    for i = 0, 6 do
+        for j = i, 6 do
+            table.insert(casino.dealerDeck, {left = i, right = j})
+        end
+    end
+    for k = #casino.dealerDeck, 2, -1 do
+        local r = love.math.random(k)
+        casino.dealerDeck[k], casino.dealerDeck[r] = casino.dealerDeck[r], casino.dealerDeck[k]
+    end
+
+    -- Player deck: shuffled copy of tileCollection
+    casino.playerDeck = {}
+    for _, ct in ipairs(gameState.tileCollection) do
+        local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+        if pips <= 21 then
+            table.insert(casino.playerDeck, ct)
+        end
+    end
+    for k = #casino.playerDeck, 2, -1 do
+        local r = love.math.random(k)
+        casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
+    end
+
     casino.dealerPips = 0
     casino.playerPips = 0
     casino.playerBusted = false
@@ -2500,14 +2530,19 @@ end
 
 local function casinoSpawnDealerTile()
     local casino = gameState.casino
-    -- Build standard 28-tile pool
-    local pool = {}
-    for i = 0, 6 do
-        for j = i, 6 do
-            table.insert(pool, {left = i, right = j})
+    -- Draw from shuffled dealer deck (reshuffle if exhausted)
+    if #casino.dealerDeck == 0 then
+        for i = 0, 6 do
+            for j = i, 6 do
+                table.insert(casino.dealerDeck, {left = i, right = j})
+            end
+        end
+        for k = #casino.dealerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.dealerDeck[k], casino.dealerDeck[r] = casino.dealerDeck[r], casino.dealerDeck[k]
         end
     end
-    local pick = pool[love.math.random(#pool)]
+    local pick = table.remove(casino.dealerDeck)
     local tile = Domino.new(pick.left, pick.right, pick.left, pick.right)
     tile.tileType = "demon"
     tile.id = tostring(pick.left) .. tostring(pick.right) .. "_d" .. (#casino.dealerTiles + 1)
@@ -2546,18 +2581,23 @@ end
 
 local function casinoDrawPlayerTile()
     local casino = gameState.casino
-    -- Pick from collection
-    local validTiles = {}
-    for _, ct in ipairs(gameState.tileCollection) do
-        local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
-        if pips <= 21 then
-            table.insert(validTiles, ct)
+    -- Draw from shuffled player deck (reshuffle from collection if exhausted)
+    if #casino.playerDeck == 0 then
+        for _, ct in ipairs(gameState.tileCollection) do
+            local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+            if pips <= 21 then
+                table.insert(casino.playerDeck, ct)
+            end
+        end
+        for k = #casino.playerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
         end
     end
 
     local source
-    if #validTiles > 0 then
-        source = validTiles[love.math.random(#validTiles)]
+    if #casino.playerDeck > 0 then
+        source = table.remove(casino.playerDeck)
     else
         -- Fallback: 0-0 relic tile; add it to collection permanently
         local relicTile = Domino.new(0, 0, 0, 0)
@@ -2584,10 +2624,21 @@ function casinoPlayerHit()
     local casino = gameState.casino
     if casino.phase ~= "player_turn" or casino.waitingForHitAnim then return end
 
-    -- Pick any tile from collection
-    local col = gameState.tileCollection
-    if #col == 0 then return end
-    local source = col[love.math.random(#col)]
+    -- Draw from player deck (reshuffle if exhausted)
+    if #casino.playerDeck == 0 then
+        for _, ct in ipairs(gameState.tileCollection) do
+            local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+            if pips <= 21 then
+                table.insert(casino.playerDeck, ct)
+            end
+        end
+        for k = #casino.playerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
+        end
+    end
+    if #casino.playerDeck == 0 then return end
+    local source = table.remove(casino.playerDeck)
     local chosenTile = Domino.new(source.left, source.right, source.left, source.right)
     chosenTile.tileType = source.tileType or "regular"
     chosenTile.enhanceBonus = source.enhanceBonus or 0
@@ -2728,8 +2779,10 @@ function updateCasino(dt)
                 casino.result = "lose"
             end
 
-            -- Award coins: win or push returns/doubles bet
-            if casino.result == "win" or casino.result == "push" then
+            -- Award coins: win returns bet + equal profit (1:1); push returns bet only
+            if casino.result == "win" then
+                updateCoins(gameState.coins + casino.betAmount * 2)
+            elseif casino.result == "push" then
                 updateCoins(gameState.coins + casino.betAmount)
             end
 

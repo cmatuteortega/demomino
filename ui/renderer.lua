@@ -4980,7 +4980,7 @@ function UI.Renderer.drawCasinoNextButton()
     local screenHeight = gameState.screen.height
     local time         = love.timer.getTime()
     local font         = UI.Fonts.get("formulaScore")
-    local btnText          = "NEXT>"
+    local btnText          = gameState.gameroomMode and "EXIT>" or "NEXT>"
     local horizontalMargin = UI.Layout.scale(40)
     local verticalMargin   = UI.Layout.scale(80)
 
