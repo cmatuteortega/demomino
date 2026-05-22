@@ -60,13 +60,17 @@ function Scoring.getScoreBreakdown(tiles)
     local relicCount = 0
 
     for _, tile in ipairs(tiles) do
-        tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
-        if Domino.isDouble(tile) then
-            doubleCount = doubleCount + 1
-        end
-        -- Count relic tiles for multiplier bonus
-        if tile.tileType == "relic" then
-            relicCount = relicCount + 1
+        if tile.baalSum ~= nil then
+            -- BAAL overrides entire sum contribution; doubles, enhance, and relic are all superseded
+            tileValues = tileValues + tile.baalSum
+        else
+            tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
+            if Domino.isDouble(tile) then
+                doubleCount = doubleCount + 1
+            end
+            if tile.tileType == "relic" then
+                relicCount = relicCount + 1
+            end
         end
     end
 
@@ -98,8 +102,16 @@ function Scoring.getScoreBreakdown(tiles)
 
     baseValue = baseValue + contractTilePipBonus + contractBaseBonus
 
-    -- Calculate multiplier (number of tiles on board + 1 per relic tile + contract bonus)
-    local multiplier = #tiles + relicCount + contractMultBonus
+    -- Calculate multiplier: BAAL tiles contribute baalMult; normal tiles contribute +1 (+1 more for relic)
+    local multiplier = contractMultBonus
+    for _, tile in ipairs(tiles) do
+        if tile.baalMult ~= nil then
+            multiplier = multiplier + tile.baalMult
+        else
+            multiplier = multiplier + 1
+            if tile.tileType == "relic" then multiplier = multiplier + 1 end
+        end
+    end
     local total = baseValue * multiplier
 
     return {
@@ -136,6 +148,18 @@ function Scoring.updateHighScore(score)
 end
 
 function Scoring.getTileContribution(tile, activeContracts)
+    if tile.baalSum ~= nil then
+        return {
+            pipSum             = tile.baalSum,
+            enhanceBonus       = 0,
+            doubleBonus        = 0,
+            contractBonus      = 0,
+            contractBonusLabel = nil,
+            totalSum           = tile.baalSum,
+            mult               = tile.baalMult,
+            multBonus          = 0,
+        }
+    end
     local pipSum = Domino.getValue(tile)
     local doubleBonus = Domino.isDouble(tile) and 10 or 0
     local contractBonus = 0

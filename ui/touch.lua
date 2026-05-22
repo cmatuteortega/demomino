@@ -3295,8 +3295,12 @@ function Touch.playPlacedTiles()
 
         -- Make sure we have tiles to score
         if #tilesToScore > 0 then
-            -- Start the animated scoring sequence with only the tiles placed this hand
-            startScoringSequence(tilesToScore)
+            local handled = BossBehaviors.onBeforeScore(gameState, function()
+                startScoringSequence(tilesToScore)
+            end)
+            if not handled then
+                startScoringSequence(tilesToScore)
+            end
         end
     else
         -- Add error feedback for invalid plays
@@ -3393,6 +3397,7 @@ function Touch.checkGameEnd()
 
         -- Animate hand tiles discarding before showing victory screen
         Hand.animateAllHandDiscard(gameState.hand, function()
+            BossBehaviors.onCombatEnd(gameState)
             gameState.gamePhase = "won"
 
             -- If this was a boss round, generate a completely new map or end the run
@@ -3419,6 +3424,7 @@ function Touch.checkGameEnd()
     elseif gameState.handsPlayed >= gameState.maxHandsPerRound then
         -- Animate hand tiles discarding before showing loss screen
         Hand.animateAllHandDiscard(gameState.hand, function()
+            BossBehaviors.onCombatEnd(gameState)
             gameState.gamePhase = "lost"
 
             -- Reset tools on loss (consumables don't persist through failure)
@@ -3504,9 +3510,13 @@ function Touch.discardSelectedTiles()
         -- After discard animation completes, remove tiles and draw new ones
         Hand.removeSelectedTiles(gameState.hand)
 
-        -- Refill to 7 non-negative, counting tiles already placed on the board
-        local placedNonNeg = Hand.countNonNegative(gameState.placedTiles or {})
-        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7, placedNonNeg)
+        -- Refill hand: boss may override with custom draw logic
+        local drawnTiles = BossBehaviors.onDraw(gameState)
+        if not drawnTiles then
+            local placedNonNeg = Hand.countNonNegative(gameState.placedTiles or {})
+            local drawnCount
+            drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget, placedNonNeg)
+        end
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then

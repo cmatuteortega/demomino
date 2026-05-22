@@ -24,6 +24,7 @@ function love.load()
     require("game.validation")
     require("game.scoring")
     require("game.challenges")
+    require("game.boss_behaviors")
     require("game.demon_data")  -- Load before map (map uses DemonData)
     require("game.map")
     require("game.save")
@@ -65,6 +66,7 @@ function love.load()
         placementOrder = {},
         discardsUsed = 0,
         maxDiscardsPerRound = 2,  -- Base discards per round
+        handSizeTarget = 7,       -- Non-negative tiles to maintain in hand (bosses may lower this)
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
@@ -710,8 +712,8 @@ function initializeGame(isNewRound)
     -- Initialize empty hand first
     gameState.hand = {}
 
-    -- Draw tiles: fill until 7 non-negative tiles are present (negative tiles don't count as slots)
-    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+    -- Draw tiles: fill until handSizeTarget non-negative tiles are present (negative tiles don't count as slots)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
 
     -- Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -776,6 +778,8 @@ function initializeCombatRound()
     gameState.placementOrder = {}
     gameState.discardsUsed = 0
     gameState.maxDiscardsPerRound = 2  -- Reset to base value
+    gameState.handSizeTarget = 7       -- Reset to base value (bosses may override)
+    gameState.maxHandsPerRound = 3     -- Reset to base value (bosses may override)
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
@@ -841,15 +845,23 @@ function initializeCombatRound()
         winDialogueShown = false
     }
 
+    -- STEP 1.5: Boss pre-deck hooks (e.g. BAAL randomizes tile values before deck is built)
+    BossBehaviors.onPreDeck(gameState)
+
     -- STEP 2: Create fresh deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
 
-    -- STEP 3: Initialize challenges (can now take a tile from deck for anchor)
-    Challenges.initialize(gameState)
+    -- STEP 3: Initialize challenges (skip for boss rounds — they have their own behavior)
+    if not gameState.isBossRound then
+        Challenges.initialize(gameState)
+    end
+
+    -- STEP 3.5: Apply boss-specific modifiers (no-op for non-boss demons)
+    BossBehaviors.initialize(gameState)
 
     -- STEP 4: Draw tiles from deck to hand (negative tiles don't consume a hand slot)
-    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
 
     -- STEP 5: Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -1002,7 +1014,11 @@ introDialogue = {
 }
 
 function getRandomDialoguePhrase(category)
-    -- Select a random phrase from specified category
+    -- Check for boss-specific dialogue first
+    local bossPhrase = BossBehaviors.getDialogue(gameState.currentDemonName, category)
+    if bossPhrase then return bossPhrase end
+
+    -- Fall back to generic demon dialogue
     local phrases = demonDialogueWittyRemarks  -- Default to witty remarks
 
     if category == "score" then
@@ -1728,7 +1744,8 @@ function updateScoringSequence(dt)
                         isBanned   = isBanned,
                     }
                     animateTileScoring(tile, valueInfo)
-                    
+                    BossBehaviors.onTileScored(gameState, tile)
+
                     seq.currentTileIndex = seq.currentTileIndex + 1
                 else
                     -- All tiles have been triggered, wait for final tile to finish animating
@@ -2004,7 +2021,11 @@ function completeScoringSequence()
 
     if not isGameEnding then
         -- Only refill hand if game is continuing
-        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+        local drawnTiles = BossBehaviors.onDraw(gameState)
+        if not drawnTiles then
+            local drawnCount
+            drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
+        end
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then
@@ -3900,6 +3921,8 @@ function loadDemonIconSprites()
     local demonNames = {
         -- Boss demons
         "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN",
+        "ABADDON", "AZAZEL", "BAAL", "BAPHOMET", "BEPHEGOR",
+        "MEPHISTO", "MOLOCH", "SAMAEL",
         -- Shop demons
         "MAMMON", "PAIMON", "LILITH", "STOLAS",
         -- Other demons (for completeness)

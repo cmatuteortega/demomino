@@ -60,7 +60,16 @@ function Dialogue.calculateMaxWidth()
         local iconWidth = demonName ~= "" and (demonFont:getHeight() * 1.3 + UI.Layout.scale(8)) or 0
         local nameWidth = demonFont:getWidth(demonName)
 
-        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+        -- Subtitle is drawn at the same X origin in "large" font and may be wider than the name
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            local subtitleFont = UI.Fonts.get("large")
+            subtitleWidth = subtitleFont:getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40  -- +shadow +40px margin
     elseif phase == "map" then
         -- Map screen: "Night X" counter + shadow
         local dayText = "Night " .. tostring(gameState.currentDay)
