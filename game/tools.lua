@@ -108,6 +108,10 @@ end
 
 -- Check if a tool can be used
 function Tools.canUse(toolId, gameState)
+    if gameState.samaelActive then
+        return false, "Sealed by Samael"
+    end
+
     -- Check if tool is owned (at least one copy in inventory)
     local hasToolInInventory = false
     for _, ownedToolId in ipairs(gameState.ownedTools or {}) do

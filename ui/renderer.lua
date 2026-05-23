@@ -943,10 +943,12 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
             end
 
             -- Apply shader: fire > negative hand effect > tile-type tints
-            if domino.fireImage then
+            local fireAlpha = domino._fireAlpha  -- nil = LUCIFER (always on), number = BEELZEBUB
+            local fireActive = (domino.fireImage or domino.fireImageTilted) and (fireAlpha == nil or fireAlpha > 0.01)
+            if fireActive then
                 love.graphics.setShader(tileFireShader)
                 tileFireShader:send("time", love.timer.getTime())
-                tileFireShader:send("fireMap", domino.fireImage)
+                tileFireShader:send("fireMap", domino.fireImage or domino.fireImageTilted)
             elseif applyNegative or domino.negative then
                 love.graphics.setShader(tileNegativeShader)
                 tileNegativeShader:send("time", love.timer.getTime())
@@ -960,21 +962,35 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
             love.graphics.draw(sprite, x, y, rotation, scaleX, scaleY,
                 sprite:getWidth()/2, sprite:getHeight()/2)
 
-            if domino.fireImage or applyNegative or domino.negative or domino.tileType == "relic" or domino.tileType == "tender" then
+            if fireActive or applyNegative or domino.negative or domino.tileType == "relic" or domino.tileType == "tender" then
                 love.graphics.setShader()
             end
 
             -- Fire additive overlay: matches sprite width, bottom-aligned, overflows above
-            if domino.fireImage then
+            if domino.fireImage and (fireAlpha == nil or fireAlpha > 0) then
                 local spriteH = sprite:getHeight() * math.abs(scaleY)
                 local fw = sprite:getWidth() * math.abs(scaleX) / TILE_FIRE_W
                 local fh = spriteH / TILE_FIRE_SPRITE_H
                 -- Shift center so fire bottom aligns with sprite bottom
                 local fireY = y + spriteH * 0.5 * (1 - TILE_FIRE_H / TILE_FIRE_SPRITE_H)
                 love.graphics.setBlendMode("add")
-                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.setColor(1, 1, 1, fireAlpha or 1)
                 love.graphics.draw(domino.fireImage, x, fireY, rotation,
                     fw, fh, TILE_FIRE_W / 2, TILE_FIRE_H / 2)
+                love.graphics.setBlendMode("alpha")
+                love.graphics.setColor(r, g, b, a)
+            end
+
+            -- Board tile fire overlay (BEELZEBUB — tilted/horizontal tiles)
+            if domino.fireImageTilted and (fireAlpha == nil or fireAlpha > 0) then
+                local spriteH = sprite:getHeight() * math.abs(scaleY)
+                local fw = sprite:getWidth() * math.abs(scaleX) / TILE_FIRE_TILTED_W
+                local fh = spriteH / TILE_FIRE_TILTED_SPRITE_H
+                local fireY = y + spriteH * 0.5 * (1 - TILE_FIRE_TILTED_H / TILE_FIRE_TILTED_SPRITE_H)
+                love.graphics.setBlendMode("add")
+                love.graphics.setColor(1, 1, 1, fireAlpha or 1)
+                love.graphics.draw(domino.fireImageTilted, x, fireY, rotation,
+                    fw, fh, TILE_FIRE_TILTED_W / 2, TILE_FIRE_TILTED_H / 2)
                 love.graphics.setBlendMode("alpha")
                 love.graphics.setColor(r, g, b, a)
             end
@@ -6749,7 +6765,7 @@ function UI.Renderer.drawCombatCandles()
         })
 
         -- Draw animated flame on left candle
-        if candleLightFrames and #candleLightFrames > 0 then
+        if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
             local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
             if flameFrame then
                 local flameScale = candleScale * 1.25  -- Flame slightly larger than candle
@@ -6791,7 +6807,7 @@ function UI.Renderer.drawCombatCandles()
         })
 
         -- Draw animated flame on right candle
-        if candleLightFrames and #candleLightFrames > 0 then
+        if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
             local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
             if flameFrame then
                 local flameScale = candleScale * 1.25  -- Flame slightly larger than candle
@@ -7022,8 +7038,10 @@ function UI.Renderer.drawTooltip()
         end
 
     elseif tt.type == "contract" and tt.data then
-        local titleText = tt.data.name or "CONTRACT"
+        local contractSealed = gameState.samaelActive
+        local titleText = contractSealed and ((tt.data.name or "CONTRACT") .. " [SEALED]") or (tt.data.name or "CONTRACT")
         local descText  = tt.data.description or ""
+        local descColor = contractSealed and {0.5, 0.5, 0.5, 1} or C_BODY
 
         local fMed   = UI.Fonts.get("medium")
         local fLarge = UI.Fonts.get("large")
@@ -7047,7 +7065,7 @@ function UI.Renderer.drawTooltip()
         curY = curY + largeH + sepPad / 2
         drawSep(bx, curY, totalW)
         curY = curY + sepPad / 2
-        UI.Fonts.drawText(descText, cx, curY, "medium", C_BODY, "center")
+        UI.Fonts.drawText(descText, cx, curY, "medium", descColor, "center")
     end
 
     love.graphics.setColor(1, 1, 1, 1)

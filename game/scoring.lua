@@ -81,7 +81,7 @@ function Scoring.getScoreBreakdown(tiles)
     local contractMultBonus = 0
     local contractTilePipBonus = 0
 
-    if gameState and gameState.activeContracts then
+    if gameState and gameState.activeContracts and not gameState.samaelActive then
         -- Add "Lucky Five" tile pip bonuses (per-tile bonuses like +25 per 5 pip)
         for _, tile in ipairs(tiles) do
             contractTilePipBonus = contractTilePipBonus + Contracts.calculateTilePipBonus(tile, gameState.activeContracts)

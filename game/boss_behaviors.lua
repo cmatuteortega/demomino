@@ -1,6 +1,38 @@
 BossBehaviors = {}
 
 BossBehaviors.BEHAVIORS = {
+    BEELZEBUB = {
+        onBeforeScore = function(gameState, continueCallback)
+            animateBeelzebubBurn(gameState.placedTiles, continueCallback)
+        end,
+        onCombatEnd = function(gameState)
+            gameState.beelzebubBurn = nil
+            for _, tile in ipairs(gameState.tileCollection) do
+                tile.fireGridTilted, tile.fireDataTilted, tile.fireImageTilted = nil, nil, nil
+                tile._fireScanLeftTilted = nil
+                tile.fireGrid, tile.fireData, tile.fireImage = nil, nil, nil
+                tile._fireScanLeft = nil
+                tile._fireStartAt, tile._fireEmitUntil = nil, nil
+                tile._mutateAt, tile._mutated           = nil, nil
+                tile._fireAlpha                         = nil
+            end
+        end,
+        dialogue = {
+            witty = {
+                "Everything you touch begins to rot. That is the gift.",
+                "Your tiles are already half what they were. Look closer.",
+                "Flies feed where value gathers. That is their nature.",
+            },
+            score = {
+                "See what remains when corruption runs its course.",
+                "Your chain festers. And yet, something survives.",
+            },
+            win = {
+                "Even decay cannot undo you. Not yet.",
+                "The rot holds off a moment longer.",
+            },
+        }
+    },
     BAPHOMET = {
         onInit = function(gameState)
             gameState.maxDiscardsPerRound = 0
@@ -93,6 +125,48 @@ BossBehaviors.BEHAVIORS = {
             win = {
                 "You fed the beast. It will remember you.",
                 "The tide recedes. For now.",
+            },
+        }
+    },
+    LUCIFER = {
+        onInit = function(gameState)
+            gameState.debugFireHand = true
+        end,
+        onBeforeScore = function(gameState, continueCallback)
+            -- Permanently remove destroyed tiles from the player's collection
+            local destroyedIds = {}
+            for _, tile in ipairs(gameState.hand) do
+                destroyedIds[tile.id] = true
+            end
+            for i = #gameState.tileCollection, 1, -1 do
+                if destroyedIds[gameState.tileCollection[i].id] then
+                    table.remove(gameState.tileCollection, i)
+                end
+            end
+            gameState.hand = {}
+            continueCallback()
+        end,
+        onCombatEnd = function(gameState)
+            gameState.debugFireHand = false
+            for _, tile in ipairs(gameState.tileCollection) do
+                tile.fireGrid  = nil
+                tile.fireData  = nil
+                tile.fireImage = nil
+            end
+        end,
+        dialogue = {
+            witty = {
+                "Everything you hold will burn. Play wisely.",
+                "Your hand is a funeral pyre. How long will you wait?",
+                "Light was my gift. Fire is my punishment.",
+            },
+            score = {
+                "The unchosen were consumed. As they deserved.",
+                "Ash and smoke is all that lingers.",
+            },
+            win = {
+                "You played fast enough. The fire has no more claim.",
+                "Even the lightbringer can be outrun.",
             },
         }
     },
@@ -199,6 +273,58 @@ BossBehaviors.BEHAVIORS = {
             win = {
                 "You have mastered my abundance.",
                 "Even excess can be tamed.",
+            },
+        }
+    },
+    SAMAEL = {
+        onInit = function(gameState)
+            gameState.samaelActive = true
+        end,
+        onCombatEnd = function(gameState)
+            gameState.samaelActive = nil
+        end,
+        dialogue = {
+            witty = {
+                "Your pacts mean nothing here.",
+                "The angel of death answers to no contract.",
+                "Drop your tools. They are useless before me.",
+            },
+            score = {
+                "Your allies have abandoned you. As they should.",
+                "Contracts dissolve in the presence of death.",
+            },
+            win = {
+                "You survived without your crutches. Surprising.",
+                "Death is impressed. That is rare.",
+            },
+        }
+    },
+    MOLOCH = {
+        onTileScored = function(gameState, tile)
+            if tile.tileType == "regular" or tile.tileType == "relic" then
+                Domino.setTileType(tile, "tender")
+                for _, collectionTile in ipairs(gameState.tileCollection) do
+                    if collectionTile.id == tile.id then
+                        Domino.setTileType(collectionTile, "tender")
+                        break
+                    end
+                end
+            end
+            -- tender tiles: collection entry already removed at placement (touch.lua:3077-3097)
+        end,
+        dialogue = {
+            witty = {
+                "Everything you earn becomes fuel.",
+                "The more you score, the less you keep.",
+                "I do not take your tiles. I transform them.",
+            },
+            score = {
+                "What was solid is now fragile.",
+                "Your collection softens with every play.",
+            },
+            win = {
+                "You won. But your deck remembers.",
+                "Victory costs more than you think.",
             },
         }
     },
