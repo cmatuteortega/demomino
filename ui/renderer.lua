@@ -4372,9 +4372,7 @@ function UI.Renderer.drawPawnSlot()
 
     local tile = gameState.pawnPlacedTile
     if tile then
-        if not tile.isDragging then
-            UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
-        end
+        UI.Renderer.drawDomino(tile, nil, nil, nil, "horizontal")
         -- Show sell price above the placed tile
         local price = 2
         if tile.tileType == "relic" then price = 3

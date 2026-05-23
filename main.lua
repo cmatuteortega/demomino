@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
