@@ -1632,6 +1632,38 @@ function UI.Renderer.drawScore(score)
     local counterFontHeight = counterFont:getHeight() * 0.5  -- Account for 0.5x scale
     local currentCounterY = leftY + iconHeight + subtitleHeight + UI.Layout.scale(5)  -- Position below icon + subtitle with spacing
 
+    -- Draw "?" boss mechanic button below the demon icon (boss rounds only)
+    local bossDesc = BossBehaviors.getDescription(demonName)
+    if bossDesc ~= "" then
+        local questionFont = UI.Fonts.get("title")
+        local questionChar = "?"
+        local questionColor = UI.Colors.FONT_RED
+
+        local qW = questionFont:getWidth(questionChar)
+        local qH = questionFont:getHeight()
+        local qX = iconCenterX - qW / 2
+        local qY = currentCounterY
+
+        local qPhase = time * 2.5
+        local qWave = math.sin(qPhase) * 1.5
+
+        UI.Fonts.drawAnimatedText(questionChar, qX, qY + qWave, "title", questionColor, "left", {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(2),
+            scale = 1.0,
+            shake = 0
+        })
+
+        gameState.bossDescriptionButtonBounds = {
+            x = qX, y = qY, width = qW, height = qH,
+            tooltipAnchorX = leftX + iconWidth,
+            tooltipAnchorY = qY + qH / 2,
+        }
+        currentCounterY = currentCounterY + qH + UI.Layout.scale(4)
+    else
+        gameState.bossDescriptionButtonBounds = nil
+    end
+
     -- Floating animation: same wave effect as score digits
     local floatPhase = time * 2.5
     local floatOffset = math.sin(floatPhase) * 2  -- 2px range for smaller text
@@ -3225,33 +3257,6 @@ function UI.Renderer.drawTilesMenu()
         local time = love.timer.getTime()
         local titleFont = UI.Fonts.get("formulaScore")
 
-        -- Right side: TRADE title
-        local nodeTitle = "TRADE"
-        local titleColor = UI.Colors.FONT_WHITE
-
-        local totalWidth = 0
-        for i = 1, #nodeTitle do
-            local char = nodeTitle:sub(i, i)
-            totalWidth = totalWidth + titleFont:getWidth(char)
-        end
-
-        local currentX = rightX - totalWidth
-        for i = 1, #nodeTitle do
-            local char = nodeTitle:sub(i, i)
-            local charWidth = titleFont:getWidth(char)
-            local phase = time * 2.5 + (i - 1) * 0.4
-            local waveOffset = math.sin(phase) * 3
-
-            UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
-                shadow = true,
-                shadowOffset = UI.Layout.scale(4),
-                scale = 1.0,
-                shake = 0
-            })
-
-            currentX = currentX + charWidth
-        end
-
         -- Left side: MAMMON demon icon and name
         local demonName = "MAMMON"
         local demonColor = UI.Colors.FONT_RED
@@ -3401,33 +3406,6 @@ function UI.Renderer.drawArtifactsMenu()
     local topY = UI.Layout.scale(20)
     local time = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
-
-    -- Right side: ARTIFACTS title
-    local nodeTitle = "ARTIFACTS"
-    local titleColor = UI.Colors.FONT_WHITE
-
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        totalWidth = totalWidth + titleFont:getWidth(char)
-    end
-
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local waveOffset = math.sin(phase) * 3
-
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4),
-            scale = 1.0,
-            shake = 0
-        })
-
-        currentX = currentX + charWidth
-    end
 
     -- Left side: PAIMON demon icon and name
     local demonName = "PAIMON"
@@ -3634,33 +3612,6 @@ function UI.Renderer.drawContractsMenu()
     local time = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
 
-    -- Right side: CONTRACTS title
-    local nodeTitle = "CONTRACTS"
-    local titleColor = UI.Colors.FONT_WHITE
-
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        totalWidth = totalWidth + titleFont:getWidth(char)
-    end
-
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local waveOffset = math.sin(phase) * 3
-
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4),
-            scale = 1.0,
-            shake = 0
-        })
-
-        currentX = currentX + charWidth
-    end
-
     -- Left side: STOLAS demon icon and name
     local demonName = "STOLAS"
     local demonColor = UI.Colors.FONT_RED
@@ -3844,6 +3795,13 @@ function UI.Renderer.drawActiveContractCard(contract, x, y, width, height)
 
     -- Contract description
     UI.Fonts.drawText(contract.description, x + width/2, y + UI.Layout.scale(35), "small", {0.8, 0.8, 0.8, 1}, "center")
+
+    -- Remaining rounds
+    if contract.expiresAtRound then
+        local remaining = contract.expiresAtRound - gameState.currentRound
+        local roundText = remaining .. " rnd" .. (remaining == 1 and "" or "s")
+        UI.Fonts.drawText(roundText, x + width/2, y + UI.Layout.scale(58), "small", {1, 0.75, 0.2, 1}, "center")
+    end
 
     -- Draw candle flame on the card (top-right corner)
     if candleLightFrames and #candleLightFrames > 0 then
@@ -4182,55 +4140,39 @@ function UI.Renderer.drawShopNextButton()
         }
     end
 
-    -- Get font for size calculation
-    local font = UI.Fonts.get("formulaScore")
-    local time = love.timer.getTime()
-
-    -- NEXT> button in bottom-right
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(80)
-
-    local text = "NEXT>"
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
     local textColor = gameState.shopNextButtonAnimation.color
 
-    -- Calculate total width of text for positioning
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
     local totalWidth = 0
     for i = 1, #text do
-        local char = text:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
     end
+    local textX = rightX - totalWidth
 
-    -- Position in bottom-right area
-    local textX = screenWidth - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
-
-    -- Draw each character with wave animation
     local currentX = textX
     for i = 1, #text do
-        local char = text:sub(i, i)
-        local charWidth = font:getWidth(char)
-
-        -- Wave animation
-        local phase = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4)
-        }
-
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
-
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char) * skipScale
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
+        })
         currentX = currentX + charWidth
     end
 
-    -- Store button bounds for touch handling (add padding for easier clicking)
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.shopNextButton = {
         x = textX - padding,
-        y = textY - padding,
-        width = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        y = topY - padding,
+        width  = totalWidth + padding * 2,
+        height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -4253,24 +4195,6 @@ function UI.Renderer.drawPawnMode()
     local leftX  = UI.Layout.scale(60)
     local topY   = UI.Layout.scale(20)
     local titleFont = UI.Fonts.get("formulaScore")
-
-    -- Right side: "PAWN" title with wave animation
-    local nodeTitle = "PAWN"
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
-    end
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local waveOffset = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", UI.Colors.FONT_WHITE, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
-        })
-        currentX = currentX + charWidth
-    end
 
     -- Left side: MAMMON demon icon and name
     local demonName = "MAMMON"
@@ -4485,55 +4409,39 @@ function UI.Renderer.drawArtifactsNextButton()
         }
     end
 
-    -- Get font for size calculation
-    local font = UI.Fonts.get("formulaScore")
-    local time = love.timer.getTime()
-
-    -- NEXT> button in bottom-right
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(80)
-
-    local text = "NEXT>"
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
     local textColor = gameState.artifactsNextButtonAnimation.color
 
-    -- Calculate total width of text for positioning
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
     local totalWidth = 0
     for i = 1, #text do
-        local char = text:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
     end
+    local textX = rightX - totalWidth
 
-    -- Position in bottom-right area
-    local textX = screenWidth - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
-
-    -- Draw each character with wave animation
     local currentX = textX
     for i = 1, #text do
-        local char = text:sub(i, i)
-        local charWidth = font:getWidth(char)
-
-        -- Wave animation
-        local phase = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4)
-        }
-
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
-
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char) * skipScale
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
+        })
         currentX = currentX + charWidth
     end
 
-    -- Store button bounds for touch handling (add padding for easier clicking)
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.artifactsNextButton = {
         x = textX - padding,
-        y = textY - padding,
-        width = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        y = topY - padding,
+        width  = totalWidth + padding * 2,
+        height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -4548,55 +4456,39 @@ function UI.Renderer.drawFusionNextButton()
         }
     end
 
-    -- Get font for size calculation
-    local font = UI.Fonts.get("formulaScore")
-    local time = love.timer.getTime()
-
-    -- NEXT> button in bottom-right
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin = UI.Layout.scale(80)
-
-    local text = "NEXT>"
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
     local textColor = gameState.fusionNextButtonAnimation.color
 
-    -- Calculate total width of text for positioning
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
     local totalWidth = 0
     for i = 1, #text do
-        local char = text:sub(i, i)
-        totalWidth = totalWidth + font:getWidth(char)
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
     end
+    local textX = rightX - totalWidth
 
-    -- Position in bottom-right area
-    local textX = screenWidth - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
-
-    -- Draw each character with wave animation
     local currentX = textX
     for i = 1, #text do
-        local char = text:sub(i, i)
-        local charWidth = font:getWidth(char)
-
-        -- Wave animation
-        local phase = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4)
-        }
-
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", animProps)
-
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char) * skipScale
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
+        })
         currentX = currentX + charWidth
     end
 
-    -- Store button bounds for touch handling (add padding for easier clicking)
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.fusionNextButton = {
         x = textX - padding,
-        y = textY - padding,
-        width = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        y = topY - padding,
+        width  = totalWidth + padding * 2,
+        height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -4609,39 +4501,39 @@ function UI.Renderer.drawContractsNextButton()
 
     local screenWidth  = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local font         = UI.Fonts.get("formulaScore")
-    local time         = love.timer.getTime()
-    local text         = "NEXT>"
-    local textColor    = gameState.contractsNextButtonAnimation.color
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
+    local textColor = gameState.contractsNextButtonAnimation.color
+
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
 
     local totalWidth = 0
     for i = 1, #text do
-        totalWidth = totalWidth + font:getWidth(text:sub(i, i))
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
     end
-
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin   = UI.Layout.scale(80)
-    local textX = screenWidth  - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
+    local textX = rightX - totalWidth
 
     local currentX = textX
     for i = 1, #text do
         local char      = text:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = font:getWidth(char) * skipScale
         local phase     = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "formulaScore", textColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4)
+        local waveOffset = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
         })
         currentX = currentX + charWidth
     end
 
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.contractsNextButton = {
-        x      = textX  - padding,
-        y      = textY  - padding,
+        x      = textX - padding,
+        y      = topY  - padding,
         width  = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -4669,24 +4561,6 @@ function UI.Renderer.drawDealMenu()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
     UI.Renderer.drawToolStack()
-
-    -- Right side: "DEAL" title (wave)
-    local nodeTitle = "DEAL"
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
-    end
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char      = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase     = time * 2.5 + (i - 1) * 0.4
-        local waveOff   = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "formulaScore", UI.Colors.FONT_WHITE, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
-        })
-        currentX = currentX + charWidth
-    end
 
     -- Left side: STOLAS icon + name + subtitle (wave)
     local demonName  = "STOLAS"
@@ -4990,38 +4864,41 @@ function UI.Renderer.drawCasinoNextButton()
     local casino = gameState.casino
     if not casino then return end
 
-    local screenWidth  = gameState.screen.width
-    local screenHeight = gameState.screen.height
-    local time         = love.timer.getTime()
-    local font         = UI.Fonts.get("formulaScore")
-    local btnText          = gameState.gameroomMode and "EXIT>" or "NEXT>"
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin   = UI.Layout.scale(80)
+    local screenWidth = gameState.screen.width
+    local time        = love.timer.getTime()
+    local bigFont     = UI.Fonts.get("bigScore")
+    local titleFont   = UI.Fonts.get("formulaScore")
+    local skipScale   = 0.65
+    local btnText     = ">>"
 
     if not casino.nextButtonAnimation then
         casino.nextButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
     end
     local color = casino.nextButtonAnimation.color
 
+    local rightX    = screenWidth - UI.Layout.scale(70)
+    local pipStartY = UI.Layout.scale(20)
+    local vsY       = pipStartY + bigFont:getHeight() + UI.Layout.scale(2)
+    local btnY      = vsY + titleFont:getHeight() + UI.Layout.scale(6)
+
     local totalW = 0
-    for i = 1, #btnText do totalW = totalW + font:getWidth(btnText:sub(i, i)) end
-    local btnX = screenWidth - totalW - horizontalMargin
-    local btnY = screenHeight - font:getHeight() - verticalMargin
+    for i = 1, #btnText do totalW = totalW + bigFont:getWidth(btnText:sub(i, i)) * skipScale end
+    local btnX = rightX - totalW
 
     local cx = btnX
     for i = 1, #btnText do
         local char  = btnText:sub(i, i)
-        local cw    = font:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local wo    = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, cx, btnY + wo, "formulaScore", color, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        local cw    = bigFont:getWidth(char) * skipScale
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local wo    = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, cx, btnY + wo, "bigScore", color, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
         })
         cx = cx + cw
     end
 
-    local padding = UI.Layout.scale(20)
-    casino.nextButton = { x = btnX - padding, y = btnY - padding, width = totalW + padding * 2, height = font:getHeight() + padding * 2 }
+    local padding = UI.Layout.scale(15)
+    casino.nextButton = { x = btnX - padding, y = btnY - padding, width = totalW + padding * 2, height = (bigFont:getHeight() * skipScale) + padding * 2 }
 end
 
 -- ── End casino renderer ───────────────────────────────────────────────────────
@@ -5128,39 +5005,39 @@ function UI.Renderer.drawDealNextButton()
 
     local screenWidth  = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local font         = UI.Fonts.get("formulaScore")
-    local time         = love.timer.getTime()
-    local text         = "NEXT>"
-    local textColor    = gameState.dealNextButtonAnimation.color
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
+    local textColor = gameState.dealNextButtonAnimation.color
+
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
 
     local totalWidth = 0
     for i = 1, #text do
-        totalWidth = totalWidth + font:getWidth(text:sub(i, i))
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
     end
-
-    local horizontalMargin = UI.Layout.scale(40)
-    local verticalMargin   = UI.Layout.scale(80)
-    local textX = screenWidth  - totalWidth - horizontalMargin
-    local textY = screenHeight - font:getHeight() - verticalMargin
+    local textX = rightX - totalWidth
 
     local currentX = textX
     for i = 1, #text do
         local char      = text:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = font:getWidth(char) * skipScale
         local phase     = time * 2.5 + (i - 1) * 0.2
-        local waveOff   = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOff, "formulaScore", textColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4)
+        local waveOff   = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
         })
         currentX = currentX + charWidth
     end
 
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.dealNextButton = {
-        x      = textX  - padding,
-        y      = textY  - padding,
+        x      = textX - padding,
+        y      = topY  - padding,
         width  = totalWidth + padding * 2,
-        height = font:getHeight() + padding * 2
+        height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -5786,33 +5663,6 @@ function UI.Renderer.drawFusionMode()
     local time = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
 
-    -- Right side: node title (ALCHEMY or SUBTRACTION)
-    local nodeTitle = "ALCHEMY"
-    local titleColor = UI.Colors.FONT_WHITE
-
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        totalWidth = totalWidth + titleFont:getWidth(char)
-    end
-
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.4
-        local waveOffset = math.sin(phase) * 3
-
-        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "formulaScore", titleColor, "left", {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4),
-            scale = 1.0,
-            shake = 0
-        })
-
-        currentX = currentX + charWidth
-    end
-
     -- Left side: LILITH demon icon and name
     local demonName = "LILITH"
     local demonColor = UI.Colors.FONT_RED
@@ -5952,24 +5802,6 @@ function UI.Renderer.drawEnhanceMode()
     local topY      = UI.Layout.scale(20)
     local time      = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
-
-    -- Right side: ENHANCE title (wave animation)
-    local nodeTitle  = "ENHANCE"
-    local titleColor = UI.Colors.FONT_WHITE
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
-    end
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char      = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase     = time * 2.5 + (i - 1) * 0.4
-        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "formulaScore", titleColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
-        })
-        currentX = currentX + charWidth
-    end
 
     -- Left side: PAZUZU icon + name + subtitle
     local demonName  = "PAZUZU"
@@ -6165,36 +5997,35 @@ function UI.Renderer.drawEnhanceNextButton()
         }
     end
 
-    local screenWidth  = gameState.screen.width
-    local screenHeight = gameState.screen.height
-    local font         = UI.Fonts.get("formulaScore")
-    local time         = love.timer.getTime()
-    local text         = "NEXT>"
-    local textColor    = gameState.enhanceNextButtonAnimation.color
+    local screenWidth = gameState.screen.width
+    local font        = UI.Fonts.get("bigScore")
+    local time        = love.timer.getTime()
+    local text        = ">>"
+    local skipScale   = 0.65
+    local textColor   = gameState.enhanceNextButtonAnimation.color
 
-    local hMargin = UI.Layout.scale(40)
-    local vMargin = UI.Layout.scale(80)
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
     local totalWidth = 0
-    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) end
-
-    local textX = screenWidth  - totalWidth - hMargin
-    local textY = screenHeight - font:getHeight() - vMargin
+    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale end
+    local textX = rightX - totalWidth
 
     local currentX = textX
     for i = 1, #text do
         local char      = text:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = font:getWidth(char) * skipScale
         local phase     = time * 2.5 + (i - 1) * 0.2
-        UI.Fonts.drawAnimatedText(char, currentX, textY + math.sin(phase) * 3, "formulaScore", textColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4)
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 1.5, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
         })
         currentX = currentX + charWidth
     end
 
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.enhanceNextButton = {
-        x = textX - padding, y = textY - padding,
-        width = totalWidth + padding * 2, height = font:getHeight() + padding * 2
+        x = textX - padding, y = topY - padding,
+        width = totalWidth + padding * 2, height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -6217,23 +6048,6 @@ function UI.Renderer.drawFlattenMode()
     local topY      = UI.Layout.scale(20)
     local time      = love.timer.getTime()
     local titleFont = UI.Fonts.get("formulaScore")
-
-    local nodeTitle  = "FLATTEN"
-    local titleColor = UI.Colors.FONT_WHITE
-    local totalWidth = 0
-    for i = 1, #nodeTitle do
-        totalWidth = totalWidth + titleFont:getWidth(nodeTitle:sub(i, i))
-    end
-    local currentX = rightX - totalWidth
-    for i = 1, #nodeTitle do
-        local char      = nodeTitle:sub(i, i)
-        local charWidth = titleFont:getWidth(char)
-        local phase     = time * 2.5 + (i - 1) * 0.4
-        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 3, "formulaScore", titleColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
-        })
-        currentX = currentX + charWidth
-    end
 
     local demonName  = "PAZUZU"
     local demonColor = UI.Colors.FONT_RED
@@ -6399,34 +6213,34 @@ function UI.Renderer.drawFlattenNextButton()
 
     local screenWidth  = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local font         = UI.Fonts.get("formulaScore")
-    local time         = love.timer.getTime()
-    local text         = "NEXT>"
-    local textColor    = gameState.flattenNextButtonAnimation.color
+    local font      = UI.Fonts.get("bigScore")
+    local time      = love.timer.getTime()
+    local text      = ">>"
+    local skipScale = 0.65
+    local textColor = gameState.flattenNextButtonAnimation.color
 
-    local hMargin = UI.Layout.scale(40)
-    local vMargin = UI.Layout.scale(80)
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
     local totalWidth = 0
-    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) end
-
-    local textX = screenWidth  - totalWidth - hMargin
-    local textY = screenHeight - font:getHeight() - vMargin
+    for i = 1, #text do totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale end
+    local textX = rightX - totalWidth
 
     local currentX = textX
     for i = 1, #text do
         local char      = text:sub(i, i)
-        local charWidth = font:getWidth(char)
+        local charWidth = font:getWidth(char) * skipScale
         local phase     = time * 2.5 + (i - 1) * 0.2
-        UI.Fonts.drawAnimatedText(char, currentX, textY + math.sin(phase) * 3, "formulaScore", textColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(4)
+        UI.Fonts.drawAnimatedText(char, currentX, topY + math.sin(phase) * 1.5, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
         })
         currentX = currentX + charWidth
     end
 
-    local padding = UI.Layout.scale(20)
+    local padding = UI.Layout.scale(15)
     gameState.flattenNextButton = {
-        x = textX - padding, y = textY - padding,
-        width = totalWidth + padding * 2, height = font:getHeight() + padding * 2
+        x = textX - padding, y = topY - padding,
+        width = totalWidth + padding * 2, height = (font:getHeight() * skipScale) + padding * 2
     }
 end
 
@@ -7041,14 +6855,23 @@ function UI.Renderer.drawTooltip()
         local descText  = tt.data.description or ""
         local descColor = contractSealed and {0.5, 0.5, 0.5, 1} or C_BODY
 
+        local remainText = ""
+        if tt.data.expiresAtRound then
+            local remaining = tt.data.expiresAtRound - gameState.currentRound
+            remainText = remaining .. " round" .. (remaining == 1 and "" or "s") .. " remaining"
+        end
+
         local fMed   = UI.Fonts.get("medium")
         local fLarge = UI.Fonts.get("large")
         local medH   = fMed:getHeight()
         local largeH = fLarge:getHeight()
 
         local contentW = math.max(fLarge:getWidth(titleText), fMed:getWidth(descText))
+        if remainText ~= "" then
+            contentW = math.max(contentW, fMed:getWidth(remainText))
+        end
         local totalW = contentW + pad * 3
-        local totalH = pad + largeH + sepPad + medH + pad
+        local totalH = pad + largeH + sepPad + medH + (remainText ~= "" and (UI.Layout.scale(4) + medH) or 0) + pad
 
         local bx = tt.x - totalW / 2
         local by = tt.y - totalH - scale * 14
@@ -7064,6 +6887,35 @@ function UI.Renderer.drawTooltip()
         drawSep(bx, curY, totalW)
         curY = curY + sepPad / 2
         UI.Fonts.drawText(descText, cx, curY, "medium", descColor, "center")
+        if remainText ~= "" then
+            curY = curY + medH + UI.Layout.scale(4)
+            UI.Fonts.drawText(remainText, cx, curY, "medium", {1, 0.75, 0.2, 1}, "center")
+        end
+    elseif tt.type == "boss" and tt.data then
+        local lines  = tt.data.lines or {}
+        local fLarge = UI.Fonts.get("large")
+        local lineH  = fLarge:getHeight()
+
+        local contentW = scale * 20
+        for _, line in ipairs(lines) do
+            contentW = math.max(contentW, fLarge:getWidth(line))
+        end
+        local totalW = contentW + pad * 3
+        local totalH = pad + #lines * lineH + (#lines - 1) * UI.Layout.scale(3) + pad
+
+        local indent = scale * 12
+        local bx = tt.x + indent
+        local by = tt.y - totalH / 2
+        bx = math.max(pad, math.min(bx, sw - totalW - pad))
+        by = math.max(pad, math.min(by, sh - totalH - pad))
+
+        drawPanel(bx, by, totalW, totalH)
+        local cx   = bx + totalW / 2
+        local curY = by + pad
+        for _, line in ipairs(lines) do
+            UI.Fonts.drawText(line, cx, curY, "large", C_BODY, "center")
+            curY = curY + lineH + UI.Layout.scale(3)
+        end
     end
 
     love.graphics.setColor(1, 1, 1, 1)

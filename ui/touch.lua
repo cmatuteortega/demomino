@@ -1030,6 +1030,26 @@ function Touch.released(x, y, istouch, touchId)
         Touch.dismissTooltip()
     end
 
+    -- Show boss mechanic tooltip when "?" button is tapped during combat
+    if (gameState.gamePhase == "playing" or gameState.gamePhase == "won") and
+       gameState.bossDescriptionButtonBounds and
+       isPointInRect(x, y, gameState.bossDescriptionButtonBounds) then
+        local demonName = gameState.currentDemonName or ""
+        local desc = BossBehaviors.getDescription(demonName)
+        if desc ~= "" then
+            local lines = {}
+            for line in desc:gmatch("[^\n]+") do
+                table.insert(lines, line)
+            end
+            local bounds = gameState.bossDescriptionButtonBounds
+            Touch.showTooltip("boss", {lines = lines},
+                bounds.tooltipAnchorX, bounds.tooltipAnchorY, {})
+        end
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    end
+
     -- Show tooltip for anchor (demon) board tiles on hold
     if touchState.pressedAnchorTile and not Touch.isDragging() then
         if true then
@@ -1457,6 +1477,14 @@ function Touch.released(x, y, istouch, touchId)
                 -- After white flash, transition directly to map (not intro)
                 gameState.currentRound = gameState.currentRound + 1
                 gameState.targetScore = TARGET_SCORE
+                -- Prune contracts that have expired
+                local surviving = {}
+                for _, c in ipairs(gameState.activeContracts) do
+                    if not c.expiresAtRound or c.expiresAtRound > gameState.currentRound then
+                        table.insert(surviving, c)
+                    end
+                end
+                gameState.activeContracts = surviving
                 Save.updateBestRound(gameState.currentRound)
                 -- Clear any thrown tool sprites before returning to map
                 UI.Animation.clearAllDiePhysics()
@@ -5554,14 +5582,15 @@ function Touch.purchaseContract(contract)
 
     -- Add contract to active contracts
     table.insert(gameState.activeContracts, {
-        id = contract.id,
-        name = contract.name,
-        description = contract.description,
-        effectType = contract.effectType,
-        effectValue = contract.effectValue,
-        triggerPip = contract.triggerPip,  -- For Lucky Five and One Dollar contracts
-        condition = contract.condition,  -- For conditional contracts (Small Hand, Low Stakes)
-        conditionValue = contract.conditionValue  -- For conditional contracts
+        id             = contract.id,
+        name           = contract.name,
+        description    = contract.description,
+        effectType     = contract.effectType,
+        effectValue    = contract.effectValue,
+        triggerPip     = contract.triggerPip,
+        condition      = contract.condition,
+        conditionValue = contract.conditionValue,
+        expiresAtRound = gameState.currentRound + 3,
     })
 
     -- Trigger purchase dialogue
@@ -6594,6 +6623,7 @@ function Touch.acceptDeal()
             triggerPip     = contract.triggerPip,
             condition      = contract.condition,
             conditionValue = contract.conditionValue,
+            expiresAtRound = gameState.currentRound + 3,
         })
         UI.Animation.createFloatingText("CONTRACT SEALED!", screenCX, screenCY - UI.Layout.scale(60), {
             color = UI.Colors.FONT_PINK, fontSize = "large",

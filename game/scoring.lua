@@ -82,22 +82,47 @@ function Scoring.getScoreBreakdown(tiles)
     local contractTilePipBonus = 0
 
     if gameState and gameState.activeContracts and not gameState.samaelActive then
-        -- Add "Lucky Five" tile pip bonuses (per-tile bonuses like +25 per 5 pip)
+        -- Lucky pip bonuses (per-tile, e.g. Lucky Five, Lucky Zero, etc.)
         for _, tile in ipairs(tiles) do
             contractTilePipBonus = contractTilePipBonus + Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
         end
 
-        -- Add "Greedy" final base bonus
+        -- Greedy: flat base bonus
         contractBaseBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
 
-        -- Add "Low Stakes" conditional base bonus
+        -- Low Stakes / High Roller: conditional base bonus
         contractBaseBonus = contractBaseBonus + Contracts.calculateConditionalBaseBonus(tiles, gameState.activeContracts)
 
-        -- Add "Perfect Loop" multiplier bonus
+        -- Dark Exchange: zero out demon tile sum contributions
+        contractBaseBonus = contractBaseBonus - Contracts.calculateDemonOverrideSum(tiles, gameState.activeContracts)
+
+        -- Wild Card: odd/even special-pip tiles add to sum
+        contractTilePipBonus = contractTilePipBonus + Contracts.calculateSpecialTileSumBonus(tiles, gameState.activeContracts)
+
+        -- Echo: tiles with matching pip score their sum+mult contribution twice
+        local echoBonuses = Contracts.calculateEchoPipBonus(tiles, gameState.activeContracts)
+        contractTilePipBonus = contractTilePipBonus + echoBonuses.sumBonus
+
+        -- Perfect Loop: conditional multiplier bonus
         contractMultBonus = Contracts.calculateMultiplierBonus(tiles, gameState.activeContracts)
 
-        -- Add "Small Hand" conditional multiplier bonus
+        -- Small Hand: conditional multiplier bonus
         contractMultBonus = contractMultBonus + Contracts.calculateConditionalMultiplier(tiles, gameState.activeContracts)
+
+        -- Bold Pact: flat mult bonus
+        contractMultBonus = contractMultBonus + Contracts.calculateFlatMultBonus(gameState.activeContracts)
+
+        -- Tender Grace: mult per tender tile
+        contractMultBonus = contractMultBonus + Contracts.calculateTileTypeMultBonus(tiles, gameState.activeContracts)
+
+        -- Dark Exchange: extra mult per demon tile
+        contractMultBonus = contractMultBonus + Contracts.calculateDemonOverrideMult(tiles, gameState.activeContracts)
+
+        -- Collector: relic tiles in hand add mult
+        contractMultBonus = contractMultBonus + Contracts.calculateHandRelicMult(gameState.activeContracts)
+
+        -- Echo: extra mult from doubled tiles
+        contractMultBonus = contractMultBonus + echoBonuses.multBonus
     end
 
     baseValue = baseValue + contractTilePipBonus + contractBaseBonus

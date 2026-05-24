@@ -144,55 +144,13 @@ function Dialogue.calculateMaxWidth()
         local roundStartX = rightX - roundWidth - UI.Layout.scale(10)
         rightBoundary = roundStartX - 40  -- -40px margin from leftmost char
 
-    elseif phase == "tiles_menu" then
-        -- Tile shop: "TRADE", "ALCHEMY", or "ENHANCE" title (right-aligned from rightX)
-        local nodeType = gameState.currentTilesNodeType
-        local nodeTitle = (nodeType == "alchemy" or nodeType == "alchemy_subtract") and "ALCHEMY"
-                       or (nodeType == "enhance" or nodeType == "flatten") and "ENHANCE"
-                       or "TRADE"
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth(nodeTitle)
-
-        -- Text starts at: rightX - titleWidth
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "artifacts_menu" then
-        -- Artifacts shop: "ARTIFACTS" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("ARTIFACTS")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "contracts_menu" then
-        -- Contracts: "CONTRACTS" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("CONTRACTS")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "deal_menu" then
-        -- Deal: "DEAL" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("DEAL")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "casino" then
-        -- Casino: "CASINO" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("CASINO")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" or phase == "casino" then
+        -- All shop/casino screens: >> button in top-right (bigScore * 0.65, rightX = screenWidth - scale(70))
+        local skipFont  = UI.Fonts.get("bigScore")
+        local skipScale = 0.65
+        local btnW      = skipFont:getWidth(">") * skipScale * 2
+        local rightX    = screenWidth - UI.Layout.scale(70)
+        rightBoundary   = rightX - btnW - UI.Layout.scale(15)
 
     else
         -- Default: use standard right margin

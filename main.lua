@@ -99,7 +99,7 @@ function love.load()
             scale = 1.0
         },
         -- Next button (NEXT >>) animation system
-        nextButtonText = "NEXT>",
+        nextButtonText = ">>",
         nextButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
@@ -239,6 +239,7 @@ function love.load()
             toolContext = nil,    -- "stack" | "shop" for tool tooltips
             toolSpriteLeft = 0,   -- left-edge X of tool sprite (stack positioning)
         },
+        bossDescriptionButtonBounds = nil,  -- Hit rect for the "?" boss mechanic tooltip button
         relicTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to relic
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
@@ -422,7 +423,7 @@ function love.load()
                 },
                 accept_full = {
                     "YOUR ROSTER IS FULL. TAKE COIN INSTEAD.",
-                    "NO ROOM FOR THE CONTRACT — COMPENSATION AWARDED.",
+                    "NO ROOM FOR THE CONTRACT - COMPENSATION AWARDED.",
                     "CONSIDER THE COIN A CONSOLATION.",
                 },
                 skip = {
@@ -1714,10 +1715,11 @@ function updateScoringSequence(dt)
                     local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
                     if isBanned then addedValue = 0 end
 
-                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip) — skip if banned or Samael
+                    -- Apply lucky pip / wild card contract bonuses — skip if banned or Samael
                     local contractBonus = 0
                     if not isBanned and not gameState.samaelActive then
                         contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                        contractBonus = contractBonus + Contracts.calculateSpecialTileSumBonus({tile}, gameState.activeContracts)
                         addedValue = addedValue + contractBonus
                     end
 
@@ -1737,6 +1739,22 @@ function updateScoringSequence(dt)
                         if tile.tileType == "relic" then
                             multiplierIncrement = multiplierIncrement + 1
                         end
+
+                        -- Dark Exchange: demon tiles give 0 sum + extra mult
+                        if not gameState.samaelActive then
+                            for _, c in ipairs(gameState.activeContracts) do
+                                if c.effectType == "demon_override" and tile.tileType == "demon" then
+                                    -- Undo this tile's sum contribution already added above
+                                    local demonSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
+                                    if Domino.isDouble(tile) then demonSum = demonSum + 10 end
+                                    seq.accumulatedValue = seq.accumulatedValue - demonSum
+                                    gameState.formulaTargetValue = seq.accumulatedValue
+                                    -- Extra mult
+                                    multiplierIncrement = multiplierIncrement + c.effectValue
+                                end
+                            end
+                        end
+
                         seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
                         gameState.multiplierTargetValue = seq.accumulatedMultiplier
                     end
@@ -1753,6 +1771,46 @@ function updateScoringSequence(dt)
                     }
                     animateTileScoring(tile, valueInfo)
                     BossBehaviors.onTileScored(gameState, tile)
+
+                    -- Echo contracts: tiles with trigger pip score their contribution N+1 times
+                    if not isBanned and not gameState.samaelActive then
+                        local echoHitIndex = 0
+                        for _, c in ipairs(gameState.activeContracts) do
+                            if c.effectType == "echo_pip_bonus" then
+                                if tile.left == c.triggerPip or tile.right == c.triggerPip then
+                                    echoHitIndex = echoHitIndex + 1
+                                    local echoSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
+                                    if Domino.isDouble(tile) then echoSum = echoSum + 10 end
+                                    local echoMult = tile.baalMult ~= nil and tile.baalMult
+                                        or (1 + (tile.tileType == "relic" and 1 or 0))
+                                    seq.accumulatedValue = seq.accumulatedValue + echoSum
+                                    seq.accumulatedMultiplier = seq.accumulatedMultiplier + echoMult
+                                    gameState.formulaTargetValue = seq.accumulatedValue
+                                    gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                                    -- Each echo punch fires after the previous one finishes: 0.4s per hit
+                                    local punchDelay = 0.4 * echoHitIndex
+                                    local delay = {t = 0}
+                                    UI.Animation.animateTo(delay, {t = 1}, punchDelay, "easeOutQuart", function()
+                                        tile.scoreShake = 5
+                                        UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
+                                        UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
+                                            UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack")
+                                        end)
+                                        UI.Audio.playTilePlaced()
+                                        UI.Animation.createFloatingText("ECHO!", tile.x, tile.y - UI.Layout.scale(60), {
+                                            color        = {0.4, 1.0, 0.9, 1},
+                                            fontSize     = "large",
+                                            duration     = 1.2,
+                                            riseDistance = UI.Layout.scale(40),
+                                            startScale   = 0.4,
+                                            endScale     = 1.1,
+                                            easing       = "easeOutBack",
+                                        })
+                                    end)
+                                end
+                            end
+                        end
+                    end
 
                     seq.currentTileIndex = seq.currentTileIndex + 1
                 else

@@ -2,6 +2,7 @@ BossBehaviors = {}
 
 BossBehaviors.BEHAVIORS = {
     BEELZEBUB = {
+        description = "Burns your placed tiles\nbefore scoring.",
         onBeforeScore = function(gameState, continueCallback)
             animateBeelzebubBurn(gameState.placedTiles, continueCallback)
         end,
@@ -34,6 +35,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     BAPHOMET = {
+        description = "No discards allowed.",
         onInit = function(gameState)
             gameState.maxDiscardsPerRound = 0
         end,
@@ -54,6 +56,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     AZAZEL = {
+        description = "Hand size reduced to 5.",
         onInit = function(gameState)
             gameState.handSizeTarget = 5
         end,
@@ -74,6 +77,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     BAAL = {
+        description = "All tile values are\nrandomized at round start.",
         onPreDeck = function(gameState)
             for _, tile in ipairs(gameState.tileCollection) do
                 if tile.tileType == "demon" then
@@ -108,6 +112,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     LEVIATHAN = {
+        description = "Target score is set to 6666.",
         onInit = function(gameState)
             gameState.targetScore = 6666
             gameState.displayedRemainingScore = 6666
@@ -129,6 +134,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     LUCIFER = {
+        description = "Tiles left in hand are\npermanently destroyed.",
         onInit = function(gameState)
             gameState.debugFireHand = true
         end,
@@ -171,6 +177,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     MEPHISTO = {
+        description = "Your remaining hand is\ndiscarded after each score.",
         onBeforeScore = function(gameState, continueCallback)
             local remainingTiles = {}
             for _, tile in ipairs(gameState.hand) do
@@ -202,6 +209,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     ABADDON = {
+        description = "Only one play allowed\nper round.",
         onInit = function(gameState)
             gameState.maxHandsPerRound = 1
         end,
@@ -222,6 +230,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     ASMODEUS = {
+        description = "Each scored tile costs 1 coin.",
         onTileScored = function(gameState, tile)
             updateCoins(gameState.coins - 1)
         end,
@@ -242,6 +251,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     ASTAROTH = {
+        description = "Draw 2 extra tiles\nafter each play.",
         onInit = function(gameState)
             -- draw behavior handled by onDraw hook; no field overrides needed
         end,
@@ -277,10 +287,17 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     SAMAEL = {
+        description = "Contracts and tools\nare disabled.",
         onInit = function(gameState)
             gameState.samaelActive = true
         end,
         onCombatEnd = function(gameState)
+            -- Contracts were sealed this round, so refund the expiration tick
+            for _, c in ipairs(gameState.activeContracts or {}) do
+                if c.expiresAtRound then
+                    c.expiresAtRound = c.expiresAtRound + 1
+                end
+            end
             gameState.samaelActive = nil
         end,
         dialogue = {
@@ -300,6 +317,7 @@ BossBehaviors.BEHAVIORS = {
         }
     },
     MOLOCH = {
+        description = "Scored tiles turn tender\nand are consumed on play.",
         onTileScored = function(gameState, tile)
             if tile.tileType == "regular" or tile.tileType == "relic" then
                 Domino.setTileType(tile, "tender")
@@ -372,6 +390,13 @@ function BossBehaviors.onCombatEnd(gameState)
     local behavior = BossBehaviors.BEHAVIORS[gameState.currentDemonName]
     if not behavior or not behavior.onCombatEnd then return end
     behavior.onCombatEnd(gameState)
+end
+
+-- Returns the one-line mechanic description for display in the combat HUD tooltip.
+function BossBehaviors.getDescription(demonName)
+    local behavior = BossBehaviors.BEHAVIORS[demonName]
+    if not behavior then return "" end
+    return behavior.description or ""
 end
 
 -- Returns a random phrase from the boss's dialogue pool for the given category,
