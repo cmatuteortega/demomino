@@ -140,6 +140,7 @@ function Save.serializeMap(map)
         screenWidth = map.screenWidth or 800,
         screenHeight = map.screenHeight or 600,
         currentNight = map.currentNight or 1,
+        seed = map.seed,
         candles = {},  -- Save candle states
         levels = {}
     }
@@ -226,6 +227,7 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         screenWidth = mapData.screenWidth or screenWidth or 800,
         screenHeight = mapData.screenHeight or screenHeight or 600,
         currentNight = mapData.currentNight or 1,
+        seed = mapData.seed,
         columns = {}  -- Legacy compatibility
     }
 

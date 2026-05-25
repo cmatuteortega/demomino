@@ -3072,7 +3072,10 @@ function UI.Renderer.drawNodeConfirmation()
         enhance = "ENHANCE",
         pawn = "PAWN",
         flatten = "FLATTEN",
-        deal = "DEAL"
+        deal = "DEAL",
+        ["deal-artifacts"] = "DEAL",
+        restore = "RESTORE",
+        mitosis = "MITOSIS",
     }
 
     local nodeType = gameState.selectedNode.nodeType
@@ -3126,7 +3129,10 @@ function UI.Renderer.drawNodeConfirmation()
         pawn = "PAYBACK",
         enhance = "POWER COSTS",
         flatten = "UNMAKE",
-        deal = "BARGAIN"
+        deal = "BARGAIN",
+        ["deal-artifacts"] = "BARGAIN",
+        restore = "WAX ON WAX OFF",
+        mitosis = "DUPLICATE TILES",
     }
 
     local subtitle = nodeSubtitles[nodeType] or ""
@@ -3241,6 +3247,10 @@ function UI.Renderer.drawTilesMenu()
     elseif nodeType == "flatten" then
         -- FLATTEN node - Flatten tiles under Pazuzu
         UI.Renderer.drawFlattenMode()
+        return
+    elseif nodeType == "mitosis" then
+        -- MITOSIS node - Duplicate a tile under LILITH
+        UI.Renderer.drawMitosisMode()
         return
     else
         -- TRADE node - Shop mode (drag-to-board system like main game)
@@ -4659,6 +4669,229 @@ function UI.Renderer.drawContractsNextButton()
 end
 
 -- ============================================================
+-- RESTORE NODE SCREEN
+-- ============================================================
+
+-- Returns true if the active contract at the given 1-based index can be sealed (renewed).
+function UI.Renderer.canSealContract(index)
+    local contract = gameState.activeContracts and gameState.activeContracts[index]
+    if not contract then return false end
+    local remaining = (contract.expiresAtRound or 0) - gameState.currentRound
+    if remaining >= 3 then return false end  -- already at max uses
+    if gameState.coins < (contract.cost or 2) then return false end
+    return true
+end
+
+-- Draw the < SEAL > navigation + action button row for the restore screen.
+function UI.Renderer.drawRestoreActionButtons()
+    if not gameState.activeContracts or #gameState.activeContracts == 0 then return end
+
+    local handArea   = UI.Layout.getHandArea()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local sideWidth  = buttonWidth / 2
+    local gap        = UI.Layout.scale(10)
+    local totalW     = sideWidth + gap + buttonWidth + gap + sideWidth
+    local startX     = (gameState.screen.width - totalW) / 2
+    local y          = handArea.y + handArea.height + UI.Layout.scale(15)
+
+    local leftX  = startX
+    local sealX  = startX + sideWidth + gap
+    local rightX = sealX + buttonWidth + gap
+
+    -- < button
+    UI.Renderer.drawButton("<", leftX, y, sideWidth, buttonHeight, false, 1.0)
+    gameState.restoreLeftButton = {x = leftX, y = y, width = sideWidth, height = buttonHeight}
+
+    -- Cost label above SEAL
+    local selIdx      = gameState.restoreSelectedIndex or 1
+    local selContract = gameState.activeContracts and gameState.activeContracts[selIdx]
+    if selContract then
+        local remaining  = (selContract.expiresAtRound or 0) - gameState.currentRound
+        local canAfford  = gameState.coins >= (selContract.cost or 2)
+        local costColor  = (canAfford and remaining < 3) and UI.Colors.FONT_PINK or {0.5, 0.5, 0.5, 1}
+        local costFont   = UI.Fonts.get("medium")
+        local costY      = y - costFont:getHeight() - UI.Layout.scale(4)
+        UI.Fonts.drawText((selContract.cost or 2) .. "$", sealX + buttonWidth / 2, costY, "medium", costColor, "center")
+    end
+
+    -- SEAL button (dimmed if not sealable)
+    local canSeal = UI.Renderer.canSealContract(selIdx)
+    if canSeal then
+        UI.Renderer.drawButton("SEAL", sealX, y, buttonWidth, buttonHeight, false, 1.0)
+    else
+        love.graphics.setColor(0.25, 0.25, 0.25, 1)
+        love.graphics.rectangle("fill", sealX, y, buttonWidth, buttonHeight, 5)
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", sealX, y, buttonWidth, buttonHeight, 5)
+        UI.Fonts.drawAnimatedText("SEAL", sealX + buttonWidth / 2, y + buttonHeight / 2, "button",
+            {0.5, 0.5, 0.5, 1}, "center", {scale = 1.0, vcenter = true})
+    end
+    gameState.restoreSealButton = {x = sealX, y = y, width = buttonWidth, height = buttonHeight}
+
+    -- > button
+    UI.Renderer.drawButton(">", rightX, y, sideWidth, buttonHeight, false, 1.0)
+    gameState.restoreRightButton = {x = rightX, y = y, width = sideWidth, height = buttonHeight}
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- >> exit button (top-right, same style as contracts/deal/artifacts).
+function UI.Renderer.drawRestoreNextButton()
+    if not gameState.restoreNextButtonAnimation then
+        gameState.restoreNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+    end
+
+    local screenWidth = gameState.screen.width
+    local font        = UI.Fonts.get("bigScore")
+    local time        = love.timer.getTime()
+    local text        = ">>"
+    local skipScale   = 0.65
+    local textColor   = gameState.restoreNextButtonAnimation.color
+
+    local rightX = screenWidth - UI.Layout.scale(70)
+    local topY   = UI.Layout.scale(20)
+
+    local totalWidth = 0
+    for i = 1, #text do
+        totalWidth = totalWidth + font:getWidth(text:sub(i, i)) * skipScale
+    end
+    local textX    = rightX - totalWidth
+    local currentX = textX
+    for i = 1, #text do
+        local char      = text:sub(i, i)
+        local charWidth = font:getWidth(char) * skipScale
+        local phase     = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "bigScore", textColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = skipScale
+        })
+        currentX = currentX + charWidth
+    end
+
+    local padding = UI.Layout.scale(15)
+    gameState.restoreNextButton = {
+        x      = textX - padding,
+        y      = topY  - padding,
+        width  = totalWidth + padding * 2,
+        height = (font:getHeight() * skipScale) + padding * 2
+    }
+end
+
+function UI.Renderer.drawRestoreMenu()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+    local centerY      = screenHeight / 2
+    local leftX        = UI.Layout.scale(60)
+    local topY         = UI.Layout.scale(20)
+    local time         = love.timer.getTime()
+
+    -- Background
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    UI.Renderer.drawToolStack()
+
+    -- STOLAS icon + name + subtitle (top-left)
+    local demonName  = "STOLAS"
+    local demonColor = UI.Colors.FONT_RED
+    local demonFont  = UI.Fonts.get("demonName")
+    local currentX   = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local icon      = demonIconSprites[demonName]
+        local fontH     = demonFont:getHeight()
+        local iScale    = (fontH / icon:getHeight()) * 1.3
+        local iWidth    = icon:getWidth() * iScale
+        local waveOff   = math.sin(time * 2.5) * 3
+        local shOff     = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(icon, currentX + shOff, topY + waveOff + shOff, 0, iScale, iScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(icon, currentX, topY + waveOff, 0, iScale, iScale)
+        currentX = currentX + iWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char      = demonName:sub(i, i)
+        local charWidth = demonFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        local waveOff   = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subFont  = UI.Fonts.get("large")
+        local subColor = UI.Colors.FONT_PINK
+        local subY     = topY + demonFont:getHeight() - UI.Layout.scale(5)
+        local iconW    = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local icon   = demonIconSprites[demonName]
+            local fontH  = demonFont:getHeight()
+            local iScale = (fontH / icon:getHeight()) * 1.3
+            iconW = icon:getWidth() * iScale + UI.Layout.scale(8)
+        end
+        local subX = leftX + iconW
+        for i = 1, #subtitle do
+            local char      = subtitle:sub(i, i)
+            local charWidth = subFont:getWidth(char)
+            local phase     = time * 2.5 + (i - 1) * 0.4
+            local waveOff   = math.sin(phase) * 1
+            UI.Fonts.drawAnimatedText(char, subX, subY + waveOff, "large", subColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subX = subX + charWidth
+        end
+    end
+
+    -- Contract cards (or empty message)
+    if not gameState.activeContracts or #gameState.activeContracts == 0 then
+        UI.Fonts.drawText("NO CONTRACTS TO RENEW", centerX, centerY, "large", UI.Colors.FONT_WHITE, "center")
+    else
+        local cardW    = UI.Layout.scale(150)
+        local cardH    = UI.Layout.scale(80)
+        local spacing  = UI.Layout.scale(20)
+        local count    = #gameState.activeContracts
+        local totalW   = count * cardW + (count - 1) * spacing
+        local startX   = centerX - totalW / 2
+        local cardY    = centerY - cardH / 2
+
+        local selIdx   = gameState.restoreSelectedIndex or 1
+
+        for i, contract in ipairs(gameState.activeContracts) do
+            local cardX = startX + (i - 1) * (cardW + spacing)
+            UI.Renderer.drawActiveContractCard(contract, cardX, cardY, cardW, cardH)
+
+            -- Bracket overlay around the selected card
+            if i == selIdx then
+                local pad = UI.Layout.scale(4)
+                love.graphics.setColor(UI.Colors.FONT_WHITE)
+                love.graphics.setLineWidth(UI.Layout.scale(2))
+                love.graphics.rectangle("line", cardX - pad, cardY - pad, cardW + pad * 2, cardH + pad * 2,
+                    UI.Layout.scale(8), UI.Layout.scale(8))
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+        end
+
+        UI.Renderer.drawRestoreActionButtons()
+    end
+
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+    UI.Renderer.drawRestoreNextButton()
+end
+
+-- ============================================================
 -- DEAL NODE SCREEN
 -- ============================================================
 
@@ -4763,6 +4996,162 @@ function UI.Renderer.drawDealMenu()
     UI.Renderer.drawDealNextButton()
     UI.Renderer.drawCoinSprites()
     UI.Renderer.drawCoinText()
+end
+
+-- ── Deal-Artifacts node renderer (Paimon) ────────────────────────────────────
+
+function UI.Renderer.drawDealArtifactsMenu()
+    local screenWidth  = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX      = screenWidth / 2
+    local time         = love.timer.getTime()
+    local leftX        = UI.Layout.scale(60)
+    local topY         = UI.Layout.scale(20)
+    local demonFont    = UI.Fonts.get("demonName")
+
+    -- Background
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    -- Hand area strip
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    UI.Renderer.drawToolStack()
+
+    -- Left side: PAIMON icon + name + subtitle (wave)
+    local demonName  = "PAIMON"
+    local demonColor = UI.Colors.FONT_RED
+    local currentX   = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local icon    = demonIconSprites[demonName]
+        local fontH   = demonFont:getHeight()
+        local iScale  = (fontH / icon:getHeight()) * 1.3
+        local iWidth  = icon:getWidth() * iScale
+        local waveOff = math.sin(time * 2.5) * 3
+        local shOff   = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(icon, currentX + shOff, topY + waveOff + shOff, 0, iScale, iScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(icon, currentX, topY + waveOff, 0, iScale, iScale)
+        currentX = currentX + iWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char      = demonName:sub(i, i)
+        local charWidth = demonFont:getWidth(char)
+        local phase     = time * 2.5 + (i - 1) * 0.4
+        local waveOff   = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOff, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subFont  = UI.Fonts.get("large")
+        local subColor = UI.Colors.FONT_PINK
+        local subY     = topY + demonFont:getHeight() - UI.Layout.scale(5)
+        local iconW    = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local icon   = demonIconSprites[demonName]
+            local fontH  = demonFont:getHeight()
+            local iScale = (fontH / icon:getHeight()) * 1.3
+            iconW = icon:getWidth() * iScale + UI.Layout.scale(8)
+        end
+        local subX = leftX + iconW
+        for i = 1, #subtitle do
+            local char      = subtitle:sub(i, i)
+            local charWidth = subFont:getWidth(char)
+            local phase     = time * 2.5 + (i - 1) * 0.4
+            local waveOff   = math.sin(phase) * 1
+            UI.Fonts.drawAnimatedText(char, subX, subY + waveOff, "large", subColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subX = subX + charWidth
+        end
+    end
+
+    -- Owned tools count at bottom
+    local ownedCount = #(gameState.ownedTools or {})
+    local activeY    = screenHeight - UI.Layout.scale(120)
+    UI.Fonts.drawText("TOOLS (" .. ownedCount .. "/3)", centerX, activeY, "large", UI.Colors.FONT_WHITE, "center")
+
+    UI.Renderer.drawDealArtifactsArea()
+    UI.Renderer.drawDealAcceptButton()
+    UI.Renderer.drawDealNextButton()
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+end
+
+function UI.Renderer.drawDealArtifactsArea()
+    if gameState.dealAccepted then return end
+    local boardArea = UI.Layout.getBoardArea()
+    local midX      = boardArea.x + boardArea.width / 2
+    local centerY   = boardArea.y + boardArea.height / 2
+
+    local sampleSprite = dominoSprites and dominoSprites["00"]
+    local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale  = math.max(minScale * 2.0, 1.0)
+    local tileW = sampleSprite and (sampleSprite.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
+    local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+    local tileGap = UI.Layout.scale(10)
+
+    local cardWidth   = UI.Layout.scale(180)
+    local cardHeight  = UI.Layout.scale(140)
+    local betweenGap  = UI.Layout.scale(50)
+    local tilesGroupW = 2 * tileW + tileGap
+    local totalGroupW = tilesGroupW + betweenGap + cardWidth
+    local groupStartX = midX - totalGroupW / 2
+
+    local tile1X = groupStartX
+    local tile2X = groupStartX + tileW + tileGap
+
+    if gameState.dealDemonTiles and gameState.dealDemonTiles[1] then
+        UI.Renderer.drawDomino(gameState.dealDemonTiles[1], tile1X + tileW / 2, centerY,
+            gameState.screen.scale, "vertical", 1.0)
+    end
+    if gameState.dealDemonTiles and gameState.dealDemonTiles[2] then
+        UI.Renderer.drawDomino(gameState.dealDemonTiles[2], tile2X + tileW / 2, centerY,
+            gameState.screen.scale, "vertical", 1.0)
+    end
+
+    local arrowX = groupStartX + tilesGroupW + betweenGap / 2
+    UI.Fonts.drawText(">", arrowX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+
+    local cardX    = groupStartX + tilesGroupW + betweenGap
+    local cardY    = centerY - cardHeight / 2
+    local artifact = gameState.offeredDealArtifact
+    local toolsFull = #(gameState.ownedTools or {}) >= 3
+
+    love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT)
+    love.graphics.rectangle("fill", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
+    if artifact and not toolsFull then
+        love.graphics.setColor(UI.Colors.FONT_PINK)
+    else
+        love.graphics.setColor(UI.Colors.FONT_RED)
+    end
+    love.graphics.rectangle("line", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
+    love.graphics.setColor(1, 1, 1, 1)
+
+    if artifact and not toolsFull then
+        UI.Fonts.drawText(artifact.name, cardX + cardWidth / 2, cardY + UI.Layout.scale(15),
+            "large", UI.Colors.FONT_WHITE, "center")
+        UI.Fonts.drawText(artifact.description, cardX + cardWidth / 2, cardY + UI.Layout.scale(50),
+            "medium", {0.8, 0.8, 0.8, 1}, "center")
+        UI.Fonts.drawText("FREE (2 DEMON TILES)", cardX + cardWidth / 2, cardY + cardHeight - UI.Layout.scale(28),
+            "medium", UI.Colors.FONT_PINK, "center")
+    else
+        UI.Fonts.drawText("TOOLS FULL", cardX + cardWidth / 2, cardY + UI.Layout.scale(25),
+            "large", UI.Colors.FONT_RED, "center")
+        UI.Fonts.drawText("+5$ INSTEAD", cardX + cardWidth / 2, cardY + UI.Layout.scale(60),
+            "large", UI.Colors.FONT_WHITE, "center")
+        UI.Fonts.drawText("STILL ADDS 2 DEMON TILES", cardX + cardWidth / 2, cardY + cardHeight - UI.Layout.scale(28),
+            "medium", UI.Colors.FONT_RED, "center")
+    end
 end
 
 -- ── Casino / Gamble node renderer ────────────────────────────────────────────
@@ -5240,7 +5629,7 @@ end
 
 -- Draw visual path connections between nodes
 function UI.Renderer.drawMapPaths(map)
-    local SHOW_PATH_LINES = false
+    local SHOW_PATH_LINES = true
     if not SHOW_PATH_LINES then return end
     love.graphics.setLineWidth(UI.Layout.scale(3))
     
@@ -5293,7 +5682,7 @@ function UI.Renderer.drawPathConnection(map, fromNode, toNode)
     if isPathCompleted then
         love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.8)
     else
-        love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 0.6)
+        love.graphics.setColor(UI.Colors.FONT_RED[1], UI.Colors.FONT_RED[2], UI.Colors.FONT_RED[3], 0.25)
     end
 
     -- Draw line between nodes
@@ -5425,47 +5814,55 @@ function UI.Renderer.drawNodeBackground(map, node, radius)
     local isCurrentNode = map.currentNode and map.currentNode.id == node.id
     local isAvailable = Map.isNodeAvailable(map, node.id)
     local isCompleted = map.completedNodes[node.id]
-    
-    -- Get the appropriate sprite for this node type
-    local sprites = nodeSprites[node.nodeType]
-    if not sprites or not sprites.base then
-        -- Fallback: draw a simple circle if sprites are missing
+
+    -- Resolve demon icon from node.demonName
+    local iconSprite = nil
+    local demonName = node.demonName or ""
+
+    if demonName ~= "" and demonIconSprites then
+        local isRegularDemon = false
+        for _, name in ipairs(DemonData.REGULAR_DEMON_NAMES) do
+            if demonName == name then isRegularDemon = true; break end
+        end
+
+        if isRegularDemon then
+            local impCount = #demonIconSprites.impVariants
+            local impIndex = ((node.depth + node.path - 2) % impCount) + 1
+            iconSprite = demonIconSprites.impVariants[impIndex]
+        else
+            iconSprite = demonIconSprites[demonName]
+        end
+
+        if not iconSprite then
+            iconSprite = demonIconSprites["NOT_FOUND"]
+        end
+    end
+
+    -- Fallback circle for nodes with no demon (e.g. start)
+    if not iconSprite then
         love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.7)
         love.graphics.circle("fill", node.x, node.y, radius)
         UI.Colors.resetWhite()
         return
     end
-    
-    -- Calculate sprite scale (base sprites are 32x32, scale up appropriately)
-    local baseScale = UI.Layout.scale(2.5) -- Adjust this value to get the right size
-    local spriteScale = baseScale
-    
-    -- Determine sprite behavior based on node state - sprites handle their own colors
-    local showSelected = false
-    local selectedRotation = 0
 
-    if isCurrentNode then
-        -- Current node shows selected sprite (static)
-        showSelected = true
-    elseif isAvailable then
-        -- Available nodes show selected sprite (static)
-        showSelected = true
-    end
-    -- Completed and unavailable nodes only show base sprite
+    -- Scale 11x11 px icons to the same visual footprint as the old 32x32 sprites at 2.0x
+    local iconScale = (UI.Layout.scale(2.0) * 32) / iconSprite:getWidth()
 
-    -- Always draw base sprite first (static, behind animated layer)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(sprites.base, node.x, node.y, 0, spriteScale, spriteScale,
-                      sprites.base:getWidth()/2, sprites.base:getHeight()/2)
-
-    -- Draw selected sprite overlay with animation on top for depth
-    if showSelected and sprites.selected then
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(sprites.selected, node.x, node.y, selectedRotation, spriteScale, spriteScale,
-                          sprites.selected:getWidth()/2, sprites.selected:getHeight()/2)
+    -- Pink tint for current/available; dim for completed; very dim for unavailable
+    local r, g, b, a
+    if isCurrentNode or isAvailable then
+        r, g, b = UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3]
+        a = 1.0
+    elseif isCompleted then
+        r, g, b, a = 1, 1, 1, 0.45
+    else
+        r, g, b, a = 1, 1, 1, 0.3
     end
 
-    -- Reset color
+    love.graphics.setColor(r, g, b, a)
+    love.graphics.draw(iconSprite, node.x, node.y, 0, iconScale, iconScale,
+                       iconSprite:getWidth() / 2, iconSprite:getHeight() / 2)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -6406,12 +6803,10 @@ function UI.Renderer.drawFusionArea()
     local screenHeight = gameState.screen.height
     local centerX = screenWidth / 2
 
-    local areaY = UI.Layout.scale(170)
-    local areaHeight = UI.Layout.scale(200)
-
     if not gameState.fusionSlotTiles then gameState.fusionSlotTiles = {} end
 
-    local centerY = areaY + areaHeight / 2
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY = boardArea.y + boardArea.height / 2
 
     -- Sprite dimensions: tilted sprite is 64×32 px, vertical is 32×64 px.
     local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
@@ -6604,6 +6999,248 @@ function UI.Renderer.drawFusionRerollButton()
     gameState.fusionRerollButton = {x = discardX, y = discardY + discardYOffset, width = buttonWidth * discardScale, height = buttonHeight * discardScale, enabled = canReroll}
 end
 
+-- ─────────────────────────────────────────────────────────────
+-- MITOSIS NODE RENDERING
+-- ─────────────────────────────────────────────────────────────
+
+function UI.Renderer.drawMitosisMode()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    UI.Colors.setBackground()
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    local handArea = UI.Layout.getHandArea()
+    UI.Colors.setBackgroundLight()
+    love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    UI.Renderer.drawCombatCandles()
+
+    local rightX = screenWidth - UI.Layout.scale(40)
+    local leftX = UI.Layout.scale(60)
+    local topY = UI.Layout.scale(20)
+    local time = love.timer.getTime()
+
+    -- LILITH demon icon and name (identical to fusion mode)
+    local demonName = "LILITH"
+    local demonColor = UI.Colors.FONT_RED
+    local font = UI.Fonts.get("demonName")
+    local currentX = leftX
+
+    if demonIconSprites and demonIconSprites[demonName] then
+        local iconSprite = demonIconSprites[demonName]
+        local fontHeight = font:getHeight()
+        local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+        local iconWidth = iconSprite:getWidth() * iconScale
+        local phase = time * 2.5
+        local waveOffset = math.sin(phase) * 3
+        local shadowOffset = UI.Layout.scale(4)
+        love.graphics.setColor(0, 0, 0, 0.5)
+        love.graphics.draw(iconSprite, currentX + shadowOffset, topY + waveOffset + shadowOffset, 0, iconScale, iconScale)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(iconSprite, currentX, topY + waveOffset, 0, iconScale, iconScale)
+        currentX = currentX + iconWidth + UI.Layout.scale(8)
+    end
+
+    for i = 1, #demonName do
+        local char = demonName:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 2.5 + (i - 1) * 0.4
+        local waveOffset = math.sin(phase) * 3
+        UI.Fonts.drawAnimatedText(char, currentX, topY + waveOffset, "demonName", demonColor, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(4), scale = 1.0, shake = 0
+        })
+        currentX = currentX + charWidth
+    end
+
+    local subtitle = DemonData.getSubtitle(demonName)
+    if subtitle ~= "" then
+        local subtitleFont = UI.Fonts.get("large")
+        local subtitleColor = UI.Colors.FONT_PINK
+        local subtitleY = topY + font:getHeight() - UI.Layout.scale(5)
+        local iconWidth = 0
+        if demonIconSprites and demonIconSprites[demonName] then
+            local iconSprite = demonIconSprites[demonName]
+            if iconSprite then
+                local fontHeight = font:getHeight()
+                local iconScale = (fontHeight / iconSprite:getHeight()) * 1.3
+                iconWidth = iconSprite:getWidth() * iconScale + UI.Layout.scale(8)
+            end
+        end
+        local subtitleX = leftX + iconWidth
+        for i = 1, #subtitle do
+            local char = subtitle:sub(i, i)
+            local charWidth = subtitleFont:getWidth(char)
+            local phase = time * 2.5 + (i - 1) * 0.4
+            local waveOffset = math.sin(phase) * 1
+            UI.Fonts.drawAnimatedText(char, subtitleX, subtitleY + waveOffset, "large", subtitleColor, "left", {
+                shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0, shake = 0
+            })
+            subtitleX = subtitleX + charWidth
+        end
+    end
+
+    UI.Renderer.drawMitosisArea()
+
+    if gameState.mitosisHand then
+        UI.Renderer.drawHand(gameState.mitosisHand)
+    end
+
+    UI.Renderer.drawCoinSprites()
+    UI.Renderer.drawCoinText()
+    UI.Renderer.drawDuplicateButton()
+    UI.Renderer.drawMitosisRerollButton()
+    UI.Renderer.drawFusionNextButton()
+end
+
+
+function UI.Renderer.drawMitosisArea()
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+    local centerX = screenWidth / 2
+
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY = boardArea.y + boardArea.height / 2
+
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    local sampleVert = dominoSprites and dominoSprites["00"]
+    local verticalWidth  = sampleVert and (sampleVert.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
+    local verticalHeight = sampleVert and (sampleVert.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+
+    -- Layout: [input] = [clone] & [clone]
+    local symGap = UI.Layout.scale(50)
+    local groupW = verticalWidth + symGap + verticalWidth + symGap + verticalWidth
+    local groupStart = centerX - groupW / 2
+
+    local inputX = groupStart + verticalWidth / 2
+    local eqX    = groupStart + verticalWidth + symGap / 2
+    local copy1X = groupStart + verticalWidth + symGap + verticalWidth / 2
+    local andX   = groupStart + 2 * verticalWidth + symGap * 1.5
+    local copy2X = groupStart + 2 * verticalWidth + 2 * symGap + verticalWidth / 2
+
+    local tile = gameState.mitosisSlotTile
+
+    -- Input slot
+    if tile then
+        UI.Renderer.drawDomino(tile, inputX, centerY, gameState.screen.scale, "vertical", 1.0)
+        gameState.mitosisSlotButton = {
+            x      = inputX - verticalWidth / 2,
+            y      = centerY - verticalHeight / 2,
+            width  = verticalWidth,
+            height = verticalHeight,
+        }
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", inputX - verticalWidth / 2, centerY - verticalHeight / 2, verticalWidth, verticalHeight, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+        gameState.mitosisSlotButton = nil
+    end
+
+    -- = symbol
+    UI.Fonts.drawText("=", eqX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+
+    -- First clone
+    if tile then
+        UI.Renderer.drawDomino(tile, copy1X, centerY, gameState.screen.scale, "vertical", 1.0)
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", copy1X - verticalWidth / 2, centerY - verticalHeight / 2, verticalWidth, verticalHeight, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- & symbol
+    UI.Fonts.drawText("&", andX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+
+    -- Second clone
+    if tile then
+        UI.Renderer.drawDomino(tile, copy2X, centerY, gameState.screen.scale, "vertical", 1.0)
+    else
+        love.graphics.setColor(1, 1, 1, 0.15)
+        love.graphics.rectangle("line", copy2X - verticalWidth / 2, centerY - verticalHeight / 2, verticalWidth, verticalHeight, UI.Layout.scale(4))
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- Store input slot bounds for drag-drop targeting
+    gameState.mitosisSlotBounds = {
+        x      = inputX - verticalWidth / 2,
+        y      = centerY - verticalHeight / 2,
+        width  = verticalWidth,
+        height = verticalHeight,
+    }
+end
+
+
+function UI.Renderer.drawDuplicateButton()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local playX, playY = UI.Layout.getPlayButtonPosition()
+
+    local buttonAnim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+    local scale = buttonAnim and buttonAnim.scale or 1.0
+    local yOffset = buttonAnim and buttonAnim.yOffset or 0
+
+    local hasSelection = gameState.mitosisSlotTile ~= nil
+    local cost = 2
+    local canAfford = gameState.coins >= cost
+    local canDuplicate = hasSelection and canAfford
+
+    local buttonColor = canDuplicate and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND_LIGHT
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", playX, playY + yOffset, buttonWidth * scale, buttonHeight * scale, UI.Layout.scale(5))
+
+    local textColor = canDuplicate and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText
+    if not hasSelection then
+        buttonText = "SELECT A TILE"
+    elseif not canAfford then
+        buttonText = "NOT ENOUGH $"
+    else
+        buttonText = "DUPLICATE (2$)"
+    end
+    UI.Fonts.drawText(buttonText, playX + buttonWidth / 2, playY + buttonHeight / 2 + yOffset, "button", textColor, "center", true)
+
+    gameState.duplicateButton = {x = playX, y = playY + yOffset, width = buttonWidth * scale, height = buttonHeight * scale, enabled = canDuplicate}
+end
+
+
+function UI.Renderer.drawMitosisRerollButton()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local discardX, discardY = UI.Layout.getDiscardButtonPosition()
+
+    local discardAnim = gameState.buttonAnimations and gameState.buttonAnimations.discardButton
+    local discardScale = discardAnim and discardAnim.scale or 1.0
+    local discardYOffset = discardAnim and discardAnim.yOffset or 0
+
+    local rerollCost = 1
+    local hasEnoughCoins = gameState.coins >= rerollCost
+    local hasEnoughTiles = gameState.deck and #gameState.deck >= 7
+    local canReroll = hasEnoughCoins and hasEnoughTiles
+
+    local buttonColor = canReroll and UI.Colors.BACKGROUND_LIGHT or {UI.Colors.BACKGROUND_LIGHT[1] * 0.5, UI.Colors.BACKGROUND_LIGHT[2] * 0.5, UI.Colors.BACKGROUND_LIGHT[3] * 0.5, 0.5}
+    love.graphics.setColor(buttonColor)
+    love.graphics.rectangle("fill", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    UI.Colors.setOutline()
+    love.graphics.rectangle("line", discardX, discardY + discardYOffset, buttonWidth * discardScale, buttonHeight * discardScale, UI.Layout.scale(5))
+
+    local textColor = canReroll and UI.Colors.FONT_WHITE or UI.Colors.FONT_RED
+    local buttonText = "REROLL (1$)"
+    if not hasEnoughTiles then
+        buttonText = "NO TILES LEFT"
+    elseif not hasEnoughCoins then
+        buttonText = "NOT ENOUGH $"
+    end
+    UI.Fonts.drawText(buttonText, discardX + buttonWidth / 2, discardY + buttonHeight / 2 + discardYOffset, "button", textColor, "center", true)
+
+    gameState.mitosisRerollButton = {x = discardX, y = discardY + discardYOffset, width = buttonWidth * discardScale, height = buttonHeight * discardScale, enabled = canReroll}
+end
+
+
 -- Draw settled dice on the board (persistent after tool use)
 function UI.Renderer.drawActiveDieSprites()
     if gameState.gamePhase ~= "playing" and gameState.gamePhase ~= "won" then
@@ -6727,6 +7364,7 @@ function UI.Renderer.drawCombatCandles()
             w = sw * candleScale,
             h = totalH,
             contractIndex = contractIndex,
+            pivotY = handAreaY,
         })
 
         if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then

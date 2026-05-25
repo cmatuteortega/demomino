@@ -30,6 +30,10 @@ local touchState = {
     contractsNextButtonPressed = false,
     dealNextButtonPressed      = false,
     dealAcceptButtonPressed    = false,
+    restoreNextButtonPressed   = false,
+    restoreLeftPressed         = false,
+    restoreSealPressed         = false,
+    restoreRightPressed        = false,
     titleBelialButtonPressed   = false,
     casinoHitPressed           = false,
     casinoStandPressed         = false,
@@ -272,7 +276,7 @@ function Touch.pressed(x, y, istouch, touchId)
     -- Check for settings button press in any phase that shows it
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
-        "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu",
+        "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "deal_artifacts_menu",
         "title_screen", "casino"
     }
 
@@ -289,7 +293,7 @@ function Touch.pressed(x, y, istouch, touchId)
     end
 
     -- Check for deck preview tiles button press (mark pressed; open fires on release)
-    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "playing", "won", "casino"}
+    local phasesWithTilesButton = {"map", "node_confirmation", "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "deal_artifacts_menu", "playing", "won", "casino"}
     for _, phase in ipairs(phasesWithTilesButton) do
         if gameState.gamePhase == phase then
             if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
@@ -376,8 +380,8 @@ function Touch.pressed(x, y, istouch, touchId)
         end
     end
 
-    -- Handle NEXT> button press on fusion screen
-    if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
+    -- Handle NEXT> button press on fusion/mitosis screen
+    if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract" or gameState.currentTilesNodeType == "mitosis") then
         if gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
             -- Play tap sound
             UI.Audio.playButtonTap()
@@ -483,6 +487,63 @@ function Touch.pressed(x, y, istouch, touchId)
                 touchState.dealAcceptButtonPressed = true
                 return
             end
+        end
+        return
+    end
+
+    if gameState.gamePhase == "deal_artifacts_menu" then
+        if gameState.dealNextButton and isPointInRect(x, y, gameState.dealNextButton) then
+            UI.Audio.playButtonTap()
+            if not gameState.dealNextButtonAnimation then
+                gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
+            end
+            UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.dealNextButtonPressed = true
+            return
+        end
+        if gameState.dealAcceptButton and isPointInRect(x, y, gameState.dealAcceptButton) then
+            if not gameState.dealAccepted then
+                UI.Audio.playButtonTap()
+                touchState.dealAcceptButtonPressed = true
+                return
+            end
+        end
+        return
+    end
+
+    -- Handle >> and < SEAL > button presses on restore screen
+    if gameState.gamePhase == "restore_menu" then
+        if gameState.restoreNextButton and isPointInRect(x, y, gameState.restoreNextButton) then
+            UI.Audio.playButtonTap()
+            if not gameState.restoreNextButtonAnimation then
+                gameState.restoreNextButtonAnimation = {
+                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+                }
+            end
+            UI.Animation.animateTo(gameState.restoreNextButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
+            }, 0.3, "easeOutQuart")
+            touchState.restoreNextButtonPressed = true
+            return
+        end
+        if gameState.restoreLeftButton and isPointInRect(x, y, gameState.restoreLeftButton) then
+            UI.Audio.playButtonTap()
+            touchState.restoreLeftPressed = true
+            return
+        end
+        if gameState.restoreSealButton and isPointInRect(x, y, gameState.restoreSealButton) then
+            UI.Audio.playButtonTap()
+            touchState.restoreSealPressed = true
+            return
+        end
+        if gameState.restoreRightButton and isPointInRect(x, y, gameState.restoreRightButton) then
+            UI.Audio.playButtonTap()
+            touchState.restoreRightPressed = true
+            return
         end
         return
     end
@@ -691,6 +752,20 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle mitosis slot tile dragging (drag to return to hand)
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "mitosis"
+            and gameState.mitosisSlotTile and gameState.mitosisSlotButton
+            and isPointInRect(x, y, gameState.mitosisSlotButton) then
+        local tile = gameState.mitosisSlotTile
+        touchState.draggedTile = tile
+        touchState.draggedFrom = "mitosisSlot"
+        tile.isDragging = false
+        tile.dragX = x; tile.dragY = y
+        tile.visualX = tile.visualX or tile.x
+        tile.visualY = tile.visualY or tile.y
+        return
+    end
+
     -- Handle flatten hand tile dragging
     if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "flatten" and gameState.flattenHand then
         local tile, index = Hand.getTileAt(gameState.flattenHand, x, y)
@@ -725,6 +800,22 @@ function Touch.pressed(x, y, istouch, touchId)
             end
             touchState.draggedTile  = tile
             touchState.draggedFrom  = "flattenHand"
+            touchState.draggedIndex = index
+            tile.isDragging = false
+            tile.dragX      = x
+            tile.dragY      = y
+            tile.visualX    = tile.x
+            tile.visualY    = tile.y
+            return
+        end
+    end
+
+    -- Handle mitosis hand tile dragging
+    if gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "mitosis" and gameState.mitosisHand then
+        local tile, index = Hand.getTileAt(gameState.mitosisHand, x, y)
+        if tile then
+            touchState.draggedTile  = tile
+            touchState.draggedFrom  = "mitosisHand"
             touchState.draggedIndex = index
             tile.isDragging = false
             tile.dragX      = x
@@ -1414,6 +1505,24 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
+    -- Show owned contract tooltip on candle tap (all screens where candles are visible)
+    if not Touch.isDragging() and gameState.combatCandleBounds then
+        for _, bound in ipairs(gameState.combatCandleBounds) do
+            if x >= bound.x and x <= bound.x + bound.w and
+               y >= bound.y and y <= bound.y + bound.h then
+                local contract = gameState.activeContracts[bound.contractIndex]
+                if contract then
+                    local candleCX      = bound.x + bound.w / 2
+                    local candleAnchorY = bound.pivotY or (bound.y + bound.h / 2)
+                    Touch.showTooltip("contract", contract, candleCX, candleAnchorY)
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+        end
+    end
+
     -- Open deck preview on tiles button release
     if touchState.deckPreviewTilesButtonPressed then
         if gameState.deckPreviewTilesBounds and isPointInRect(x, y, gameState.deckPreviewTilesBounds) then
@@ -1736,6 +1845,7 @@ function Touch.released(x, y, istouch, touchId)
         local isEnhanceMode = (nodeType == "enhance")
         local isPawnMode    = (nodeType == "pawn")
         local isFlattenMode = (nodeType == "flatten")
+        local isMitosisMode = (nodeType == "mitosis")
 
         -- Handle based on current mode
         if isEnhanceMode then
@@ -1846,6 +1956,60 @@ function Touch.released(x, y, istouch, touchId)
                 }, 0.3, "easeOutQuart")
             end
             touchState.flattenNextButtonPressed = false
+
+        elseif isMitosisMode then
+            -- MITOSIS MODE HANDLING
+
+            -- Handle mitosis slot click (tooltip)
+            if gameState.mitosisSlotButton and gameState.mitosisSlotTile
+                    and isPointInRect(x, y, gameState.mitosisSlotButton)
+                    and not (touchState.draggedTile and (touchState.draggedFrom == "mitosisHand" or touchState.draggedFrom == "mitosisSlot")) then
+                local b = gameState.mitosisSlotButton
+                Touch.showTooltip("tile", gameState.mitosisSlotTile,
+                    b.x + b.width / 2, b.y + b.height / 2,
+                    {spriteHalfH = b.height / 2})
+                touchState.isPressed = false
+                return
+            end
+
+            -- Handle DUPLICATE button
+            if gameState.duplicateButton and isPointInRect(x, y, gameState.duplicateButton) and gameState.duplicateButton.enabled then
+                Touch.confirmMitosis()
+                touchState.isPressed = false
+                return
+            end
+
+            -- Handle REROLL button
+            if gameState.mitosisRerollButton and isPointInRect(x, y, gameState.mitosisRerollButton) and gameState.mitosisRerollButton.enabled then
+                Touch.rerollMitosisHand()
+                touchState.isPressed = false
+                return
+            end
+
+            -- Handle NEXT> button release (shares fusionNextButton bounds since drawMitosisMode calls drawFusionNextButton)
+            if touchState.fusionNextButtonPressed and gameState.fusionNextButton and isPointInRect(x, y, gameState.fusionNextButton) then
+                UI.Audio.playButtonRelease()
+                UI.Animation.animateTo(gameState.fusionNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_WHITE[1],
+                    [2] = UI.Colors.FONT_WHITE[2],
+                    [3] = UI.Colors.FONT_WHITE[3],
+                    [4] = UI.Colors.FONT_WHITE[4]
+                }, 0.1, "easeOutQuart", function()
+                    UI.Animation.clearAllDiePhysics()
+                    Dialogue.clear()
+                    gameState.mitosisSlotTile = nil
+                    gameState.mitosisHand = {}
+                    gameState.gamePhase = "map"
+                end)
+            elseif touchState.fusionNextButtonPressed then
+                UI.Animation.animateTo(gameState.fusionNextButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_PINK[1],
+                    [2] = UI.Colors.FONT_PINK[2],
+                    [3] = UI.Colors.FONT_PINK[3],
+                    [4] = UI.Colors.FONT_PINK[4]
+                }, 0.3, "easeOutQuart")
+            end
+            touchState.fusionNextButtonPressed = false
 
         elseif isFusionMode then
             -- FUSION MODE HANDLING
@@ -2150,6 +2314,108 @@ function Touch.released(x, y, istouch, touchId)
             touchState.dealAcceptButtonPressed = false
             if gameState.dealAcceptButton and isPointInRect(x, y, gameState.dealAcceptButton) then
                 Touch.acceptDeal()
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        touchState.isPressed = false
+        touchState.touchId   = nil
+        return
+    elseif gameState.gamePhase == "deal_artifacts_menu" then
+        if touchState.dealNextButtonPressed then
+            touchState.dealNextButtonPressed = false
+            if gameState.dealNextButton and isPointInRect(x, y, gameState.dealNextButton) then
+                if gameState.dealNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                        [1] = 1, [2] = 1, [3] = 1, [4] = 1
+                    }, 0.2, "easeOutQuart")
+                end
+                local skipText = Dialogue.getRandomPhrase("deal_artifacts_menu", "skip")
+                if skipText then
+                    Dialogue.show(skipText, {category = "idle", skipDelay = true,
+                        requiresAction = false, autoDissmissTime = 4.0})
+                end
+                UI.Audio.playButtonRelease()
+                Dialogue.clear()
+                gameState.gamePhase = "map"
+            else
+                if gameState.dealNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.dealNextButtonAnimation.color, {
+                        [1] = 1, [2] = 1, [3] = 1, [4] = 1
+                    }, 0.2, "easeOutQuart")
+                end
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        if touchState.dealAcceptButtonPressed then
+            touchState.dealAcceptButtonPressed = false
+            if gameState.dealAcceptButton and isPointInRect(x, y, gameState.dealAcceptButton) then
+                Touch.acceptArtifactDeal()
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        touchState.isPressed = false
+        touchState.touchId   = nil
+        return
+    elseif gameState.gamePhase == "restore_menu" then
+        if touchState.restoreNextButtonPressed then
+            touchState.restoreNextButtonPressed = false
+            if gameState.restoreNextButton and isPointInRect(x, y, gameState.restoreNextButton) then
+                if gameState.restoreNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.restoreNextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.2, "easeOutQuart")
+                end
+                Dialogue.clear()
+                gameState.gamePhase = "map"
+            else
+                if gameState.restoreNextButtonAnimation then
+                    UI.Animation.animateTo(gameState.restoreNextButtonAnimation.color, {
+                        [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
+                        [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
+                    }, 0.2, "easeOutQuart")
+                end
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        if touchState.restoreLeftPressed then
+            touchState.restoreLeftPressed = false
+            if gameState.restoreLeftButton and isPointInRect(x, y, gameState.restoreLeftButton) then
+                local count = #(gameState.activeContracts or {})
+                if count > 1 then
+                    local cur = gameState.restoreSelectedIndex or 1
+                    gameState.restoreSelectedIndex = ((cur - 2) % count) + 1
+                end
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        if touchState.restoreRightPressed then
+            touchState.restoreRightPressed = false
+            if gameState.restoreRightButton and isPointInRect(x, y, gameState.restoreRightButton) then
+                local count = #(gameState.activeContracts or {})
+                if count > 1 then
+                    local cur = gameState.restoreSelectedIndex or 1
+                    gameState.restoreSelectedIndex = (cur % count) + 1
+                end
+            end
+            touchState.isPressed = false
+            touchState.touchId   = nil
+            return
+        end
+        if touchState.restoreSealPressed then
+            touchState.restoreSealPressed = false
+            if gameState.restoreSealButton and isPointInRect(x, y, gameState.restoreSealButton) then
+                Touch.sealSelectedContract()
             end
             touchState.isPressed = false
             touchState.touchId   = nil
@@ -2500,6 +2766,41 @@ function Touch.released(x, y, istouch, touchId)
             end
             Touch.resetTileDragState(tile)
         end
+    elseif touchState.draggedTile and touchState.draggedFrom == "mitosisHand" then
+        if Touch.isDragging() then
+            local tile = touchState.draggedTile
+            if Touch.isInMitosisArea(x, y) and not gameState.mitosisSlotTile then
+                gameState.mitosisSlotTile = tile
+                table.remove(gameState.mitosisHand, touchState.draggedIndex)
+                Hand.updatePositions(gameState.mitosisHand)
+                local fromX = tile.dragX or tile.visualX
+                local fromY = tile.dragY or tile.visualY
+                Touch.positionTileInMitosisSlot(tile)
+                tile.visualX = fromX
+                tile.visualY = fromY
+                Touch.animateTileToPosition(tile, tile.x, tile.y)
+            elseif Touch.isInMitosisArea(x, y) and gameState.mitosisSlotTile then
+                UI.Animation.createFloatingText("SLOT FULL",
+                    gameState.screen.width / 2,
+                    gameState.screen.height / 2 - UI.Layout.scale(100), {
+                    color = UI.Colors.FONT_RED, fontSize = "small",
+                    duration = 1.0, riseDistance = 20,
+                    startScale = 0.8, endScale = 1.0, easing = "easeOutQuart"
+                })
+                Touch.animateTileToHand(tile, touchState.draggedIndex, gameState.mitosisHand)
+            else
+                Touch.animateTileToHand(tile, touchState.draggedIndex, gameState.mitosisHand)
+            end
+        else
+            local tile = touchState.draggedTile
+            UI.Animation.animateTo(tile, {selectScale = 1.15}, 0.1, "easeOutBack", function()
+                UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
+            end)
+            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
+            local _ss = math.max(_ms * 2.0, 1.0)
+            Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {spriteHalfH = 64 * _ss / 2})
+            Touch.resetTileDragState(tile)
+        end
     elseif touchState.draggedTile and touchState.draggedFrom == "flattenHand" then
         if Touch.isDragging() then
             local tile = touchState.draggedTile
@@ -2694,6 +2995,28 @@ function Touch.released(x, y, istouch, touchId)
                     b.x + b.width / 2, b.y + b.height / 2, {spriteHalfH = b.height / 2}) end
             end
         end
+    elseif touchState.draggedTile and touchState.draggedFrom == "mitosisSlot" then
+        if Touch.isDragging() then
+            local handArea = UI.Layout.getHandArea()
+            if y >= handArea.y and y <= handArea.y + handArea.height then
+                local tile = touchState.draggedTile
+                tile.isDragging = false; tile.dragScale = 1.0; tile.dragOpacity = 1.0
+                tile.isAnimating = true
+                table.insert(gameState.mitosisHand, tile)
+                Hand.updatePositions(gameState.mitosisHand)
+                gameState.mitosisSlotTile = nil
+                UI.Animation.animateTo(tile, {
+                    visualX = tile.x, visualY = tile.y, dragScale = 1.0, dragOpacity = 1.0
+                }, 0.35, "easeOutBack", function() Touch.resetTileDragState(tile) end)
+                UI.Audio.playTileReturned()
+            else
+                Touch.animateTileToPosition(touchState.draggedTile, touchState.draggedTile.x, touchState.draggedTile.y)
+            end
+        else
+            local b = gameState.mitosisSlotButton
+            if b then Touch.showTooltip("tile", touchState.draggedTile,
+                b.x + b.width / 2, b.y + b.height / 2, {spriteHalfH = b.height / 2}) end
+        end
     elseif touchState.draggedTile and touchState.draggedFrom == "pawnSlot" then
         if Touch.isDragging() then
             local handArea = UI.Layout.getHandArea()
@@ -2829,22 +3152,6 @@ function Touch.released(x, y, istouch, touchId)
                         spriteHalfH = ((tht.orientation == "horizontal") and 32 or 64) * _ss / 2
                     })
                 end
-            end
-        end
-    end
-
-    -- Check combat candle taps (active contract tooltips) — all screens except map/node_confirmation
-    if gameState.gamePhase ~= "map" and gameState.gamePhase ~= "node_confirmation" and
-        not Touch.isDragging() and gameState.combatCandleBounds then
-        for _, bound in ipairs(gameState.combatCandleBounds) do
-            if x >= bound.x and x <= bound.x + bound.w and y >= bound.y and y <= bound.y + bound.h then
-                local contract = gameState.activeContracts[bound.contractIndex]
-                if contract then
-                    Touch.showTooltip("contract", contract, x, y)
-                end
-                touchState.isPressed = false
-                touchState.touchId   = nil
-                return
             end
         end
     end
@@ -3020,6 +3327,11 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
                 end
             -- Handle fusion hand dragging - set drag state when threshold exceeded
             elseif touchState.draggedFrom == "fusionHand" and Touch.isDragging() and not touchState.draggedTile.isDragging then
+                touchState.draggedTile.isDragging = true
+                touchState.draggedTile.dragScale = 1.08
+                touchState.draggedTile.dragOpacity = 0.95
+            -- Handle mitosis hand dragging - set drag state when threshold exceeded
+            elseif touchState.draggedFrom == "mitosisHand" and Touch.isDragging() and not touchState.draggedTile.isDragging then
                 touchState.draggedTile.isDragging = true
                 touchState.draggedTile.dragScale = 1.08
                 touchState.draggedTile.dragOpacity = 0.95
@@ -4012,6 +4324,25 @@ function Touch.executeNodeEntry(node)
             Dialogue.show(greetText, {category = "greeting", skipDelay = true, requiresAction = false, autoDissmissTime = 10.0})
         end
 
+    elseif nodeType == "mitosis" then
+        -- MITOSIS node - duplicate a tile (LILITH)
+        gameState.currentTilesNodeType = "mitosis"
+
+        Touch.initializeMitosisHand()
+
+        gameState.buttonAnimations = {
+            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
+            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
+        }
+        gameState.fusionNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+
+        Hand.animateTilesDraw(gameState.mitosisHand, 0)
+        Dialogue.clear()
+        gameState.gamePhase = "tiles_menu"
+
     elseif nodeType == "tiles" then
         -- Legacy "tiles" node type - default to trade for backward compatibility
         gameState.currentTilesNodeType = "trade"
@@ -4140,6 +4471,46 @@ function Touch.executeNodeEntry(node)
                 autoDissmissTime = 8.0
             })
         end
+    elseif nodeType == "deal-artifacts" then
+        local toolOffers = Tools.generateRandomToolOffers(1)
+        gameState.offeredDealArtifact = Tools.getDefinition(toolOffers[1])
+        local t1 = Domino.new(1, 1, 1, 1)
+        t1.tileType = "demon"
+        t1.id = "11"
+        local t2 = Domino.new(1, 1, 1, 1)
+        t2.tileType = "demon"
+        t2.id = "11"
+        gameState.dealDemonTiles = {t1, t2}
+        gameState.dealAccepted = false
+        gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
+        gameState.gamePhase = "deal_artifacts_menu"
+        Dialogue.clear()
+        local greet = Dialogue.getRandomPhrase("deal_artifacts_menu", "greetings")
+        if greet then
+            Dialogue.show(greet, {
+                category = "greeting",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 8.0
+            })
+        end
+    elseif nodeType == "restore" then
+        -- RESTORE node - renew an active contract's uses
+        gameState.restoreSelectedIndex = 1
+        gameState.restoreNextButtonAnimation = {
+            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+        }
+        gameState.gamePhase = "restore_menu"
+        Dialogue.clear()
+        local greet = Dialogue.getRandomPhrase("contracts_menu", "greetings")
+        if greet then
+            Dialogue.show(greet, {
+                category = "greeting",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 10.0
+            })
+        end
     elseif nodeType == "gamble" then
         -- GAMBLE node - casino blackjack screen
         gameState.currentDemonName = node.demonName  -- "BELIAL"
@@ -4163,16 +4534,16 @@ end
 
 -- Helper: Check if coordinates are in fusion area
 function Touch.isInFusionArea(x, y)
-    local areaY = UI.Layout.scale(170)
-    local areaHeight = UI.Layout.scale(200)
-    return y >= areaY and y <= areaY + areaHeight
+    local boardArea = UI.Layout.getBoardArea()
+    return y >= boardArea.y and y <= boardArea.y + boardArea.height
 end
 
 -- Position a tile at its fixed fusion slot position
 function Touch.positionTileInFusionSlot(tile, slotIndex)
     -- MUST match renderer's drawFusionArea layout exactly.
     local centerX = gameState.screen.width / 2
-    local centerY = UI.Layout.scale(170) + UI.Layout.scale(200) / 2
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY = boardArea.y + boardArea.height / 2
 
     local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
     local spriteScale = math.max(minScale * 2.0, 1.0)
@@ -4957,6 +5328,140 @@ function Touch.confirmFlatten()
     returnFlattenTileToHand(tile)
 end
 
+-- ─────────────────────────────────────────────────────────────
+-- MITOSIS NODE HELPERS
+-- ─────────────────────────────────────────────────────────────
+
+function Touch.initializeMitosisHand()
+    gameState.mitosisHand = {}
+    gameState.mitosisSlotTile = nil
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+    gameState.mitosisHand = Hand.drawTiles(gameState.deck, 7)
+end
+
+function Touch.isInMitosisArea(x, y)
+    local boardArea = UI.Layout.getBoardArea()
+    return y >= boardArea.y and y <= boardArea.y + boardArea.height
+end
+
+function Touch.positionTileInMitosisSlot(tile)
+    -- MUST match drawMitosisArea layout exactly.
+    local centerX = gameState.screen.width / 2
+    local boardArea = UI.Layout.getBoardArea()
+    local centerY = boardArea.y + boardArea.height / 2
+
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+
+    local sampleVert = dominoSprites and dominoSprites["00"]
+    local verticalWidth = sampleVert and (sampleVert.sprite:getWidth() * spriteScale) or UI.Layout.scale(50)
+
+    local symGap = UI.Layout.scale(50)
+    local groupW = verticalWidth + symGap + verticalWidth + symGap + verticalWidth
+    local groupStart = centerX - groupW / 2
+
+    local inputX = groupStart + verticalWidth / 2
+
+    tile.x        = inputX
+    tile.y        = centerY
+    tile.visualX  = inputX
+    tile.visualY  = centerY
+    tile.orientation = "vertical"
+    tile.placed   = true
+    tile.isDragging = false
+end
+
+function Touch.rerollMitosisHand()
+    if gameState.coins < 1 then return end
+    if #(gameState.deck or {}) < 7 then
+        UI.Animation.createFloatingText("NOT ENOUGH TILES TO REROLL",
+            gameState.screen.width / 2,
+            gameState.screen.height / 2 - UI.Layout.scale(100), {
+            color = UI.Colors.FONT_RED, fontSize = "small",
+            duration = 1.5, riseDistance = 20,
+            startScale = 0.8, endScale = 1.0, easing = "easeOutQuart"
+        })
+        return
+    end
+
+    -- Return slotted tile to hand before discarding
+    if gameState.mitosisSlotTile then
+        gameState.mitosisSlotTile.placed = false
+        gameState.mitosisSlotTile.orientation = "vertical"
+        table.insert(gameState.mitosisHand, gameState.mitosisSlotTile)
+        gameState.mitosisSlotTile = nil
+    end
+
+    updateCoins(gameState.coins - 1, {hasBonus = false})
+    UI.Audio.playButtonRelease()
+
+    Hand.animateAllHandDiscard(gameState.mitosisHand, function()
+        gameState.mitosisHand = {}
+        gameState.mitosisHand = Hand.drawTiles(gameState.deck, 7)
+        Hand.animateTilesDraw(gameState.mitosisHand, 0)
+    end)
+end
+
+function Touch.confirmMitosis()
+    local tile = gameState.mitosisSlotTile
+    if not tile then return end
+
+    local cost = 2
+    if gameState.coins < cost then
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!",
+            gameState.screen.width / 2,
+            gameState.screen.height / 2 - UI.Layout.scale(80), {
+            color = UI.Colors.FONT_RED, fontSize = "small",
+            duration = 1.5, riseDistance = 30,
+            startScale = 0.8, endScale = 1.0, easing = "easeOutQuart"
+        })
+        return
+    end
+
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+    UI.Audio.playButtonRelease()
+
+    -- Clone the tile and add to collection (original stays)
+    local clone = Domino.clone(tile)
+    table.insert(gameState.tileCollection, clone)
+
+    -- Refresh deck
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+    -- Remove tiles currently in hand from the deck pool to avoid duplicates
+    for i = #gameState.deck, 1, -1 do
+        local deckTile = gameState.deck[i]
+        for _, handTile in ipairs(gameState.mitosisHand) do
+            if deckTile.left == handTile.left and deckTile.right == handTile.right
+               and (deckTile.tileType or "normal") == (handTile.tileType or "normal") then
+                table.remove(gameState.deck, i)
+                break
+            end
+        end
+    end
+
+    -- Return the slot tile to hand with visual feedback
+    tile.placed = false
+    tile.orientation = "vertical"
+    gameState.mitosisSlotTile = nil
+    table.insert(gameState.mitosisHand, tile)
+    Hand.updatePositions(gameState.mitosisHand)
+
+    -- Floating success text
+    UI.Animation.createFloatingText("DUPLICATED!",
+        gameState.screen.width / 2, gameState.screen.height / 2 - UI.Layout.scale(60), {
+        color = UI.Colors.FONT_PINK,
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 50,
+        startScale = 0.5,
+        endScale = 1.3,
+        bounce = true,
+        easing = "easeOutBack"
+    })
+end
+
 -- TOOLS/ARTIFACTS FUNCTIONS
 
 -- Select a specific tool sprite (on tap - keeps idle animation, no wobble yet)
@@ -5670,6 +6175,43 @@ function Touch.signSelectedContract()
     if ok then
         gameState.contractsPurchased[idx] = true
     end
+end
+
+-- Seal (renew) the currently selected active contract to max uses.
+function Touch.sealSelectedContract()
+    local idx      = gameState.restoreSelectedIndex or 1
+    local contract = gameState.activeContracts and gameState.activeContracts[idx]
+    local centerX  = gameState.screen.width  / 2
+    local centerY  = gameState.screen.height / 2
+
+    if not contract then return end
+
+    local remaining = (contract.expiresAtRound or 0) - gameState.currentRound
+    if remaining >= 3 then
+        UI.Animation.createFloatingText("ALREADY AT MAX!", centerX, centerY, {
+            color = UI.Colors.FONT_RED, fontSize = "large", duration = 1.5,
+            riseDistance = 40, startScale = 0.8, endScale = 1.2, shake = 3, easing = "easeOutQuart"
+        })
+        return
+    end
+
+    local cost = contract.cost or 2
+    if gameState.coins < cost then
+        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
+            color = UI.Colors.FONT_RED, fontSize = "large", duration = 1.5,
+            riseDistance = 40, startScale = 0.8, endScale = 1.2, shake = 3, easing = "easeOutQuart"
+        })
+        return
+    end
+
+    updateCoins(gameState.coins - cost, {hasBonus = false})
+    contract.expiresAtRound = gameState.currentRound + 3
+    UI.Audio.playPlayButton()
+
+    UI.Animation.createFloatingText(contract.name .. " RENEWED!", centerX, centerY, {
+        color = {0.2, 0.9, 0.3, 1}, fontSize = "large", duration = 1.5,
+        riseDistance = 60, startScale = 0.5, endScale = 1.3, bounce = true, easing = "easeOutBack"
+    })
 end
 
 function Touch.rerollShopTiles()
@@ -6684,6 +7226,63 @@ function Touch.acceptDeal()
             easing = "easeOutQuart"
         })
         local text = Dialogue.getRandomPhrase("deal_menu", "accept")
+        if text then
+            Dialogue.show(text, {category = "idle", skipDelay = true,
+                requiresAction = false, autoDissmissTime = 6.0})
+        end
+    end
+
+    UI.Animation.createFloatingText("+2 DEMON TILES", screenCX, screenCY - UI.Layout.scale(30), {
+        color = UI.Colors.FONT_RED, fontSize = "small",
+        duration = 2.0, riseDistance = 30, startScale = 0.7, endScale = 1.0,
+        easing = "easeOutQuart"
+    })
+    UI.Audio.playPlayButton()
+end
+
+function Touch.acceptArtifactDeal()
+    if gameState.dealAccepted then return end
+    gameState.dealAccepted = true
+
+    -- Always add 2 demon 1-1 tiles to collection (same as deal)
+    local d1 = Domino.new(1, 1, 1, 1)
+    d1.tileType = "demon"
+    d1.id = "11"
+    local d2 = Domino.new(1, 1, 1, 1)
+    d2.tileType = "demon"
+    d2.id = "11"
+    table.insert(gameState.tileCollection, d1)
+    table.insert(gameState.tileCollection, d2)
+    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
+    Domino.shuffleDeck(gameState.deck)
+
+    local artifact = gameState.offeredDealArtifact
+    local screenCX = gameState.screen.width  / 2
+    local screenCY = gameState.screen.height / 2
+    local ownedTools = gameState.ownedTools or {}
+
+    if not artifact or #ownedTools >= 3 then
+        -- Tools full: award 5$ instead
+        updateCoins(gameState.coins + 5, {hasBonus = false})
+        UI.Animation.createFloatingText("+5$!", screenCX, screenCY - UI.Layout.scale(60), {
+            color = UI.Colors.FONT_WHITE, fontSize = "larger",
+            duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,
+            easing = "easeOutQuart"
+        })
+        local text = Dialogue.getRandomPhrase("deal_artifacts_menu", "accept_full")
+        if text then
+            Dialogue.show(text, {category = "idle", skipDelay = true,
+                requiresAction = false, autoDissmissTime = 6.0})
+        end
+    else
+        if not gameState.ownedTools then gameState.ownedTools = {} end
+        table.insert(gameState.ownedTools, artifact.id)
+        UI.Animation.createFloatingText(artifact.name .. " ACQUIRED!", screenCX, screenCY - UI.Layout.scale(60), {
+            color = {0.2, 0.9, 0.3, 1}, fontSize = "large",
+            duration = 2.0, riseDistance = 60, startScale = 0.5, endScale = 1.5,
+            bounce = true, easing = "easeOutBack"
+        })
+        local text = Dialogue.getRandomPhrase("deal_artifacts_menu", "accept")
         if text then
             Dialogue.show(text, {category = "idle", skipDelay = true,
                 requiresAction = false, autoDissmissTime = 6.0})

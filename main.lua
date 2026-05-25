@@ -162,6 +162,9 @@ function love.load()
             idleTimer = 0,
             idleTriggerTime = 8.0  -- Show idle dialogue after 8s
         },
+        -- Tile mitosis system
+        mitosisHand = {},
+        mitosisSlotTile = nil,
         -- Tile flatten system
         flattenHand = {},
         flattenSlotTile = nil,
@@ -407,6 +410,33 @@ function love.load()
                     "Power flows through you..."
                 },
                 actions = {}
+            },
+            deal_artifacts_menu = {  -- Deal-Artifacts node (Paimon)
+                greetings = {
+                    "A GIFT, FREELY GIVEN. TAKE IT.",
+                    "I ASK NOTHING. THE ARTIFACT IS YOURS.",
+                    "POWER WITHOUT PRICE. CURIOUS, NO?",
+                },
+                idle = {
+                    "DO NOT OVERTHINK A FREE GIFT.",
+                    "IT WILL NOT BITE. PROBABLY.",
+                    "TAKE IT. OR DON'T. I HAVE OTHERS.",
+                },
+                accept = {
+                    "GOOD. USE IT WELL.",
+                    "A WISE CHOICE. AS EXPECTED.",
+                    "IT IS DONE.",
+                },
+                accept_full = {
+                    "YOUR SATCHEL IS FULL. COIN INSTEAD.",
+                    "NO ROOM FOR MORE. COMPENSATION AWARDED.",
+                    "THREE IS ENOUGH. TAKE THE GOLD.",
+                },
+                skip = {
+                    "THEN LEAVE IT.",
+                    "SUIT YOURSELF.",
+                    "YOUR LOSS, NOT MINE.",
+                }
             },
             deal_menu = {  -- Deal node (Stolas)
                 greetings = {
@@ -3331,7 +3361,7 @@ function love.update(dt)
         end
         -- Update hand tile animations
         Hand.update(dt)
-    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" then
+    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" or gameState.gamePhase == "restore_menu" then
         -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
@@ -3344,7 +3374,7 @@ function love.update(dt)
             -- Handle idle timer for shop/contracts flavour text
             local dialogue = gameState.dialogueAnimation
             local idlePhase = gameState.gamePhase
-            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu") then
+            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu" or idlePhase == "deal_artifacts_menu" or idlePhase == "restore_menu") then
                 dialogue.idleTimer = dialogue.idleTimer + dt
 
                 -- Trigger random idle remark after 10 seconds
@@ -3401,6 +3431,14 @@ function love.update(dt)
                     Hand.updateDrawAnimations(gameState.flattenHand, dt)
                     Hand.updateDiscardAnimations(gameState.flattenHand, dt)
                     Hand.updateIdleAnimations(gameState.flattenHand, dt)
+                end
+            elseif tileNodeType == "mitosis" then
+                -- Update mitosis hand with all animations
+                if gameState.mitosisHand then
+                    Hand.updatePositions(gameState.mitosisHand)
+                    Hand.updateDrawAnimations(gameState.mitosisHand, dt)
+                    Hand.updateDiscardAnimations(gameState.mitosisHand, dt)
+                    Hand.updateIdleAnimations(gameState.mitosisHand, dt)
                 end
             else
                 -- Update shop hand tiles with all animations (like combat hand)
@@ -3561,6 +3599,22 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "deal_menu" then
         UI.Renderer.drawDealMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "deal_artifacts_menu" then
+        UI.Renderer.drawDealArtifactsMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "restore_menu" then
+        UI.Renderer.drawRestoreMenu()
         UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()
         UI.Renderer.drawTilesCountButton()
@@ -4160,6 +4214,7 @@ function loadNodeSprites()
         enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
         pawn = "tile",       -- PAWN nodes use tile sprite (same as alchemy/trade)
         flatten = "tile",    -- FLATTEN nodes use tile sprite (same as enhance)
+        mitosis = "tile",    -- MITOSIS nodes use tile sprite (same as alchemy)
         start = "tile",      -- Fallback to tile sprite
         boss = "combat"      -- Fallback to combat sprite
     }
