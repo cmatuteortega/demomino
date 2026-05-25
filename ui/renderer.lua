@@ -3053,6 +3053,109 @@ function UI.Renderer.drawIntroDialogue()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function UI.Renderer.drawDemonDiscovery()
+    local anim = gameState.demonDiscoveryAnimation
+    if not anim or anim.currentCharIndex == 0 then
+        return
+    end
+
+    local screenWidth = gameState.screen.width
+    local screenHeight = gameState.screen.height
+
+    love.graphics.setColor(UI.Colors.OUTLINE[1], UI.Colors.OUTLINE[2], UI.Colors.OUTLINE[3], 1)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+
+    if demonIconSprites and anim.demonName and demonIconSprites[anim.demonName] then
+        local sprite = demonIconSprites[anim.demonName]
+        local font = UI.Fonts.get("formulaScore")
+        local fontHeight = font:getHeight()
+        local iconScale = (fontHeight / sprite:getHeight()) * 1.3
+        local iconWidth = sprite:getWidth() * iconScale
+        local iconHeight = sprite:getHeight() * iconScale
+        local iconX = screenWidth / 2 - iconWidth / 2
+        local iconY = screenHeight * 0.35 - iconHeight / 2
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(sprite, iconX, iconY, 0, iconScale, iconScale)
+    end
+
+    local font = UI.Fonts.get("large")
+    local textColor
+    if anim.phase == "waiting" and anim.isPressed then
+        textColor = UI.Colors.FONT_PINK
+    elseif anim.currentLineIndex >= #anim.lines then
+        textColor = UI.Colors.FONT_RED
+    else
+        textColor = UI.Colors.FONT_WHITE
+    end
+
+    local time = love.timer.getTime()
+    local displayText = anim.text:sub(1, anim.currentCharIndex)
+    if anim.showPrompt then
+        displayText = displayText .. (anim.isPressed and " *" or " ~")
+    end
+
+    local textY = screenHeight * 0.35 + UI.Layout.scale(80)
+    local textWidth = font:getWidth(displayText)
+    local textX = screenWidth / 2 - textWidth / 2
+
+    local currentX = textX
+    for i = 1, #displayText do
+        local char = displayText:sub(i, i)
+        local charWidth = font:getWidth(char)
+        local phase = time * 1.5 + (i - 1) * 0.1
+        local waveOffset = math.sin(phase) * 1
+        local animProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(4),
+            scale = 1.0,
+            shake = 0
+        }
+        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "large", textColor, "left", animProps)
+        currentX = currentX + charWidth
+    end
+
+    local horizontalMargin = UI.Layout.scale(60)
+    local verticalMargin = UI.Layout.scale(60)
+    local skipFont = UI.Fonts.get("bigScore")
+    local skipText = ">>"
+    local skipColor = gameState.demonDiscoverySkipButtonAnimation.color or UI.Colors.FONT_PINK
+    local skipScale = 0.5
+
+    local skipTotalWidth = 0
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        skipTotalWidth = skipTotalWidth + (skipFont:getWidth(char) * skipScale)
+    end
+
+    local skipTextX = screenWidth - skipTotalWidth - horizontalMargin
+    local skipTextY = screenHeight - (skipFont:getHeight() * skipScale) - verticalMargin
+
+    local skipCurrentX = skipTextX
+    for i = 1, #skipText do
+        local char = skipText:sub(i, i)
+        local charWidth = skipFont:getWidth(char) * skipScale
+        local phase = time * 2.5 + (i - 1) * 0.2
+        local waveOffset = math.sin(phase) * 1.5
+        local skipAnimProps = {
+            shadow = true,
+            shadowOffset = UI.Layout.scale(2),
+            scale = skipScale
+        }
+        UI.Fonts.drawAnimatedText(char, skipCurrentX, skipTextY + waveOffset, "bigScore", skipColor, "left", skipAnimProps)
+        skipCurrentX = skipCurrentX + charWidth
+    end
+
+    local padding = UI.Layout.scale(15)
+    gameState.demonDiscoverySkipButtonBounds = {
+        x = skipTextX - padding,
+        y = skipTextY - padding,
+        width = skipTotalWidth + padding * 2,
+        height = (skipFont:getHeight() * skipScale) + padding * 2
+    }
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.Renderer.drawNodeConfirmation()
     if not gameState.selectedNode then
         return
@@ -5830,7 +5933,11 @@ function UI.Renderer.drawNodeBackground(map, node, radius)
             local impIndex = ((node.depth + node.path - 2) % impCount) + 1
             iconSprite = demonIconSprites.impVariants[impIndex]
         else
-            iconSprite = demonIconSprites[demonName]
+            if gameState.encounteredDemons and gameState.encounteredDemons[demonName] then
+                iconSprite = demonIconSprites[demonName]
+            else
+                iconSprite = demonIconSprites["UNKNOWN"]
+            end
         end
 
         if not iconSprite then

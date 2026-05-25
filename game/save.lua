@@ -420,7 +420,7 @@ end
 -- Load persistent statistics (separate from save game)
 function Save.loadStats()
     if not love.filesystem.getInfo(STATS_FILE) then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}}
     end
 
     local success, contents = pcall(function()
@@ -428,7 +428,7 @@ function Save.loadStats()
     end)
 
     if not success or not contents then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}}
     end
 
     local loadSuccess, stats = pcall(function()
@@ -436,10 +436,29 @@ function Save.loadStats()
     end)
 
     if not loadSuccess or not stats then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}}
+    end
+
+    if not stats.encounteredDemons then
+        stats.encounteredDemons = {}
     end
 
     return stats
+end
+
+-- Record a demon as encountered (persists across runs in stats file)
+-- Returns the updated encounteredDemons table for in-memory sync
+function Save.recordEncounteredDemon(demonName)
+    if not demonName or demonName == "" then
+        return {}
+    end
+    local stats = Save.loadStats()
+    if not stats.encounteredDemons then
+        stats.encounteredDemons = {}
+    end
+    stats.encounteredDemons[demonName] = true
+    Save.saveStats(stats)
+    return stats.encounteredDemons
 end
 
 -- Save persistent statistics

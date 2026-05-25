@@ -183,6 +183,26 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Handle demon discovery skip button press
+    if gameState.gamePhase == "demon_discovery" and gameState.demonDiscoverySkipButtonBounds and isPointInRect(x, y, gameState.demonDiscoverySkipButtonBounds) then
+        UI.Audio.playButtonTap()
+        UI.Animation.animateTo(gameState.demonDiscoverySkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_RED[1],
+            [2] = UI.Colors.FONT_RED[2],
+            [3] = UI.Colors.FONT_RED[3],
+            [4] = UI.Colors.FONT_RED[4]
+        }, 0.3, "easeOutQuart")
+        touchState.demonDiscoverySkipPressed = true
+        return
+    end
+
+    -- Handle demon discovery press (anywhere on screen)
+    if gameState.gamePhase == "demon_discovery" and gameState.demonDiscoveryAnimation then
+        gameState.demonDiscoveryAnimation.isPressed = true
+        gameState.demonDiscoveryAnimation.pressedDuringWaiting = (gameState.demonDiscoveryAnimation.phase == "waiting")
+        return
+    end
+
     -- Handle intro dialogue skip button press (takes priority over dialogue press)
     if gameState.gamePhase == "intro_dialogue" and gameState.introSkipButtonBounds and isPointInRect(x, y, gameState.introSkipButtonBounds) then
         -- Play tap sound
@@ -1169,6 +1189,80 @@ function Touch.released(x, y, istouch, touchId)
             })
         end
         touchState.pressedAnchorTile = nil
+    end
+
+    -- Handle demon discovery: helper to finish and proceed to node via iris
+    local function completeDemonDiscovery()
+        local node = gameState.pendingNodeEntry
+        gameState.pendingNodeEntry = nil
+        local ia = gameState.irisAnimation
+        ia.active   = true
+        ia.phase    = "closing"
+        ia.elapsed  = 0
+        ia.progress = 0
+        ia.centerX  = node and node.x or gameState.screen.width / 2
+        ia.centerY  = node and node.y or gameState.screen.height / 2
+        ia.pendingAction = function()
+            Touch.routeToNode(node)
+        end
+    end
+
+    -- Handle demon discovery skip button release
+    if gameState.gamePhase == "demon_discovery" and touchState.demonDiscoverySkipPressed and gameState.demonDiscoverySkipButtonBounds and isPointInRect(x, y, gameState.demonDiscoverySkipButtonBounds) then
+        UI.Audio.playButtonRelease()
+        UI.Animation.animateTo(gameState.demonDiscoverySkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_WHITE[1],
+            [2] = UI.Colors.FONT_WHITE[2],
+            [3] = UI.Colors.FONT_WHITE[3],
+            [4] = UI.Colors.FONT_WHITE[4]
+        }, 0.1, "easeOutQuart", function()
+            completeDemonDiscovery()
+            gameState.demonDiscoverySkipButtonAnimation.color = {
+                UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2],
+                UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]
+            }
+        end)
+        touchState.demonDiscoverySkipPressed = false
+        touchState.isPressed = false
+        touchState.touchId = nil
+        return
+    elseif touchState.demonDiscoverySkipPressed then
+        -- Released outside button — reset to pink
+        UI.Animation.animateTo(gameState.demonDiscoverySkipButtonAnimation.color, {
+            [1] = UI.Colors.FONT_PINK[1],
+            [2] = UI.Colors.FONT_PINK[2],
+            [3] = UI.Colors.FONT_PINK[3],
+            [4] = UI.Colors.FONT_PINK[4]
+        }, 0.3, "easeOutQuart")
+        touchState.demonDiscoverySkipPressed = false
+    end
+
+    -- Handle demon discovery line advance / completion
+    if gameState.gamePhase == "demon_discovery" and gameState.demonDiscoveryAnimation then
+        local anim = gameState.demonDiscoveryAnimation
+        if anim.phase == "waiting" and anim.isPressed and anim.pressedDuringWaiting then
+            UI.Audio.playDismissDialogue()
+            if anim.currentLineIndex >= #anim.lines then
+                anim.phase = "complete"
+                completeDemonDiscovery()
+            else
+                anim.currentLineIndex = anim.currentLineIndex + 1
+                anim.text = anim.lines[anim.currentLineIndex]
+                anim.currentCharIndex = 0
+                anim.charTimer = 0
+                anim.showPrompt = false
+                anim.phase = "typing"
+                anim.pressedDuringWaiting = false
+            end
+            anim.isPressed = false
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+        anim.isPressed = false
+        anim.pressedDuringWaiting = false
+        touchState.isPressed = false
+        touchState.touchId = nil
     end
 
     -- Handle intro dialogue skip button release
@@ -4122,34 +4216,9 @@ function Touch.enterSelectedNode()
     end
 end
 
--- Execute the actual node entry (called by iris animation when fully closed)
-function Touch.executeNodeEntry(node)
+-- Route to the node's screen — called after any interstitials (e.g. demon_discovery) are done
+function Touch.routeToNode(node)
     local nodeType = node.nodeType
-
-    -- Clear coin breakdown carried over from previous combat round
-    gameState.coinBreakdown = {}
-    gameState.coinBreakdownQueue = {}
-
-    if gameState.currentMap then
-        Map.clearPreviewPath(gameState.currentMap)
-        gameState.currentMap.manualCameraMode = false
-    end
-
-    -- Move to the selected node first
-    local success = Map.moveToNode(gameState.currentMap, node.id)
-    if not success then
-        -- If move failed, return to map
-        gameState.selectedNode = nil
-        -- Clear any thrown tool sprites
-        UI.Animation.clearAllDiePhysics()
-        gameState.gamePhase = "map"
-        return
-    end
-    
-    -- Trigger progression animation
-    Touch.triggerNodeProgressionAnimation(node)
-    
-    -- Route to appropriate screen based on node type
     if nodeType == "combat" or nodeType == "boss" then
         -- Mark if this is the boss node (map completion)
         gameState.isBossRound = Map.isCompleted(gameState.currentMap)
@@ -4528,6 +4597,55 @@ function Touch.executeNodeEntry(node)
 
     -- Clear selected node
     gameState.selectedNode = nil
+end
+
+-- Execute the actual node entry (called by iris animation when fully closed)
+function Touch.executeNodeEntry(node)
+    -- Clear coin breakdown carried over from previous combat round
+    gameState.coinBreakdown = {}
+    gameState.coinBreakdownQueue = {}
+
+    if gameState.currentMap then
+        Map.clearPreviewPath(gameState.currentMap)
+        gameState.currentMap.manualCameraMode = false
+    end
+
+    -- Move to the selected node first
+    local success = Map.moveToNode(gameState.currentMap, node.id)
+    if not success then
+        gameState.selectedNode = nil
+        UI.Animation.clearAllDiePhysics()
+        gameState.gamePhase = "map"
+        return
+    end
+
+    -- Determine if this is a trackable (non-imp) demon
+    local isRegularDemon = false
+    if node.demonName and node.demonName ~= "" then
+        for _, name in ipairs(DemonData.REGULAR_DEMON_NAMES) do
+            if node.demonName == name then isRegularDemon = true; break end
+        end
+    end
+
+    local isFirstEncounter = not isRegularDemon
+        and node.demonName and node.demonName ~= ""
+        and not gameState.encounteredDemons[node.demonName]
+
+    -- Record the encounter immediately (map icon updates on return)
+    if not isRegularDemon and node.demonName and node.demonName ~= "" then
+        gameState.encounteredDemons = Save.recordEncounteredDemon(node.demonName)
+    end
+
+    Touch.triggerNodeProgressionAnimation(node)
+
+    if isFirstEncounter then
+        gameState.pendingNodeEntry = node
+        initializeDemonDiscoveryDialogue(node.demonName)
+        gameState.gamePhase = "demon_discovery"
+        return
+    end
+
+    Touch.routeToNode(node)
 end
 
 -- FUSION SYSTEM FUNCTIONS

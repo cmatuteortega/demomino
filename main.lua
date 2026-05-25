@@ -483,6 +483,24 @@ function love.load()
         },
         introSkipButtonBounds = nil,  -- Clickable area bounds
         fromNewGame = false,  -- Flag to track if we came from NEW GAME button
+        -- Demon discovery dialogue (first-encounter interstitial)
+        demonDiscoveryAnimation = {
+            phase = "typing",
+            currentLineIndex = 1,
+            text = "",
+            currentCharIndex = 0,
+            charTimer = 0,
+            charsPerSecond = 8,
+            showPrompt = false,
+            isPressed = false,
+            demonName = "",
+            lines = {}
+        },
+        demonDiscoverySkipButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        },
+        demonDiscoverySkipButtonBounds = nil,
+        pendingNodeEntry = nil,
         -- Tutorial state tracking (uses combat dialogue system for display)
         tutorialState = {
             hasSeenFirstTile = false,  -- Player placed first tile on board
@@ -520,6 +538,10 @@ function love.load()
     gameState.musicEnabled = settings.musicEnabled
     gameState.sfxEnabled = settings.sfxEnabled
     gameState.tutorialEnabled = settings.tutorialEnabled
+
+    -- Load persistent encounter history (survives save resets)
+    local stats = Save.loadStats()
+    gameState.encounteredDemons = stats.encounteredDemons or {}
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -1052,6 +1074,67 @@ introDialogue = {
     "Our host...",
     "SATANAS",
 }
+
+demonDiscoveryDialogueLines = {
+    -- Boss demons
+    LUCIFER   = {"FINALLY, A CHALLENGER.", "I HAVE BEEN WAITING AN ETERNITY.", "SHOW ME WHAT HELL HATH WROUGHT."},
+    BEELZEBUB = {"ANOTHER MORSEL.", "YOU CARRY THE STENCH OF THE LIVING.", "SIT. THIS WILL NOT TAKE LONG."},
+    ASTAROTH  = {"I DO NOT RECEIVE GUESTS.", "YET HERE YOU STAND.", "PROCEED. I AM CURIOUS."},
+    ASMODEUS  = {"OH, HOW AMUSING.", "YOU CAME TO ME OF ALL PLACES.", "TRY NOT TO LOSE YOURSELF."},
+    LEVIATHAN = {"THE DEPTHS SWALLOW ALL.", "DO YOU FEEL THE PULL?", "YOU WILL JOIN THE REST, EVENTUALLY."},
+    ABADDON   = {"NOTHING LASTS.", "NOT YOU, NOT YOUR TILES, NOT THIS GAME.", "BEGIN."},
+    AZAZEL    = {"I REMEMBER BEFORE THE FALL.", "YOU WOULD NOT UNDERSTAND.", "LET US SEE WHAT YOU ARE MADE OF."},
+    BAAL      = {"KNEEL.", "...", "I AM GENEROUS TODAY. STAND."},
+    BAPHOMET  = {"ABOVE. BELOW. WITHIN.", "THE TILES KNOW THE WAY.", "FOLLOW THE PATTERN."},
+    BEPHEGOR  = {"UGH. YOU AGAIN.", "OR SOMEONE LIKE YOU. I CANNOT BE BOTHERED.", "MAKE IT QUICK."},
+    MEPHISTO  = {"WELCOME, WELCOME.", "I HAVE HEARD SO MUCH ABOUT YOU.", "SHALL WE PLAY?"},
+    MOLOCH    = {"FEED ME.", "YOUR TILES ARE AN OFFERING.", "BEGIN THE RITUAL."},
+    SAMAEL    = {"DEATH COMES FOR ALL.", "SOME SOONER THAN OTHERS.", "YOUR TILES. YOUR FATE."},
+    -- Shop demons
+    MAMMON    = {"MONEY FIRST.", "SENTIMENT AFTER, IF YOU CAN AFFORD IT.", "BROWSE, BUT DO NOT WASTE MY TIME."},
+    PAIMON    = {"AH. A VISITOR.", "I KNOW WHAT YOU SEEK.", "PERHAPS WE CAN COME TO AN ARRANGEMENT."},
+    LILITH    = {"YOU FOUND ME.", "MOST DO NOT MAKE IT THIS FAR.", "CAREFUL. EVERYTHING HERE HAS A PRICE."},
+    STOLAS    = {"I HAVE CATALOGUED EVERY TILE.", "ELEVEN THOUSAND VARIATIONS.", "WHICH ONE CALLS TO YOU?"},
+    PAZUZU    = {"THE WIND CARRIES DISEASE.", "AND OPPORTUNITY.", "CHOOSE WISELY. I DO NOT GIVE REFUNDS."},
+    BELIAL    = {"HAHA. YOU LOOK LOST.", "GOOD NEWS, I CAN HELP.", "BAD NEWS, EVERYTHING COSTS SOMETHING."},
+}
+
+function initializeDemonDiscoveryDialogue(demonName)
+    local lines = demonDiscoveryDialogueLines[demonName] or {"...", "WHO ARE YOU?", "ENTER."}
+    local anim = gameState.demonDiscoveryAnimation
+    anim.lines = lines
+    anim.demonName = demonName
+    anim.phase = "typing"
+    anim.currentLineIndex = 1
+    anim.text = lines[1]
+    anim.currentCharIndex = 0
+    anim.charTimer = 0
+    anim.showPrompt = false
+    anim.isPressed = false
+    anim.pressedDuringWaiting = false
+    gameState.demonDiscoverySkipButtonAnimation.color = {0.941, 0.576, 0.608, 1}
+end
+
+function updateDemonDiscovery(dt)
+    local anim = gameState.demonDiscoveryAnimation
+
+    if anim.phase == "typing" then
+        local speedMultiplier = anim.isPressed and 2.0 or 1.0
+        anim.charTimer = anim.charTimer + (dt * speedMultiplier)
+        local timePerChar = 1.0 / anim.charsPerSecond
+
+        if anim.charTimer >= timePerChar then
+            anim.charTimer = 0
+            anim.currentCharIndex = anim.currentCharIndex + 1
+            UI.Audio.playTypewriter()
+            if anim.currentCharIndex >= #anim.text then
+                anim.currentCharIndex = #anim.text
+                anim.phase = "waiting"
+                anim.showPrompt = true
+            end
+        end
+    end
+end
 
 function getRandomDialoguePhrase(category)
     -- Check for boss-specific dialogue first
@@ -3326,6 +3409,8 @@ function love.update(dt)
         if UI.Audio.isMapAmbiancePlaying() then
             UI.Audio.stopMapAmbiance()
         end
+    elseif gameState.gamePhase == "demon_discovery" then
+        updateDemonDiscovery(dt)
     elseif gameState.gamePhase == "round_intro" then
         updateRoundIntro(dt)
         -- Stop map ambiance during round intro
@@ -3528,6 +3613,8 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "intro_dialogue" then
         UI.Renderer.drawIntroDialogue()
+    elseif gameState.gamePhase == "demon_discovery" then
+        UI.Renderer.drawDemonDiscovery()
     elseif gameState.gamePhase == "round_intro" then
         UI.Renderer.drawRoundIntro()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
@@ -4263,6 +4350,8 @@ function loadDemonIconSprites()
         "BELIAL", "PAZUZU",
         -- Intro dialogue
         "IMPLOYEE",
+        -- Unknown (first-encounter mystery icon)
+        "UNKNOWN",
         -- Fallback
         "NOT_FOUND"
     }
