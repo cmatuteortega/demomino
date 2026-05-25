@@ -483,4 +483,14 @@ function Contracts.getDescription(contract)
     return contract.description
 end
 
+-- Per-candle pixel offsets relative to the candleholder's TOP-LEFT corner.
+-- Units are source-sprite pixels (multiplied by the candleholder render scale at draw time).
+-- The anchor for each candle sprite is its BOTTOM-CENTER, so y is where the candle's base sits.
+-- Tweak these freely to align each candle with its holder slot.
+Contracts.candleOffsets = {
+    {x = 8, y = 25},  -- candle 1 (left)
+    {x = 41, y = 7},  -- candle 2 (center)
+    {x = 74, y = 25},  -- candle 3 (right)
+}
+
 return Contracts

@@ -3250,6 +3250,9 @@ function UI.Renderer.drawTilesMenu()
         UI.Colors.setBackgroundLight()
         love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
+        -- Active contract candles behind the hand-area tiles
+        UI.Renderer.drawCombatCandles()
+
         -- Draw node title and demon name in top corners
         local rightX = screenWidth - UI.Layout.scale(40)
         local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
@@ -3687,37 +3690,11 @@ function UI.Renderer.drawContractsMenu()
 
     -- Coins are drawn separately via drawCoinText() call at end of draw cycle
 
-    -- Draw contract cards
-    local cardWidth = UI.Layout.scale(180)
-    local cardHeight = UI.Layout.scale(140)
-    local cardSpacing = UI.Layout.scale(20)
-    local totalCardsWidth = (#gameState.offeredContracts * cardWidth) + ((#gameState.offeredContracts - 1) * cardSpacing)
-    local startX = centerX - (totalCardsWidth / 2)
-    local cardY = centerY - (cardHeight / 2)
+    -- Draw candleholder + 3 candles + selection arrows
+    UI.Renderer.drawContractCandles(handArea)
 
-    for i, contract in ipairs(gameState.offeredContracts) do
-        local cardX = startX + ((i - 1) * (cardWidth + cardSpacing))
-        UI.Renderer.drawContractCard(contract, cardX, cardY, cardWidth, cardHeight)
-    end
-
-    -- Draw active contracts section at bottom
-    local activeY = screenHeight - UI.Layout.scale(120)
-    local activeText = "ACTIVE (" .. #gameState.activeContracts .. "/2)"
-    UI.Fonts.drawText(activeText, centerX, activeY, "large", UI.Colors.FONT_WHITE, "center")
-
-    -- Draw active contracts with candle flames
-    if #gameState.activeContracts > 0 then
-        local activeCardWidth = UI.Layout.scale(150)
-        local activeCardHeight = UI.Layout.scale(80)
-        local activeTotalWidth = (#gameState.activeContracts * activeCardWidth) + cardSpacing
-        local activeStartX = centerX - (activeTotalWidth / 2)
-        local activeCardY = activeY + UI.Layout.scale(35)
-
-        for i, contract in ipairs(gameState.activeContracts) do
-            local activeCardX = activeStartX + ((i - 1) * (activeCardWidth + cardSpacing))
-            UI.Renderer.drawActiveContractCard(contract, activeCardX, activeCardY, activeCardWidth, activeCardHeight)
-        end
-    end
+    -- Bottom < SIGN > button row
+    UI.Renderer.drawContractActionButtons()
 
     -- Draw coin display
     UI.Renderer.drawCoinSprites()
@@ -3727,54 +3704,195 @@ function UI.Renderer.drawContractsMenu()
     UI.Renderer.drawContractsNextButton()
 end
 
--- Draw a contract card in the shop
-function UI.Renderer.drawContractCard(contract, x, y, width, height)
-    -- Check if player can purchase
-    local canAfford = gameState.coins >= contract.cost
-    local hasSpace = #gameState.activeContracts < 2
-    local alreadyOwned = Contracts.isActive(contract.id, gameState.activeContracts)
-    local canPurchase = canAfford and hasSpace and not alreadyOwned
+-- Helper: returns true if the contract at the given index can currently be signed.
+function UI.Renderer.canSignContract(index)
+    local contract = gameState.offeredContracts[index]
+    if not contract then return false end
+    if gameState.contractsPurchased and gameState.contractsPurchased[index] then return false end
+    if gameState.coins < contract.cost then return false end
+    if #gameState.activeContracts >= 2 then return false end
+    if Contracts.isActive(contract.id, gameState.activeContracts) then return false end
+    return true
+end
 
-    -- Card background
-    local bgColor = canPurchase and UI.Colors.OUTLINE or {0.3, 0.3, 0.3, 1}
-    love.graphics.setColor(bgColor)
-    love.graphics.rectangle("fill", x, y, width, height, UI.Layout.scale(8), UI.Layout.scale(8))
+-- Draw the candleholder, the (up to) 3 contract candles, the selection arrows,
+-- and the tooltip for the currently selected candle.
+function UI.Renderer.drawContractCandles(handArea)
+    if not contractSprites or not contractSprites.candleholder then return end
 
-    -- Card border (highlight if can purchase)
-    if canPurchase then
-        love.graphics.setColor(UI.Colors.FONT_PINK)
-        love.graphics.setLineWidth(UI.Layout.scale(3))
-        love.graphics.rectangle("line", x, y, width, height, UI.Layout.scale(8), UI.Layout.scale(8))
+    local screenWidth = gameState.screen.width
+    local time = love.timer.getTime()
+    local holderScale = UI.Layout.scale(5)
+    local holderYOffset = UI.Layout.scale(60) + 15  -- tweak to push candleholder lower on screen
+
+    local holderSprite = contractSprites.candleholder
+    local holderW = holderSprite:getWidth() * holderScale
+    local holderH = holderSprite:getHeight() * holderScale
+    local holderX = (screenWidth - holderW) / 2
+    local holderY = handArea.y - holderH + holderYOffset
+
+    -- Candleholder base
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(holderSprite, holderX, holderY, 0, holderScale, holderScale)
+
+    -- Each candle (bottom-center anchor) + its flame
+    local selectedIndex = gameState.contractsSelectedIndex or 1
+    local selectedAnchor = nil  -- {cx, topY, w, h} of selected candle for the arrow indicator
+    local maxCandles = math.min(3, #gameState.offeredContracts)
+
+    for i = 1, maxCandles do
+        local offset = Contracts.candleOffsets[i]
+        local candleSprite = contractSprites.candles[1]
+        if offset and candleSprite and not (gameState.contractsPurchased and gameState.contractsPurchased[i]) then
+            local cw = candleSprite:getWidth() * holderScale
+            local ch = candleSprite:getHeight() * holderScale
+            local cx = holderX + offset.x * holderScale
+            local baseY = holderY + offset.y * holderScale
+            local topY = baseY - ch
+
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(candleSprite, cx - cw / 2, topY, 0, holderScale, holderScale)
+
+            -- Animated flame on top of the candle
+            if candleLightFrames and #candleLightFrames > 0 then
+                local frame = candleLightFrames[candleLightFrameIndex or 1]
+                if frame then
+                    local flameScale = holderScale
+                    local fw = frame:getWidth() * flameScale
+                    local fh = frame:getHeight() * flameScale
+                    love.graphics.draw(frame, cx - fw / 2, topY - fh + UI.Layout.scale(23), 0, flameScale, flameScale)
+                end
+            end
+
+            if i == selectedIndex then
+                selectedAnchor = {cx = cx, topY = topY, w = cw, h = ch}
+            end
+        end
     end
 
-    -- Contract name
-    local nameColor = alreadyOwned and {0.5, 0.5, 0.5, 1} or UI.Colors.FONT_WHITE
-    UI.Fonts.drawText(contract.name, x + width/2, y + UI.Layout.scale(15), "large", nameColor, "center")
+    -- Selection arrows < > flanking the currently selected candle
+    if selectedAnchor then
+        local arrowFont = UI.Fonts.get("large")
+        local wobble = math.sin(time * 4) * 1.5
+        local centerY = selectedAnchor.topY + selectedAnchor.h / 2 - arrowFont:getHeight() / 2
+        local gap = UI.Layout.scale(6)
 
-    -- Contract description
-    local descColor = alreadyOwned and {0.5, 0.5, 0.5, 1} or {0.8, 0.8, 0.8, 1}
-    UI.Fonts.drawText(contract.description, x + width/2, y + UI.Layout.scale(50), "medium", descColor, "center")
+        local leftCharW = arrowFont:getWidth("<")
+        local leftX = selectedAnchor.cx - selectedAnchor.w / 2 - gap - leftCharW - wobble
+        UI.Fonts.drawAnimatedText("<", leftX, centerY, "large", UI.Colors.FONT_PINK, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0
+        })
 
-    -- Cost / Purchase button
-    local buttonY = y + height - UI.Layout.scale(35)
-    local buttonWidth = UI.Layout.scale(80)
-    local buttonHeight = UI.Layout.scale(25)
-    local buttonX = x + (width - buttonWidth) / 2
+        local rightX = selectedAnchor.cx + selectedAnchor.w / 2 + gap + wobble
+        UI.Fonts.drawAnimatedText(">", rightX, centerY, "large", UI.Colors.FONT_PINK, "left", {
+            shadow = true, shadowOffset = UI.Layout.scale(2), scale = 1.0
+        })
+    end
 
-    if alreadyOwned then
-        -- Show "OWNED" text
-        UI.Fonts.drawText("OWNED", x + width/2, buttonY + buttonHeight/2 - UI.Layout.scale(5), "medium", {0.5, 0.5, 0.5, 1}, "center")
+    -- Tooltip for the selected candle, centered above the hand area
+    local selected = gameState.offeredContracts[selectedIndex]
+    if selected and not (gameState.contractsPurchased and gameState.contractsPurchased[selectedIndex]) then
+        UI.Renderer.drawContractCandleTooltip(selected, screenWidth / 2, handArea.y - UI.Layout.scale(6))
+    end
+end
+
+-- Tooltip panel for the currently-selected candle. Drawn upward from (cx, bottomY).
+function UI.Renderer.drawContractCandleTooltip(contract, cx, bottomY)
+    local scale = gameState.screen.scale
+    local pad = UI.Layout.scale(10)
+    local sepPad = UI.Layout.scale(6)
+
+    local fLarge = UI.Fonts.get("large")
+    local fMed = UI.Fonts.get("medium")
+    local largeH = fLarge:getHeight()
+    local medH = fMed:getHeight()
+
+    local title = contract.name or "CONTRACT"
+    local desc = contract.description or ""
+    local durationText = "Lasts 3 rounds"
+
+    local contentW = math.max(fLarge:getWidth(title), fMed:getWidth(desc), fMed:getWidth(durationText))
+    local totalW = contentW + pad * 3
+    local totalH = pad + largeH + sepPad + medH + UI.Layout.scale(4) + medH + pad
+
+    local sw = gameState.screen.width
+    local sh = gameState.screen.height
+    local bx = cx - totalW / 2
+    local by = bottomY - totalH
+    bx = math.max(pad, math.min(bx, sw - totalW - pad))
+    by = math.max(pad, math.min(by, sh - totalH - pad))
+
+    -- Panel background
+    love.graphics.setColor(0.08, 0.08, 0.08, 0.92)
+    love.graphics.rectangle("fill", bx, by, totalW, totalH, UI.Layout.scale(6), UI.Layout.scale(6))
+    love.graphics.setColor(UI.Colors.FONT_PINK)
+    love.graphics.setLineWidth(UI.Layout.scale(1.5))
+    love.graphics.rectangle("line", bx, by, totalW, totalH, UI.Layout.scale(6), UI.Layout.scale(6))
+
+    local panelCX = bx + totalW / 2
+    local curY = by + pad
+    UI.Fonts.drawText(title, panelCX, curY, "large", UI.Colors.FONT_PINK, "center")
+    curY = curY + largeH + sepPad / 2
+
+    -- Separator
+    love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 0.4)
+    love.graphics.rectangle("fill", bx + pad, curY, totalW - pad * 2, math.max(1, UI.Layout.scale(1)))
+    curY = curY + sepPad / 2
+
+    UI.Fonts.drawText(desc, panelCX, curY, "medium", {0.95, 0.85, 0.9, 1}, "center")
+    curY = curY + medH + UI.Layout.scale(4)
+    UI.Fonts.drawText(durationText, panelCX, curY, "medium", {1, 0.75, 0.2, 1}, "center")
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Bottom button row: < SIGN >
+function UI.Renderer.drawContractActionButtons()
+    local handArea = UI.Layout.getHandArea()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local sideWidth = buttonWidth / 2
+    local gap = UI.Layout.scale(10)
+    local totalW = sideWidth + gap + buttonWidth + gap + sideWidth
+    local startX = (gameState.screen.width - totalW) / 2
+    local y = handArea.y + handArea.height + UI.Layout.scale(15)
+
+    local leftX = startX
+    local signX = startX + sideWidth + gap
+    local rightX = signX + buttonWidth + gap
+
+    -- < button
+    UI.Renderer.drawButton("<", leftX, y, sideWidth, buttonHeight, false, 1.0)
+    gameState.contractsLeftButton = {x = leftX, y = y, width = sideWidth, height = buttonHeight}
+
+    -- Cost label above the SIGN button (only when there's a selectable contract)
+    local selIdx = gameState.contractsSelectedIndex or 1
+    local selContract = gameState.offeredContracts[selIdx]
+    if selContract and not (gameState.contractsPurchased and gameState.contractsPurchased[selIdx]) then
+        local canAfford = gameState.coins >= selContract.cost
+        local costColor = canAfford and UI.Colors.FONT_PINK or {0.5, 0.5, 0.5, 1}
+        local costFont = UI.Fonts.get("medium")
+        local costY = y - costFont:getHeight() - UI.Layout.scale(4)
+        UI.Fonts.drawText(selContract.cost .. "$", signX + buttonWidth / 2, costY, "medium", costColor, "center")
+    end
+
+    -- SIGN button (dimmed if not signable)
+    local canSign = UI.Renderer.canSignContract(gameState.contractsSelectedIndex or 1)
+    if canSign then
+        UI.Renderer.drawButton("SIGN", signX, y, buttonWidth, buttonHeight, false, 1.0)
     else
-        -- Draw purchase button
-        local btnColor = canPurchase and UI.Colors.FONT_PINK or {0.5, 0.5, 0.5, 1}
-        love.graphics.setColor(btnColor)
-        love.graphics.rectangle("fill", buttonX, buttonY, buttonWidth, buttonHeight, UI.Layout.scale(4), UI.Layout.scale(4))
-
-        -- Button text
-        local btnTextColor = canPurchase and UI.Colors.BACKGROUND or {0.3, 0.3, 0.3, 1}
-        local costText = contract.cost .. "$"
-        UI.Fonts.drawText(costText, x + width/2, buttonY + buttonHeight/2 - UI.Layout.scale(5), "medium", btnTextColor, "center")
+        -- Dimmed style: gray fill, gray text
+        love.graphics.setColor(0.25, 0.25, 0.25, 1)
+        love.graphics.rectangle("fill", signX, y, buttonWidth, buttonHeight, 5)
+        UI.Colors.setOutline()
+        love.graphics.rectangle("line", signX, y, buttonWidth, buttonHeight, 5)
+        UI.Fonts.drawAnimatedText("SIGN", signX + buttonWidth / 2, y + buttonHeight / 2, "button",
+            {0.5, 0.5, 0.5, 1}, "center", {scale = 1.0, vcenter = true})
     end
+    gameState.contractsSignButton = {x = signX, y = y, width = buttonWidth, height = buttonHeight}
+
+    -- > button
+    UI.Renderer.drawButton(">", rightX, y, sideWidth, buttonHeight, false, 1.0)
+    gameState.contractsRightButton = {x = rightX, y = y, width = sideWidth, height = buttonHeight}
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -4189,6 +4307,9 @@ function UI.Renderer.drawPawnMode()
     local handArea = UI.Layout.getHandArea()
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    -- Active contract candles behind the hand-area tiles
+    UI.Renderer.drawCombatCandles()
 
     local time  = love.timer.getTime()
     local rightX = screenWidth - UI.Layout.scale(40)
@@ -4665,6 +4786,9 @@ function UI.Renderer.drawCasino()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
     UI.Renderer.drawToolStack()
+
+    -- Active contract candles behind the hand-area tiles
+    UI.Renderer.drawCombatCandles()
 
     -- Left side: BELIAL icon + name + subtitle
     local demonName  = "BELIAL"
@@ -5656,6 +5780,9 @@ function UI.Renderer.drawFusionMode()
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
 
+    -- Active contract candles behind the hand-area tiles
+    UI.Renderer.drawCombatCandles()
+
     -- Draw node title and demon name in top corners
     local rightX = screenWidth - UI.Layout.scale(40)
     local leftX = UI.Layout.scale(60)  -- Increased margin to match combat screen
@@ -5792,6 +5919,9 @@ function UI.Renderer.drawEnhanceMode()
     local handArea = UI.Layout.getHandArea()
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    -- Active contract candles behind the hand-area tiles
+    UI.Renderer.drawCombatCandles()
 
     -- Tool stack (owned tools, bottom-left)
     UI.Renderer.drawToolStack()
@@ -6040,6 +6170,9 @@ function UI.Renderer.drawFlattenMode()
     local handArea = UI.Layout.getHandArea()
     UI.Colors.setBackgroundLight()
     love.graphics.rectangle("fill", handArea.x, handArea.y, handArea.width, handArea.height)
+
+    -- Active contract candles behind the hand-area tiles
+    UI.Renderer.drawCombatCandles()
 
     UI.Renderer.drawToolStack()
 
@@ -6507,6 +6640,24 @@ function UI.Renderer.drawActiveDieSprites()
     end
 end
 
+-- Pick the contract candle sprite + flame-sink offset based on rounds remaining.
+-- flameSink is added DOWNWARD to the existing flame Y so the flame moves deeper
+-- into the candle as it wears. Tune the three sink constants to taste.
+local function pickContractCandleForActive(contract)
+    local fallback = candleSprites and candleSprites[1]
+    if not contractSprites or not contractSprites.candles or not contractSprites.candles[1] then
+        return fallback, 0
+    end
+    local remaining = (contract.expiresAtRound or 0) - gameState.currentRound
+    if remaining >= 3 then
+        return contractSprites.candles[1], 0    -- full candle, flame high (default)
+    elseif remaining == 2 then
+        return contractSprites.candles[2], 10   -- mid-wear, flame sinks
+    else  -- remaining <= 1
+        return contractSprites.candles[3], 50   -- last use, flame deep
+    end
+end
+
 function UI.Renderer.drawCombatCandles()
     local skipPhases = {
         map = true, node_confirmation = true,
@@ -6516,8 +6667,10 @@ function UI.Renderer.drawCombatCandles()
         return
     end
 
-    -- Check if candle sprites are loaded
-    if not candleSprites or #candleSprites == 0 then
+    -- Need either the legacy or the new contract sprites loaded
+    local haveLegacy = candleSprites and #candleSprites > 0
+    local haveNew = contractSprites and contractSprites.candles and contractSprites.candles[1]
+    if not (haveLegacy or haveNew) then
         return
     end
 
@@ -6531,18 +6684,24 @@ function UI.Renderer.drawCombatCandles()
     local screenWidth = gameState.screen.width
     local screenHeight = gameState.screen.height
 
-    -- Position candles at 25% from each vertical border, in the hand tile area
-    local handAreaY = screenHeight * 0.7  -- Hand area is in bottom portion
-    local leftCandleX = screenWidth * 0.25
-    local rightCandleX = screenWidth * 0.75
-
-    -- Use first candle sprite
-    local candleSprite = candleSprites[1]
-    local spriteWidth = candleSprite:getWidth()
-    local spriteHeight = candleSprite:getHeight()
-
     -- Scale up candles (4x scale for visibility, was 2x)
     local candleScale = 4.0
+
+    -- Anchor: align the bottom of the candle rig with the bottom of the coin stack.
+    -- Candles are drawn centered on handAreaY (origin = sh/2), so candle bottom = handAreaY + sh*candleScale/2.
+    local _, _, _, coinStackY = UI.Layout.getCoinDisplayPosition()
+    local coinSpriteScale = math.max(math.min(screenWidth / 800, screenHeight / 600) * 2.0, 1.0)
+    local coinHalfH = (coinSprite and (coinSprite:getHeight() * coinSpriteScale) / 2) or 0
+    local coinBottomY = coinStackY + coinHalfH
+
+    local sampleCandle = (contractSprites and contractSprites.candles and contractSprites.candles[1])
+        or (candleSprites and candleSprites[1])
+    local sampleH = (sampleCandle and sampleCandle:getHeight()) or 28
+    local handAreaY = coinBottomY - (sampleH * candleScale) / 2
+
+    -- Position candles at 25% from each vertical border
+    local leftCandleX = screenWidth * 0.25
+    local rightCandleX = screenWidth * 0.75
 
     -- Move candles 20 scaled pixels closer to screen edges
     local edgeOffset = 1 * candleScale
@@ -6551,95 +6710,52 @@ function UI.Renderer.drawCombatCandles()
 
     -- Rebuild candle hit bounds each frame
     gameState.combatCandleBounds = {}
-    local hw = (spriteWidth  * candleScale) / 2
-    local flameH = spriteHeight * candleScale * 1.25
-    local totalH = spriteHeight * candleScale + flameH
 
-    -- Draw left candle if first contract is active
+    local function drawOneCombatCandle(contract, cx, contractIndex)
+        local candleSprite, flameSink = pickContractCandleForActive(contract)
+        if not candleSprite then return end
+        local sw, sh = candleSprite:getWidth(), candleSprite:getHeight()
+        local flameH = sh * candleScale * 1.25
+        local totalH = sh * candleScale + flameH
+
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(candleSprite, cx, handAreaY, 0, candleScale, candleScale, sw / 2, sh / 2)
+
+        table.insert(gameState.combatCandleBounds, {
+            x = cx - (sw * candleScale) / 2,
+            y = handAreaY - flameH - (sh * candleScale) / 2,
+            w = sw * candleScale,
+            h = totalH,
+            contractIndex = contractIndex,
+        })
+
+        if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
+            local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
+            if flameFrame then
+                local flameScale = candleScale * 1.25
+                local flameOffsetY = -25 * (candleScale / 2) + flameSink
+                love.graphics.draw(
+                    flameFrame,
+                    cx,
+                    handAreaY + flameOffsetY,
+                    0,
+                    flameScale,
+                    flameScale,
+                    flameFrame:getWidth() / 2,
+                    flameFrame:getHeight() / 2
+                )
+            end
+        end
+    end
+
     if #gameState.activeContracts >= 1 then
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(
-            candleSprite,
-            leftCandleX,
-            handAreaY,
-            0,  -- rotation
-            candleScale,
-            candleScale,
-            spriteWidth / 2,  -- origin X (center)
-            spriteHeight / 2   -- origin Y (center)
-        )
-        table.insert(gameState.combatCandleBounds, {
-            x = leftCandleX - hw,
-            y = handAreaY - flameH - (spriteHeight * candleScale) / 2,
-            w = spriteWidth * candleScale,
-            h = totalH,
-            contractIndex = 1,
-        })
-
-        -- Draw animated flame on left candle
-        if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
-            local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
-            if flameFrame then
-                local flameScale = candleScale * 1.25  -- Flame slightly larger than candle
-                local flameOffsetY = -25 * (candleScale / 2)  -- Move flame up
-                love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.draw(
-                    flameFrame,
-                    leftCandleX,
-                    handAreaY + flameOffsetY,
-                    0,
-                    flameScale,
-                    flameScale,
-                    flameFrame:getWidth() / 2,
-                    flameFrame:getHeight() / 2
-                )
-            end
-        end
+        drawOneCombatCandle(gameState.activeContracts[1], leftCandleX, 1)
     end
-
-    -- Draw right candle if second contract is active
     if #gameState.activeContracts >= 2 then
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(
-            candleSprite,
-            rightCandleX,
-            handAreaY,
-            0,  -- rotation
-            candleScale,
-            candleScale,
-            spriteWidth / 2,  -- origin X (center)
-            spriteHeight / 2   -- origin Y (center)
-        )
-        table.insert(gameState.combatCandleBounds, {
-            x = rightCandleX - hw,
-            y = handAreaY - flameH - (spriteHeight * candleScale) / 2,
-            w = spriteWidth * candleScale,
-            h = totalH,
-            contractIndex = 2,
-        })
-
-        -- Draw animated flame on right candle
-        if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
-            local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
-            if flameFrame then
-                local flameScale = candleScale * 1.25  -- Flame slightly larger than candle
-                local flameOffsetY = -25 * (candleScale / 2)  -- Move flame up
-                love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.draw(
-                    flameFrame,
-                    rightCandleX,
-                    handAreaY + flameOffsetY,
-                    0,
-                    flameScale,
-                    flameScale,
-                    flameFrame:getWidth() / 2,
-                    flameFrame:getHeight() / 2
-                )
-            end
-        end
+        drawOneCombatCandle(gameState.activeContracts[2], rightCandleX, 2)
     end
 
-    love.graphics.setColor(1, 1, 1, 1)  -- Reset color
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 -- Draw the active tooltip panel on top of all other elements

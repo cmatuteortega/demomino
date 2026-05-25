@@ -444,6 +444,23 @@ function Touch.pressed(x, y, istouch, touchId)
             touchState.contractsNextButtonPressed = true
             return
         end
+
+        -- Press on < SIGN > bottom button row
+        if gameState.contractsLeftButton and isPointInRect(x, y, gameState.contractsLeftButton) then
+            UI.Audio.playButtonTap()
+            touchState.contractsLeftPressed = true
+            return
+        end
+        if gameState.contractsSignButton and isPointInRect(x, y, gameState.contractsSignButton) then
+            UI.Audio.playButtonTap()
+            touchState.contractsSignPressed = true
+            return
+        end
+        if gameState.contractsRightButton and isPointInRect(x, y, gameState.contractsRightButton) then
+            UI.Audio.playButtonTap()
+            touchState.contractsRightPressed = true
+            return
+        end
     end
 
     -- Handle NEXT> and ACCEPT button press on deal screen
@@ -2038,30 +2055,41 @@ function Touch.released(x, y, istouch, touchId)
             return
         end
 
-        -- Check if a contract card was clicked
+        -- Release on < SIGN > bottom button row
+        if touchState.contractsLeftPressed then
+            touchState.contractsLeftPressed = false
+            if gameState.contractsLeftButton and isPointInRect(x, y, gameState.contractsLeftButton) then
+                local cur = gameState.contractsSelectedIndex or 1
+                gameState.contractsSelectedIndex = ((cur - 2) % 3) + 1
+            end
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+        if touchState.contractsRightPressed then
+            touchState.contractsRightPressed = false
+            if gameState.contractsRightButton and isPointInRect(x, y, gameState.contractsRightButton) then
+                local cur = gameState.contractsSelectedIndex or 1
+                gameState.contractsSelectedIndex = (cur % 3) + 1
+            end
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+        if touchState.contractsSignPressed then
+            touchState.contractsSignPressed = false
+            if gameState.contractsSignButton and isPointInRect(x, y, gameState.contractsSignButton) then
+                Touch.signSelectedContract()
+            end
+            touchState.isPressed = false
+            touchState.touchId = nil
+            return
+        end
+
         local screenWidth = gameState.screen.width
         local screenHeight = gameState.screen.height
         local centerX = screenWidth / 2
-        local centerY = screenHeight / 2
-
-        local cardWidth = UI.Layout.scale(180)
-        local cardHeight = UI.Layout.scale(140)
         local cardSpacing = UI.Layout.scale(20)
-        local totalCardsWidth = (#gameState.offeredContracts * cardWidth) + ((#gameState.offeredContracts - 1) * cardSpacing)
-        local startX = centerX - (totalCardsWidth / 2)
-        local cardY = centerY - (cardHeight / 2)
-
-        for i, contract in ipairs(gameState.offeredContracts) do
-            local cardX = startX + ((i - 1) * (cardWidth + cardSpacing))
-
-            -- Check if click is within this card's bounds
-            if x >= cardX and x <= cardX + cardWidth and y >= cardY and y <= cardY + cardHeight then
-                Touch.purchaseContract(contract)
-                touchState.isPressed = false
-                touchState.touchId = nil
-                return
-            end
-        end
 
         -- Check if an active contract card (candle) was tapped at the bottom
         if #gameState.activeContracts > 0 then
@@ -4069,6 +4097,9 @@ function Touch.executeNodeEntry(node)
         if #gameState.offeredContracts == 0 then
             gameState.offeredContracts = Contracts.generateShopContracts()
         end
+        -- Reset selection + per-candle purchased flags
+        gameState.contractsSelectedIndex = 1
+        gameState.contractsPurchased = {false, false, false}
         -- Reset button animation
         gameState.contractsNextButtonAnimation = {
             color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
@@ -4266,6 +4297,8 @@ function Touch.confirmEnhance()
     -- Deduct coins (updateCoins expects absolute new value)
     updateCoins(gameState.coins - cost)
     gameState.enhanceCurrentCost = cost + 1
+
+    UI.Animation.playTilePunchOut(tile)
 
     -- Overload: tile at max gets destroyed
     if (tile.enhanceCount or 0) >= 5 then
@@ -4687,6 +4720,8 @@ function Touch.sellPawnTile()
     updateCoins(gameState.coins + price, {hasBonus = false})
     UI.Audio.playPlayButton()
 
+    UI.Animation.playTilePunchOut(tile)
+
     -- Remove one matching tile from tileCollection
     for i, t in ipairs(gameState.tileCollection) do
         if t.left == tile.left and t.right == tile.right and t.tileType == tile.tileType then
@@ -4861,6 +4896,8 @@ function Touch.confirmFlatten()
 
     updateCoins(gameState.coins - cost, {hasBonus = false})
     UI.Audio.playPlayButton()
+
+    UI.Animation.playTilePunchOut(tile)
 
     local is66       = love.math.random() < 0.10
     local isRelic = love.math.random() < 0.05
@@ -5535,7 +5572,7 @@ function Touch.purchaseContract(contract)
             shake = 3,
             easing = "easeOutQuart"
         })
-        return
+        return false
     end
 
     -- Check if player has space for more contracts (max 2)
@@ -5553,7 +5590,7 @@ function Touch.purchaseContract(contract)
             shake = 3,
             easing = "easeOutQuart"
         })
-        return
+        return false
     end
 
     -- Check if player already owns this contract
@@ -5571,7 +5608,7 @@ function Touch.purchaseContract(contract)
             shake = 3,
             easing = "easeOutQuart"
         })
-        return
+        return false
     end
 
     -- Deduct coins
@@ -5617,6 +5654,22 @@ function Touch.purchaseContract(contract)
         bounce = true,
         easing = "easeOutBack"
     })
+
+    return true
+end
+
+-- Sign (purchase) the currently selected contract candle.
+-- On success, the candle sprite is hidden by flipping its purchased flag.
+-- On failure (unaffordable / max / owned), the existing floating error text is shown.
+function Touch.signSelectedContract()
+    local idx = gameState.contractsSelectedIndex or 1
+    if gameState.contractsPurchased and gameState.contractsPurchased[idx] then return end
+    local contract = gameState.offeredContracts[idx]
+    if not contract then return end
+    local ok = Touch.purchaseContract(contract)
+    if ok then
+        gameState.contractsPurchased[idx] = true
+    end
 end
 
 function Touch.rerollShopTiles()

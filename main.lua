@@ -47,6 +47,7 @@ function love.load()
     loadCoinSprite()
     loadDemonIconSprites()
     loadCandleSprites()
+    loadContractSprites()
     loadToolSprites()
     loadCupSprites()
     loadMapItemSprites()
@@ -221,6 +222,8 @@ function love.load()
         -- Contracts system
         activeContracts = {},  -- Currently active contracts (max 2)
         offeredContracts = {},  -- Contracts being offered in shop (always 3)
+        contractsSelectedIndex = 1,  -- Which candle (1..3) is highlighted in the contracts menu
+        contractsPurchased = {false, false, false},  -- Per-candle "signed" flag (sprite hides when true)
         offeredDealContract = nil,  -- Single contract offered at DEAL node
         dealDemonTiles = {},        -- {tile1, tile2} pre-built for rendering
         dealAccepted = false,
@@ -3535,7 +3538,6 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
-        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -3567,7 +3569,6 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "casino" then
         UI.Renderer.drawCasino()
-        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -4275,6 +4276,25 @@ function loadCandleSprites()
     candleLightAnimationTime = 0
     candleLightFrameIndex = 1
     candleLightFrameDuration = 1 / 8  -- 8 fps (slower animation)
+end
+
+function loadContractSprites()
+    contractSprites = {
+        candleholder = nil,
+        candles = {},
+    }
+    if love.filesystem.getInfo("sprites/contracts/candleholder.png") then
+        contractSprites.candleholder = love.graphics.newImage("sprites/contracts/candleholder.png")
+        contractSprites.candleholder:setFilter("nearest", "nearest")
+    end
+    for i = 1, 3 do
+        local filename = "sprites/contracts/candle-contract-" .. i .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            sprite:setFilter("nearest", "nearest")
+            contractSprites.candles[i] = sprite
+        end
+    end
 end
 
 function loadToolSprites()
