@@ -3114,6 +3114,9 @@ function UI.Renderer.drawDemonDiscovery()
         currentX = currentX + charWidth
     end
 
+    gameState.demonDiscoverySkipButtonBounds = nil
+
+    --[[ skip button hidden for now
     local horizontalMargin = UI.Layout.scale(60)
     local verticalMargin = UI.Layout.scale(60)
     local skipFont = UI.Fonts.get("bigScore")
@@ -3152,6 +3155,7 @@ function UI.Renderer.drawDemonDiscovery()
         width = skipTotalWidth + padding * 2,
         height = (skipFont:getHeight() * skipScale) + padding * 2
     }
+    --]]
 
     love.graphics.setColor(1, 1, 1, 1)
 end
