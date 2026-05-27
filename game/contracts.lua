@@ -7,160 +7,150 @@ Contracts = {}
 Contracts.definitions = {
     greedy = {
         id = "greedy",
-        name = "GREEDY",
+        name = "GREEDY",                    name_es = "CODICIOSO",
         description = "Add +100 to base score",
-        cost = 2,
-        effectType = "final_base_bonus", -- Applied after all tiles scored
-        effectValue = 100
+        description_es = "Añade +100 al puntaje base",
+        cost = 2, effectType = "final_base_bonus", effectValue = 100
     },
     lucky_five = {
         id = "lucky_five",
-        name = "LUCKY FIVE",
+        name = "LUCKY FIVE",                name_es = "CINCO SUERTUDO",
         description = "Each 5 pip adds +25 to base",
-        cost = 2,
-        effectType = "tile_pip_bonus", -- Applied per tile during scoring
-        effectValue = 25,
-        triggerPip = 5
+        description_es = "Cada pip 5 añade +25 al base",
+        cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 5
     },
     perfect_loop = {
         id = "perfect_loop",
-        name = "PERFECT LOOP",
+        name = "PERFECT LOOP",              name_es = "BUCLE PERFECTO",
         description = "+5 mult if start = end",
-        cost = 2,
-        effectType = "multiplier_bonus", -- Applied to multiplier
-        effectValue = 5
+        description_es = "+5 mult si inicio = fin",
+        cost = 2, effectType = "multiplier_bonus", effectValue = 5
     },
     one_dollar = {
         id = "one_dollar",
-        name = "ONE DOLLAR",
+        name = "ONE DOLLAR",                name_es = "UN DÓLAR",
         description = "Earn 1$ per 1 pip scored",
-        cost = 2,
-        effectType = "coin_reward_per_pip", -- Awards coins during tile scoring
-        effectValue = 1, -- Coins per pip
-        triggerPip = 1
+        description_es = "Gana 1$ por cada pip 1",
+        cost = 2, effectType = "coin_reward_per_pip", effectValue = 1, triggerPip = 1
     },
     small_hand = {
         id = "small_hand",
-        name = "SMALL HAND",
+        name = "SMALL HAND",                name_es = "MANO PEQUEÑA",
         description = "+2 mult if 4 or less tiles",
-        cost = 2,
-        effectType = "conditional_multiplier_bonus", -- Applied if condition met
-        effectValue = 2,
-        condition = "max_tiles",
-        conditionValue = 4
+        description_es = "+2 mult con 4 fichas o menos",
+        cost = 2, effectType = "conditional_multiplier_bonus", effectValue = 2,
+        condition = "max_tiles", conditionValue = 4
     },
     low_stakes = {
         id = "low_stakes",
-        name = "LOW STAKES",
+        name = "LOW STAKES",                name_es = "APUESTA BAJA",
         description = "+50 base if all tiles < 5",
-        cost = 2,
-        effectType = "conditional_base_bonus",
-        effectValue = 50,
-        condition = "all_tiles_below_value",
-        conditionValue = 5
+        description_es = "+50 base si todas las fichas < 5",
+        cost = 2, effectType = "conditional_base_bonus", effectValue = 50,
+        condition = "all_tiles_below_value", conditionValue = 5
     },
     -- Lucky pip contracts (0-4, 6 — Lucky Five already exists)
     lucky_zero = {
-        id = "lucky_zero", name = "LUCKY ZERO",
-        description = "Each 0 pip adds +25 to base",
+        id = "lucky_zero", name = "LUCKY ZERO",   name_es = "CERO SUERTUDO",
+        description = "Each 0 pip adds +25 to base", description_es = "Cada pip 0 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 0
     },
     lucky_one = {
-        id = "lucky_one", name = "LUCKY ONE",
-        description = "Each 1 pip adds +25 to base",
+        id = "lucky_one", name = "LUCKY ONE",     name_es = "UNO SUERTUDO",
+        description = "Each 1 pip adds +25 to base", description_es = "Cada pip 1 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 1
     },
     lucky_two = {
-        id = "lucky_two", name = "LUCKY TWO",
-        description = "Each 2 pip adds +25 to base",
+        id = "lucky_two", name = "LUCKY TWO",     name_es = "DOS SUERTUDO",
+        description = "Each 2 pip adds +25 to base", description_es = "Cada pip 2 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 2
     },
     lucky_three = {
-        id = "lucky_three", name = "LUCKY THREE",
-        description = "Each 3 pip adds +25 to base",
+        id = "lucky_three", name = "LUCKY THREE", name_es = "TRES SUERTUDO",
+        description = "Each 3 pip adds +25 to base", description_es = "Cada pip 3 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 3
     },
     lucky_four = {
-        id = "lucky_four", name = "LUCKY FOUR",
-        description = "Each 4 pip adds +25 to base",
+        id = "lucky_four", name = "LUCKY FOUR",   name_es = "CUATRO SUERTUDO",
+        description = "Each 4 pip adds +25 to base", description_es = "Cada pip 4 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 4
     },
     lucky_six = {
-        id = "lucky_six", name = "LUCKY SIX",
-        description = "Each 6 pip adds +25 to base",
+        id = "lucky_six", name = "LUCKY SIX",     name_es = "SEIS SUERTUDO",
+        description = "Each 6 pip adds +25 to base", description_es = "Cada pip 6 añade +25 al base",
         cost = 2, effectType = "tile_pip_bonus", effectValue = 25, triggerPip = 6
     },
     -- Flat mult
     bold_pact = {
-        id = "bold_pact", name = "BOLD PACT",
-        description = "+2 mult",
+        id = "bold_pact", name = "BOLD PACT",     name_es = "PACTO AUDAZ",
+        description = "+2 mult",                   description_es = "+2 mult",
         cost = 2, effectType = "flat_mult_bonus", effectValue = 2
     },
     -- Tile-type mult bonuses
     tender_grace = {
-        id = "tender_grace", name = "TENDER GRACE",
-        description = "Tender tiles: +1 mult each",
+        id = "tender_grace", name = "TENDER GRACE", name_es = "GRACIA TIERNA",
+        description = "Tender tiles: +1 mult each", description_es = "Fichas Tiernas: +1 mult c/u",
         cost = 2, effectType = "tile_type_mult_bonus", effectValue = 1, tileTypeTarget = "tender"
     },
     -- Demon override
     dark_exchange = {
-        id = "dark_exchange", name = "DARK EXCHANGE",
-        description = "Demon tiles: 0 sum, +1 mult",
+        id = "dark_exchange", name = "DARK EXCHANGE", name_es = "INTERCAMBIO OSCURO",
+        description = "Demon tiles: 0 sum, +1 mult",  description_es = "Fichas demonio: 0 suma, +1 mult",
         cost = 2, effectType = "demon_override", effectValue = 1
     },
     -- High roller (mirror of Low Stakes)
     high_roller = {
-        id = "high_roller", name = "HIGH ROLLER",
-        description = "+50 base if all tiles >= 5",
+        id = "high_roller", name = "HIGH ROLLER",    name_es = "APOSTADOR ALTO",
+        description = "+50 base if all tiles >= 5",   description_es = "+50 base si todas las fichas >= 5",
         cost = 2, effectType = "conditional_base_bonus", effectValue = 50,
         condition = "all_tiles_min_value", conditionValue = 5
     },
     -- Relic tiles remaining in hand
     collector = {
-        id = "collector", name = "COLLECTOR",
-        description = "Relic in hand: +0.5 mult each",
+        id = "collector", name = "COLLECTOR",        name_es = "COLECCIONISTA",
+        description = "Relic in hand: +0.5 mult each", description_es = "Reliquia en mano: +0.5 mult c/u",
         cost = 2, effectType = "hand_relic_mult_bonus", effectValue = 0.5
     },
     -- Odd/even special tiles sum bonus
     wild_card = {
-        id = "wild_card", name = "WILD CARD",
-        description = "Odd/even tiles: +10 sum each",
+        id = "wild_card", name = "WILD CARD",        name_es = "COMODÍN",
+        description = "Odd/even tiles: +10 sum each", description_es = "Fichas especiales: +10 suma c/u",
         cost = 2, effectType = "special_tile_sum_bonus", effectValue = 10
     },
     -- Echo contracts (tiles with matching pip score twice)
     echo_zero = {
-        id = "echo_zero", name = "ECHO ZERO",
-        description = "0-pip tiles score twice",
+        id = "echo_zero", name = "ECHO ZERO",        name_es = "ECO CERO",
+        description = "0-pip tiles score twice",      description_es = "Fichas de 0 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 0
     },
     echo_one = {
-        id = "echo_one", name = "ECHO ONE",
-        description = "1-pip tiles score twice",
+        id = "echo_one", name = "ECHO ONE",          name_es = "ECO UNO",
+        description = "1-pip tiles score twice",      description_es = "Fichas de 1 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 1
     },
     echo_two = {
-        id = "echo_two", name = "ECHO TWO",
-        description = "2-pip tiles score twice",
+        id = "echo_two", name = "ECHO TWO",          name_es = "ECO DOS",
+        description = "2-pip tiles score twice",      description_es = "Fichas de 2 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 2
     },
     echo_three = {
-        id = "echo_three", name = "ECHO THREE",
-        description = "3-pip tiles score twice",
+        id = "echo_three", name = "ECHO THREE",      name_es = "ECO TRES",
+        description = "3-pip tiles score twice",      description_es = "Fichas de 3 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 3
     },
     echo_four = {
-        id = "echo_four", name = "ECHO FOUR",
-        description = "4-pip tiles score twice",
+        id = "echo_four", name = "ECHO FOUR",        name_es = "ECO CUATRO",
+        description = "4-pip tiles score twice",      description_es = "Fichas de 4 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 4
     },
     echo_five = {
-        id = "echo_five", name = "ECHO FIVE",
-        description = "5-pip tiles score twice",
+        id = "echo_five", name = "ECHO FIVE",        name_es = "ECO CINCO",
+        description = "5-pip tiles score twice",      description_es = "Fichas de 5 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 5
     },
     echo_six = {
-        id = "echo_six", name = "ECHO SIX",
-        description = "6-pip tiles score twice",
+        id = "echo_six", name = "ECHO SIX",          name_es = "ECO SEIS",
+        description = "6-pip tiles score twice",      description_es = "Fichas de 6 anotan el doble",
         cost = 2, effectType = "echo_pip_bonus", effectValue = 1, triggerPip = 6
     },
 }

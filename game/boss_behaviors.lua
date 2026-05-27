@@ -2,7 +2,8 @@ BossBehaviors = {}
 
 BossBehaviors.BEHAVIORS = {
     BEELZEBUB = {
-        description = "Burns your placed tiles\nbefore scoring.",
+        description    = "Burns your placed tiles\nbefore scoring.",
+        description_es = "Quema tus fichas colocadas\nantes de puntuar.",
         onBeforeScore = function(gameState, continueCallback)
             animateBeelzebubBurn(gameState.placedTiles, continueCallback)
         end,
@@ -32,10 +33,26 @@ BossBehaviors.BEHAVIORS = {
                 "Even decay cannot undo you. Not yet.",
                 "The rot holds off a moment longer.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Todo lo que tocas comienza a pudrirse. Ese es el don.",
+                "Tus fichas ya valen la mitad. Mira más de cerca.",
+                "Las moscas se alimentan donde se acumula el valor. Es su naturaleza.",
+            },
+            score = {
+                "Mira lo que queda cuando la corrupción sigue su curso.",
+                "Tu cadena se pudre. Sin embargo, algo sobrevive.",
+            },
+            win = {
+                "Ni la decadencia puede deshacerte. Todavía no.",
+                "La podredumbre espera un momento más.",
+            },
         }
     },
     BAPHOMET = {
-        description = "No discards allowed.",
+        description    = "No discards allowed.",
+        description_es = "Sin descartes permitidos.",
         onInit = function(gameState)
             gameState.maxDiscardsPerRound = 0
         end,
@@ -53,10 +70,26 @@ BossBehaviors.BEHAVIORS = {
                 "You have earned my cursed blessing.",
                 "The ritual is complete. For now.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "No hay segunda oportunidad en la herejía.",
+                "Jugarás lo que el destino te dé.",
+                "¿Descartar? Blasfemia.",
+            },
+            score = {
+                "Incluso los fieles deben resistir.",
+                "Una ofrenda digna. Continúa.",
+            },
+            win = {
+                "Te has ganado mi maldita bendición.",
+                "El ritual está completo. Por ahora.",
+            },
         }
     },
     AZAZEL = {
-        description = "Hand size reduced to 5.",
+        description    = "Hand size reduced to 5.",
+        description_es = "Tamaño de mano reducido a 5.",
         onInit = function(gameState)
             gameState.handSizeTarget = 5
         end,
@@ -74,10 +107,26 @@ BossBehaviors.BEHAVIORS = {
                 "Your guilt is absolved. This time.",
                 "Even the scapegoat can walk away.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Cargarás solo lo que mereces.",
+                "El desierto exige viajar ligero.",
+                "Cinco es más que suficiente para los culpables.",
+            },
+            score = {
+                "Cada ficha, un pecado. Cada pecado, una carga.",
+                "Eliges bien con tan poco.",
+            },
+            win = {
+                "Tu culpa está absuelta. Esta vez.",
+                "Hasta el chivo expiatorio puede marcharse.",
+            },
         }
     },
     BAAL = {
-        description = "All tile values are\nrandomized at round start.",
+        description    = "All tile values are\nrandomized at round start.",
+        description_es = "Todos los valores de fichas\nse aleatorizan al inicio.",
         onPreDeck = function(gameState)
             for _, tile in ipairs(gameState.tileCollection) do
                 if tile.tileType == "demon" then
@@ -109,10 +158,26 @@ BossBehaviors.BEHAVIORS = {
                 "You navigated the storm. Barely.",
                 "Even chaos can be survived.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Cada valor está bajo mi mando.",
+                "La certeza es una ilusión. La tormenta lo prueba.",
+                "¿Qué significan tus números ahora?",
+            },
+            score = {
+                "La tormenta remodeló tu mano. ¿Te adaptaste?",
+                "El poder es caótico. Tu puntaje también.",
+            },
+            win = {
+                "Navegaste la tormenta. Por poco.",
+                "Hasta el caos puede sobrevivirse.",
+            },
         }
     },
     LEVIATHAN = {
-        description = "Target score is set to 6666.",
+        description    = "Target score is set to 6666.",
+        description_es = "La meta de puntaje es 6666.",
         onInit = function(gameState)
             gameState.targetScore = 6666
             gameState.displayedRemainingScore = 6666
@@ -131,10 +196,26 @@ BossBehaviors.BEHAVIORS = {
                 "You fed the beast. It will remember you.",
                 "The tide recedes. For now.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Seis mil seiscientos sesenta y seis. Ese es mi precio.",
+                "El mar no tiene piedad. Mi apetito tampoco.",
+                "No puedes escapar de la marea.",
+            },
+            score = {
+                "Más cerca. Pero la serpiente nunca está satisfecha.",
+                "El abismo aún tiene hambre.",
+            },
+            win = {
+                "Alimentaste a la bestia. Te recordará.",
+                "La marea retrocede. Por ahora.",
+            },
         }
     },
     LUCIFER = {
-        description = "Tiles left in hand are\npermanently destroyed.",
+        description    = "Tiles left in hand are\npermanently destroyed.",
+        description_es = "Las fichas en mano\nse destruyen permanentemente.",
         onInit = function(gameState)
             gameState.debugFireHand = true
         end,
@@ -174,10 +255,26 @@ BossBehaviors.BEHAVIORS = {
                 "You played fast enough. The fire has no more claim.",
                 "Even the lightbringer can be outrun.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Todo lo que sostienes arderá. Juega sabiamente.",
+                "Tu mano es una pira funeraria. ¿Cuánto esperarás?",
+                "La luz fue mi don. El fuego es mi castigo.",
+            },
+            score = {
+                "Los no elegidos fueron consumidos. Como merecían.",
+                "Solo quedan cenizas y humo.",
+            },
+            win = {
+                "Jugaste lo suficientemente rápido. El fuego ya no tiene derecho sobre ti.",
+                "Hasta el portador de luz puede ser superado.",
+            },
         }
     },
     MEPHISTO = {
-        description = "Your remaining hand is\ndiscarded after each score.",
+        description    = "Your remaining hand is\ndiscarded after each score.",
+        description_es = "Tu mano restante se descarta\ntras cada puntaje.",
         onBeforeScore = function(gameState, continueCallback)
             local remainingTiles = {}
             for _, tile in ipairs(gameState.hand) do
@@ -206,10 +303,26 @@ BossBehaviors.BEHAVIORS = {
                 "You won the battle. The contract remains.",
                 "Impressive. But the fine print stands.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Todo trato tiene un precio. Tu mano no es excepción.",
+                "Lo que juegas es tuyo. Lo que guardas es mío.",
+                "Lee la letra pequeña.",
+            },
+            score = {
+                "Una mano limpia es un nuevo comienzo. ¿Valió la pena?",
+                "El trato está hecho. Tus fichas son mías ahora.",
+            },
+            win = {
+                "Ganaste la batalla. El contrato permanece.",
+                "Impresionante. Pero la letra pequeña se mantiene.",
+            },
         }
     },
     ABADDON = {
-        description = "Only one play allowed\nper round.",
+        description    = "Only one play allowed\nper round.",
+        description_es = "Solo una jugada\npor ronda.",
         onInit = function(gameState)
             gameState.maxHandsPerRound = 1
         end,
@@ -227,10 +340,26 @@ BossBehaviors.BEHAVIORS = {
                 "Destruction yields to the worthy. This time.",
                 "You survived the abyss. Barely.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Un golpe. Eso es todo lo que obtienes.",
+                "El abismo no ofrece segundas oportunidades.",
+                "Que cuente. No tendrás otro.",
+            },
+            score = {
+                "¿Fue tu mejor jugada? Tenía que serlo.",
+                "El destructor observa. Una oportunidad gastada.",
+            },
+            win = {
+                "La destrucción cede ante los dignos. Esta vez.",
+                "Sobreviviste al abismo. Por poco.",
+            },
         }
     },
     ASMODEUS = {
-        description = "Each scored tile costs 1 coin.",
+        description    = "Each scored tile costs 1 coin.",
+        description_es = "Cada ficha puntuada cuesta 1 moneda.",
         onTileScored = function(gameState, tile)
             updateCoins(gameState.coins - 1)
         end,
@@ -248,10 +377,26 @@ BossBehaviors.BEHAVIORS = {
                 "You paid the price. And still won.",
                 "Costly victory. But yours.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Cada punto tiene un precio.",
+                "El poder es caro. ¿Puedes pagarlo?",
+                "Paga. La ficha ha hablado.",
+            },
+            score = {
+                "¿Cuánto vale esa cadena para ti?",
+                "La calamidad es saber el costo demasiado tarde.",
+            },
+            win = {
+                "Pagaste el precio. Y aún ganaste.",
+                "Victoria costosa. Pero tuya.",
+            },
         }
     },
     ASTAROTH = {
-        description = "Draw 2 extra tiles\nafter each play.",
+        description    = "Draw 2 extra tiles\nafter each play.",
+        description_es = "Roba 2 fichas extra\ntras cada jugada.",
         onInit = function(gameState)
             -- draw behavior handled by onDraw hook; no field overrides needed
         end,
@@ -284,10 +429,26 @@ BossBehaviors.BEHAVIORS = {
                 "You have mastered my abundance.",
                 "Even excess can be tamed.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "El conocimiento llega de dos en dos.",
+                "Cada jugada te da más de lo que esperabas.",
+                "Soy generoso. Esa es la maldición.",
+            },
+            score = {
+                "Dos más te servirán. O te enterrarán.",
+                "El mazo se acorta. La mano se vuelve más pesada.",
+            },
+            win = {
+                "Has dominado mi abundancia.",
+                "Hasta el exceso puede domarse.",
+            },
         }
     },
     SAMAEL = {
-        description = "Contracts and tools\nare disabled.",
+        description    = "Contracts and tools\nare disabled.",
+        description_es = "Contratos y herramientas\ndesactivados.",
         onInit = function(gameState)
             gameState.samaelActive = true
         end,
@@ -314,10 +475,26 @@ BossBehaviors.BEHAVIORS = {
                 "You survived without your crutches. Surprising.",
                 "Death is impressed. That is rare.",
             },
+        },
+        dialogue_es = {
+            witty = {
+                "Tus pactos no significan nada aquí.",
+                "El ángel de la muerte no obedece ningún contrato.",
+                "Suelta tus herramientas. Son inútiles ante mí.",
+            },
+            score = {
+                "Tus aliados te han abandonado. Como debían.",
+                "Los contratos se disuelven ante la presencia de la muerte.",
+            },
+            win = {
+                "Sobreviviste sin tus muletas. Sorprendente.",
+                "La muerte está impresionada. Eso es raro.",
+            },
         }
     },
     MOLOCH = {
-        description = "Scored tiles turn tender\nand are consumed on play.",
+        description    = "Scored tiles turn tender\nand are consumed on play.",
+        description_es = "Las fichas puntuadas se vuelven tiernas\ny se consumen al jugar.",
         onTileScored = function(gameState, tile)
             if tile.tileType == "regular" or tile.tileType == "relic" then
                 Domino.setTileType(tile, "tender")
@@ -343,6 +520,21 @@ BossBehaviors.BEHAVIORS = {
             win = {
                 "You won. But your deck remembers.",
                 "Victory costs more than you think.",
+            },
+        },
+        dialogue_es = {
+            witty = {
+                "Todo lo que ganas se convierte en combustible.",
+                "Cuanto más puntúas, menos conservas.",
+                "No te quito las fichas. Las transformo.",
+            },
+            score = {
+                "Lo que era sólido ahora es frágil.",
+                "Tu colección se ablanda con cada jugada.",
+            },
+            win = {
+                "Ganaste. Pero tu mazo recuerda.",
+                "La victoria cuesta más de lo que crees.",
             },
         }
     },
@@ -396,15 +588,22 @@ end
 function BossBehaviors.getDescription(demonName)
     local behavior = BossBehaviors.BEHAVIORS[demonName]
     if not behavior then return "" end
-    return behavior.description or ""
+    return I18n.str(behavior, "description")
 end
 
 -- Returns a random phrase from the boss's dialogue pool for the given category,
 -- or nil if no boss-specific dialogue exists (caller falls back to generic).
 function BossBehaviors.getDialogue(demonName, category)
     local behavior = BossBehaviors.BEHAVIORS[demonName]
-    if not behavior or not behavior.dialogue then return nil end
-    local pool = behavior.dialogue[category]
+    if not behavior then return nil end
+    local lang = I18n.getLanguage()
+    local pool
+    if lang ~= "en" and behavior["dialogue_" .. lang] then
+        pool = behavior["dialogue_" .. lang][category]
+    end
+    if not pool or #pool == 0 then
+        pool = behavior.dialogue and behavior.dialogue[category]
+    end
     if not pool or #pool == 0 then return nil end
     return pool[love.math.random(#pool)]
 end

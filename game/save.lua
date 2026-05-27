@@ -501,7 +501,8 @@ function Save.saveSettings(gameState)
     local settings = {
         musicEnabled = gameState.musicEnabled,
         sfxEnabled = gameState.sfxEnabled,
-        tutorialEnabled = gameState.tutorialEnabled
+        tutorialEnabled = gameState.tutorialEnabled,
+        language = gameState.language or "en"
     }
 
     local serializedSettings = "return " .. Save.serializeTable(settings)
@@ -515,7 +516,8 @@ function Save.loadSettings()
     local defaultSettings = {
         musicEnabled = true,
         sfxEnabled = true,
-        tutorialEnabled = true
+        tutorialEnabled = true,
+        language = "en"
     }
 
     if not love.filesystem.getInfo(SETTINGS_FILE) then

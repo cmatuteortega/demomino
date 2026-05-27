@@ -297,7 +297,7 @@ function Touch.pressed(x, y, istouch, touchId)
     local phasesWithSettings = {
         "playing", "map", "node_confirmation",
         "tiles_menu", "artifacts_menu", "contracts_menu", "deal_menu", "deal_artifacts_menu",
-        "title_screen", "casino"
+        "casino"
     }
 
     for _, phase in ipairs(phasesWithSettings) do
@@ -472,16 +472,21 @@ function Touch.pressed(x, y, istouch, touchId)
         -- Press on < SIGN > bottom button row
         if gameState.contractsLeftButton and isPointInRect(x, y, gameState.contractsLeftButton) then
             UI.Audio.playButtonTap()
+            if gameState.contractsLeftButtonAnimation then gameState.contractsLeftButtonAnimation.pressed = true end
             touchState.contractsLeftPressed = true
             return
         end
         if gameState.contractsSignButton and isPointInRect(x, y, gameState.contractsSignButton) then
             UI.Audio.playButtonTap()
             touchState.contractsSignPressed = true
+            if gameState.contractsSignButtonAnimation then
+                gameState.contractsSignButtonAnimation.pressed = true
+            end
             return
         end
         if gameState.contractsRightButton and isPointInRect(x, y, gameState.contractsRightButton) then
             UI.Audio.playButtonTap()
+            if gameState.contractsRightButtonAnimation then gameState.contractsRightButtonAnimation.pressed = true end
             touchState.contractsRightPressed = true
             return
         end
@@ -552,16 +557,19 @@ function Touch.pressed(x, y, istouch, touchId)
         end
         if gameState.restoreLeftButton and isPointInRect(x, y, gameState.restoreLeftButton) then
             UI.Audio.playButtonTap()
+            if gameState.restoreLeftButtonAnimation then gameState.restoreLeftButtonAnimation.pressed = true end
             touchState.restoreLeftPressed = true
             return
         end
         if gameState.restoreSealButton and isPointInRect(x, y, gameState.restoreSealButton) then
             UI.Audio.playButtonTap()
+            if gameState.restoreSealButtonAnimation then gameState.restoreSealButtonAnimation.pressed = true end
             touchState.restoreSealPressed = true
             return
         end
         if gameState.restoreRightButton and isPointInRect(x, y, gameState.restoreRightButton) then
             UI.Audio.playButtonTap()
+            if gameState.restoreRightButtonAnimation then gameState.restoreRightButtonAnimation.pressed = true end
             touchState.restoreRightPressed = true
             return
         end
@@ -576,11 +584,13 @@ function Touch.pressed(x, y, istouch, touchId)
                 if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
                     UI.Audio.playButtonTap()
                     touchState.casinoHitPressed = true
+                    if casino.hitButtonAnimation then casino.hitButtonAnimation.pressed = true end
                     return
                 end
                 if casino.standButton and isPointInRect(x, y, casino.standButton) then
                     UI.Audio.playButtonTap()
                     touchState.casinoStandPressed = true
+                    if casino.standButtonAnimation then casino.standButtonAnimation.pressed = true end
                     return
                 end
             end
@@ -620,51 +630,144 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
+    -- Play modal intercepts all presses when open
+    if gameState.titlePlayModalOpen and gameState.gamePhase == "title_screen" then
+        touchState.titlePlayModalIconPressed   = nil
+        touchState.titlePlayModalActionPressed = nil
+        gameState.titlePlayModalActionPressedAction = nil
+        for _, b in ipairs(gameState.titlePlayModalIconBounds or {}) do
+            if isPointInRect(x, y, b) then
+                UI.Audio.playButtonTap()
+                touchState.titlePlayModalIconPressed = b.key
+                break
+            end
+        end
+        if not touchState.titlePlayModalIconPressed then
+            for _, b in ipairs(gameState.titlePlayModalActionBounds or {}) do
+                if isPointInRect(x, y, b) then
+                    UI.Audio.playButtonTap()
+                    touchState.titlePlayModalActionPressed        = b.action
+                    gameState.titlePlayModalActionPressedAction   = b.action
+                    break
+                end
+            end
+        end
+        if gameState.titlePlayModalExitBounds and isPointInRect(x, y, gameState.titlePlayModalExitBounds) then
+            UI.Audio.playButtonTap()
+            touchState.titlePlayModalExitPressed      = true
+            gameState.titlePlayModalExitButtonPressed = true
+        end
+        return
+    end
+
+    -- Title settings modal intercepts all presses when open
+    if gameState.titleSettingsMenuOpen and gameState.gamePhase == "title_screen" then
+        for _, b in ipairs(gameState.titleSettingsToggleBounds or {}) do
+            if isPointInRect(x, y, b) then
+                UI.Audio.playButtonTap()
+                if b.key == "sfx" then
+                    UI.Audio.toggleSFX(); Save.saveSettings(gameState)
+                elseif b.key == "music" then
+                    UI.Audio.toggleMusic(); Save.saveSettings(gameState)
+                elseif b.key == "tutorial" then
+                    gameState.tutorialEnabled = not gameState.tutorialEnabled
+                    Save.saveSettings(gameState)
+                end
+                break
+            end
+        end
+        if gameState.titleSettingsExitBounds and isPointInRect(x, y, gameState.titleSettingsExitBounds) then
+            UI.Audio.playButtonTap()
+            touchState.titleSettingsExitPressed      = true
+            gameState.titleSettingsExitButtonPressed = true
+        end
+        return
+    end
+
+    -- Collection menu intercepts all presses when open (title screen overlay)
+    if gameState.collectionMenuOpen and gameState.gamePhase == "title_screen" then
+        -- Tab buttons (instant response, no drag ambiguity)
+        for i, b in ipairs(gameState.collectionMenuTabBounds or {}) do
+            if isPointInRect(x, y, b) then
+                UI.Audio.playButtonTap()
+                gameState.collectionMenuTab = i
+                gameState.collectionMenuSelectedDemon = nil
+                gameState.collectionMenuScrollY = 0
+                touchState.collectionMenuExitPressed = false
+                touchState.collectionGridPressedDemon = nil
+                return
+            end
+        end
+        -- Exit button
+        if gameState.collectionMenuExitBounds and isPointInRect(x, y, gameState.collectionMenuExitBounds) then
+            UI.Audio.playButtonTap()
+            touchState.collectionMenuExitPressed = true
+            gameState.collectionMenuExitButtonPressed = true
+            touchState.collectionGridPressedDemon = nil
+            return
+        end
+        -- Grid area: record press start for tap-vs-drag distinction
+        touchState.collectionGridPressedDemon = nil
+        touchState.collectionGridDragStartY = y
+        touchState.collectionGridScrollStart = gameState.collectionMenuScrollY or 0
+        touchState.collectionGridIsDragging = false
+        if gameState.collectionMenuTab == 1 then
+            for _, cell in ipairs(gameState.collectionMenuDemonBounds or {}) do
+                if isPointInRect(x, y, cell) then
+                    touchState.collectionGridPressedDemon = cell.name
+                    break
+                end
+            end
+        end
+        return
+    end
+
     -- Handle title screen button presses
     if gameState.gamePhase == "title_screen" then
-        -- Check for NEW GAME> button press
-        if gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
-            -- Play tap sound
+        -- LANGUAGE toggle
+        if gameState.titleLanguageButtonBounds and isPointInRect(x, y, gameState.titleLanguageButtonBounds) then
             UI.Audio.playButtonTap()
-
-            -- Change color from pink to red on press
-            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
-                [1] = UI.Colors.FONT_RED[1],
-                [2] = UI.Colors.FONT_RED[2],
-                [3] = UI.Colors.FONT_RED[3],
-                [4] = UI.Colors.FONT_RED[4]
-            }, 0.3, "easeOutQuart")
-
-            -- Mark that we pressed the button
-            touchState.titleNewGameButtonPressed = true
+            gameState.titleLanguageButtonAnimation.pressed = true
+            UI.Animation.animateTo(gameState.titleLanguageButtonAnimation.color, {
+                [1] = UI.Colors.OUTLINE[1], [2] = UI.Colors.OUTLINE[2],
+                [3] = UI.Colors.OUTLINE[3], [4] = 1
+            }, 0.1, "easeOutQuart")
+            touchState.titleLanguageButtonPressed = true
         end
 
-        -- Check for CONTINUE> button press
-        if gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
-            -- Play tap sound
+        -- COLLECTION (placeholder — press feedback only)
+        if gameState.titleCollectionButtonBounds and isPointInRect(x, y, gameState.titleCollectionButtonBounds) then
             UI.Audio.playButtonTap()
-
-            -- Change color from pink to red on press
-            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
-                [1] = UI.Colors.FONT_RED[1],
-                [2] = UI.Colors.FONT_RED[2],
-                [3] = UI.Colors.FONT_RED[3],
-                [4] = UI.Colors.FONT_RED[4]
-            }, 0.3, "easeOutQuart")
-
-            -- Mark that we pressed the button
-            touchState.titleContinueButtonPressed = true
+            gameState.titleCollectionButtonAnimation.pressed = true
+            UI.Animation.animateTo(gameState.titleCollectionButtonAnimation.color, {
+                [1] = UI.Colors.OUTLINE[1], [2] = UI.Colors.OUTLINE[2],
+                [3] = UI.Colors.OUTLINE[3], [4] = 1
+            }, 0.1, "easeOutQuart")
+            touchState.titleCollectionButtonPressed = true
         end
 
-        -- Check for BELIAL'S GAMEROOM button press
-        if gameState.titleBelialButtonBounds and isPointInRect(x, y, gameState.titleBelialButtonBounds) then
+        -- SETTINGS (opens settings overlay)
+        if gameState.titleSettingsButtonBounds and isPointInRect(x, y, gameState.titleSettingsButtonBounds) then
             UI.Audio.playButtonTap()
-            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
-                [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
-                [3] = UI.Colors.FONT_RED[3], [4] = UI.Colors.FONT_RED[4]
-            }, 0.3, "easeOutQuart")
-            touchState.titleBelialButtonPressed = true
+            gameState.titleSettingsButtonAnimation.pressed = true
+            UI.Animation.animateTo(gameState.titleSettingsButtonAnimation.color, {
+                [1] = UI.Colors.OUTLINE[1], [2] = UI.Colors.OUTLINE[2],
+                [3] = UI.Colors.OUTLINE[3], [4] = 1
+            }, 0.1, "easeOutQuart")
+            touchState.titleSettingsButtonPressed = true
         end
+
+        -- PLAY (always starts a fresh game)
+        if gameState.titlePlayButtonBounds and isPointInRect(x, y, gameState.titlePlayButtonBounds) then
+            UI.Audio.playButtonTap()
+            gameState.titlePlayButtonAnimation.pressed = true
+            UI.Animation.animateTo(gameState.titlePlayButtonAnimation.color, {
+                [1] = UI.Colors.FONT_RED_DARK[1], [2] = UI.Colors.FONT_RED_DARK[2],
+                [3] = UI.Colors.FONT_RED_DARK[3], [4] = 1
+            }, 0.1, "easeOutQuart")
+            touchState.titlePlayButtonPressed = true
+        end
+
         return
     end
 
@@ -699,23 +802,54 @@ function Touch.pressed(x, y, istouch, touchId)
         return
     end
 
-    local discardButtonBounds = getDiscardButtonBounds()
-    if isPointInRect(x, y, discardButtonBounds) then
-        -- Shop mode or playing mode
-        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or gameState.currentTilesNodeType == "pawn" or gameState.currentTilesNodeType == "flatten" or not gameState.currentTilesNodeType) then
-            -- Tile shop / pawn / flatten mode: Allow reroll
+    -- Artifacts reroll: use stored single-centered bounds
+    if gameState.gamePhase == "artifacts_menu" then
+        if gameState.artifactsRerollButton and isPointInRect(x, y, gameState.artifactsRerollButton) then
             animateButtonPress("discardButton")
             touchState.discardButtonPressed = true
-        elseif gameState.gamePhase == "artifacts_menu" then
-            -- Artifacts shop mode: Allow reroll
-            animateButtonPress("discardButton")
-            touchState.discardButtonPressed = true
-        else
-            -- Playing mode: Standard discard
-            animateButtonPress("discardButton")
-            touchState.discardButtonPressed = true
+            return
         end
-        return
+    else
+        local discardButtonBounds = getDiscardButtonBounds()
+        if isPointInRect(x, y, discardButtonBounds) then
+            animateButtonPress("discardButton")
+            touchState.discardButtonPressed = true
+            return
+        end
+    end
+
+    -- Emboss press handlers for enhance/fuse/mitosis (stored bounds, no general playButton flow)
+    if gameState.gamePhase == "tiles_menu" then
+        local nodeType = gameState.currentTilesNodeType
+        if nodeType == "enhance" then
+            if gameState.enhanceButton and isPointInRect(x, y, gameState.enhanceButton) then
+                UI.Audio.playButtonTap()
+                animateButtonPress("playButton")
+                return
+            end
+        elseif nodeType == "alchemy" or nodeType == "alchemy_subtract" then
+            if gameState.fuseButton and isPointInRect(x, y, gameState.fuseButton) then
+                UI.Audio.playButtonTap()
+                animateButtonPress("playButton")
+                return
+            end
+            if gameState.fusionRerollButton and isPointInRect(x, y, gameState.fusionRerollButton) then
+                UI.Audio.playButtonTap()
+                animateButtonPress("discardButton")
+                return
+            end
+        elseif nodeType == "mitosis" then
+            if gameState.duplicateButton and isPointInRect(x, y, gameState.duplicateButton) then
+                UI.Audio.playButtonTap()
+                animateButtonPress("playButton")
+                return
+            end
+            if gameState.mitosisRerollButton and isPointInRect(x, y, gameState.mitosisRerollButton) then
+                UI.Audio.playButtonTap()
+                animateButtonPress("discardButton")
+                return
+            end
+        end
     end
 
     -- Handle tool sprite press (track for release, don't select yet)
@@ -1430,97 +1564,162 @@ function Touch.released(x, y, istouch, touchId)
             return
         end
 
-        -- Handle NEW GAME> button release
-        if touchState.titleNewGameButtonPressed and gameState.titleNewGameButtonBounds and isPointInRect(x, y, gameState.titleNewGameButtonBounds) then
-            -- Only advance if we pressed the button AND released over it
-            -- Play release sound
-            UI.Audio.playButtonRelease()
-
-            -- Animate to white with a callback to transition after the flash
-            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
-                [1] = UI.Colors.FONT_WHITE[1],
-                [2] = UI.Colors.FONT_WHITE[2],
-                [3] = UI.Colors.FONT_WHITE[3],
-                [4] = UI.Colors.FONT_WHITE[4]
-            }, 0.1, "easeOutQuart", function()
-                -- After white flash, start new game
-                UI.TitleScreen.startNewGame()
-                -- Reset color to pink for next time
-                gameState.titleNewGameButtonAnimation.color = {
-                    UI.Colors.FONT_PINK[1],
-                    UI.Colors.FONT_PINK[2],
-                    UI.Colors.FONT_PINK[3],
-                    UI.Colors.FONT_PINK[4]
-                }
-            end)
-        elseif touchState.titleNewGameButtonPressed then
-            -- Released outside button - reset color back to pink
-            UI.Animation.animateTo(gameState.titleNewGameButtonAnimation.color, {
-                [1] = UI.Colors.FONT_PINK[1],
-                [2] = UI.Colors.FONT_PINK[2],
-                [3] = UI.Colors.FONT_PINK[3],
-                [4] = UI.Colors.FONT_PINK[4]
-            }, 0.3, "easeOutQuart")
+        -- Collection menu grid release: confirm tap only if we didn't drag
+        if gameState.collectionMenuOpen and touchState.collectionGridDragStartY ~= nil then
+            if not touchState.collectionGridIsDragging and touchState.collectionGridPressedDemon then
+                UI.Audio.playButtonTap()
+                gameState.collectionMenuSelectedDemon = touchState.collectionGridPressedDemon
+            end
+            touchState.collectionGridPressedDemon = nil
+            touchState.collectionGridDragStartY = nil
+            touchState.collectionGridScrollStart = nil
+            touchState.collectionGridIsDragging = false
         end
 
-        -- Handle CONTINUE> button release
-        if touchState.titleContinueButtonPressed and gameState.titleContinueButtonBounds and isPointInRect(x, y, gameState.titleContinueButtonBounds) then
-            -- Only advance if we pressed the button AND released over it
-            -- Play release sound
-            UI.Audio.playButtonRelease()
-
-            -- Animate to white with a callback to transition after the flash
-            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
-                [1] = UI.Colors.FONT_WHITE[1],
-                [2] = UI.Colors.FONT_WHITE[2],
-                [3] = UI.Colors.FONT_WHITE[3],
-                [4] = UI.Colors.FONT_WHITE[4]
-            }, 0.1, "easeOutQuart", function()
-                -- After white flash, continue game
-                UI.TitleScreen.continueGame()
-                -- Reset color to pink for next time
-                gameState.titleContinueButtonAnimation.color = {
-                    UI.Colors.FONT_PINK[1],
-                    UI.Colors.FONT_PINK[2],
-                    UI.Colors.FONT_PINK[3],
-                    UI.Colors.FONT_PINK[4]
-                }
-            end)
-        elseif touchState.titleContinueButtonPressed then
-            -- Released outside button - reset color back to pink
-            UI.Animation.animateTo(gameState.titleContinueButtonAnimation.color, {
-                [1] = UI.Colors.FONT_PINK[1],
-                [2] = UI.Colors.FONT_PINK[2],
-                [3] = UI.Colors.FONT_PINK[3],
-                [4] = UI.Colors.FONT_PINK[4]
-            }, 0.3, "easeOutQuart")
+        -- Collection menu exit button release
+        if touchState.collectionMenuExitPressed then
+            touchState.collectionMenuExitPressed = false
+            gameState.collectionMenuExitButtonPressed = false
+            if gameState.collectionMenuExitBounds and isPointInRect(x, y, gameState.collectionMenuExitBounds) then
+                UI.Animation.animateTo(gameState.collectionMenuAnim, {y = gameState.screen.height},
+                    0.3, "easeOutQuart", function() gameState.collectionMenuOpen = false end)
+            end
         end
 
-        -- Handle BELIAL'S GAMEROOM button release
-        if touchState.titleBelialButtonPressed and gameState.titleBelialButtonBounds and isPointInRect(x, y, gameState.titleBelialButtonBounds) then
-            UI.Audio.playButtonRelease()
-            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
-                [1] = UI.Colors.FONT_WHITE[1], [2] = UI.Colors.FONT_WHITE[2],
-                [3] = UI.Colors.FONT_WHITE[3], [4] = UI.Colors.FONT_WHITE[4]
-            }, 0.1, "easeOutQuart", function()
-                UI.TitleScreen.openBelialGameroom()
-                gameState.titleBelialButtonAnimation.color = {
-                    UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2],
-                    UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]
-                }
-            end)
-        elseif touchState.titleBelialButtonPressed then
-            UI.Animation.animateTo(gameState.titleBelialButtonAnimation.color, {
-                [1] = UI.Colors.FONT_PINK[1], [2] = UI.Colors.FONT_PINK[2],
-                [3] = UI.Colors.FONT_PINK[3], [4] = UI.Colors.FONT_PINK[4]
-            }, 0.3, "easeOutQuart")
+        -- Title settings menu exit button release
+        if touchState.titleSettingsExitPressed then
+            touchState.titleSettingsExitPressed      = false
+            gameState.titleSettingsExitButtonPressed = false
+            if gameState.titleSettingsExitBounds and isPointInRect(x, y, gameState.titleSettingsExitBounds) then
+                UI.Animation.animateTo(gameState.titleSettingsMenuAnim, {y = gameState.screen.height},
+                    0.3, "easeOutQuart", function() gameState.titleSettingsMenuOpen = false end)
+            end
+        end
+
+        -- LANGUAGE release — toggle EN/ES
+        if touchState.titleLanguageButtonPressed then
+            touchState.titleLanguageButtonPressed = false
+            gameState.titleLanguageButtonAnimation.pressed = false
+            UI.Animation.animateTo(gameState.titleLanguageButtonAnimation.color, {
+                [1] = UI.Colors.BACKGROUND_LIGHT[1], [2] = UI.Colors.BACKGROUND_LIGHT[2],
+                [3] = UI.Colors.BACKGROUND_LIGHT[3], [4] = 1
+            }, 0.2, "easeOutQuart")
+            if gameState.titleLanguageButtonBounds and isPointInRect(x, y, gameState.titleLanguageButtonBounds) then
+                local newLang = I18n.getLanguage() == "en" and "es" or "en"
+                I18n.setLanguage(newLang)
+                gameState.language = newLang
+                Save.saveSettings(gameState)
+                initializeDialogueContent()
+            end
+        end
+
+        -- COLLECTION release — open collection menu
+        if touchState.titleCollectionButtonPressed then
+            gameState.titleCollectionButtonAnimation.pressed = false
+            UI.Animation.animateTo(gameState.titleCollectionButtonAnimation.color, {
+                [1] = UI.Colors.BACKGROUND_LIGHT[1], [2] = UI.Colors.BACKGROUND_LIGHT[2],
+                [3] = UI.Colors.BACKGROUND_LIGHT[3], [4] = 1
+            }, 0.2, "easeOutQuart")
+            if gameState.titleCollectionButtonBounds and isPointInRect(x, y, gameState.titleCollectionButtonBounds) then
+                gameState.collectionMenuAnim.y = gameState.screen.height
+                gameState.collectionMenuOpen = true
+                gameState.collectionMenuTab = 1
+                gameState.collectionMenuSelectedDemon = nil
+                gameState.collectionMenuScrollY = 0
+                UI.Animation.animateTo(gameState.collectionMenuAnim, {y = 0}, 0.35, "easeOutQuart")
+            end
+        end
+
+        -- SETTINGS release — open settings overlay
+        if touchState.titleSettingsButtonPressed then
+            gameState.titleSettingsButtonAnimation.pressed = false
+            UI.Animation.animateTo(gameState.titleSettingsButtonAnimation.color, {
+                [1] = UI.Colors.BACKGROUND_LIGHT[1], [2] = UI.Colors.BACKGROUND_LIGHT[2],
+                [3] = UI.Colors.BACKGROUND_LIGHT[3], [4] = 1
+            }, 0.2, "easeOutQuart")
+            if gameState.titleSettingsButtonBounds and isPointInRect(x, y, gameState.titleSettingsButtonBounds) then
+                gameState.titleSettingsMenuAnim.y = gameState.screen.height
+                gameState.titleSettingsMenuOpen   = true
+                UI.Animation.animateTo(gameState.titleSettingsMenuAnim, {y = 0}, 0.35, "easeOutQuart")
+            end
+        end
+
+        -- Play modal EXIT release
+        if touchState.titlePlayModalExitPressed then
+            touchState.titlePlayModalExitPressed      = false
+            gameState.titlePlayModalExitButtonPressed = false
+            if gameState.titlePlayModalExitBounds and isPointInRect(x, y, gameState.titlePlayModalExitBounds) then
+                UI.Animation.animateTo(gameState.titlePlayModalAnim, {y = gameState.screen.height},
+                    0.3, "easeOutQuart", function()
+                        gameState.titlePlayModalOpen = false
+                        gameState.titlePlayModalSelectedIcon = nil
+                    end)
+            end
+        end
+
+        -- Play modal icon tap → select
+        if touchState.titlePlayModalIconPressed then
+            for _, b in ipairs(gameState.titlePlayModalIconBounds or {}) do
+                if b.key == touchState.titlePlayModalIconPressed and isPointInRect(x, y, b) then
+                    gameState.titlePlayModalSelectedIcon = b.key
+                    break
+                end
+            end
+            touchState.titlePlayModalIconPressed = nil
+        end
+
+        -- Play modal action button releases
+        if touchState.titlePlayModalActionPressed then
+            local action = touchState.titlePlayModalActionPressed
+            touchState.titlePlayModalActionPressed        = nil
+            gameState.titlePlayModalActionPressedAction   = nil
+            for _, b in ipairs(gameState.titlePlayModalActionBounds or {}) do
+                if b.action == action and isPointInRect(x, y, b) then
+                    UI.Audio.playButtonRelease()
+                    if action == "newgame" then
+                        gameState.titlePlayModalOpen = false
+                        gameState.titlePlayModalSelectedIcon = nil
+                        UI.TitleScreen.startNewGame()
+                    elseif action == "continue" and Save.hasSavedGame() then
+                        gameState.titlePlayModalOpen = false
+                        gameState.titlePlayModalSelectedIcon = nil
+                        UI.TitleScreen.continueGame()
+                    elseif action == "belial" then
+                        gameState.titlePlayModalOpen = false
+                        gameState.titlePlayModalSelectedIcon = nil
+                        UI.TitleScreen.openBelialGameroom()
+                    end
+                    break
+                end
+            end
+        end
+
+        -- PLAY release — open play modal
+        if touchState.titlePlayButtonPressed then
+            gameState.titlePlayButtonAnimation.pressed = false
+            if gameState.titlePlayButtonBounds and isPointInRect(x, y, gameState.titlePlayButtonBounds) then
+                UI.Audio.playButtonRelease()
+                UI.Animation.animateTo(gameState.titlePlayButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                    [3] = UI.Colors.FONT_RED[3], [4] = 1
+                }, 0.1, "easeOutQuart")
+                gameState.titlePlayModalAnim.y        = gameState.screen.height
+                gameState.titlePlayModalOpen          = true
+                gameState.titlePlayModalSelectedIcon  = "imployee"
+                UI.Animation.animateTo(gameState.titlePlayModalAnim, {y = 0}, 0.35, "easeOutQuart")
+            else
+                UI.Animation.animateTo(gameState.titlePlayButtonAnimation.color, {
+                    [1] = UI.Colors.FONT_RED[1], [2] = UI.Colors.FONT_RED[2],
+                    [3] = UI.Colors.FONT_RED[3], [4] = 1
+                }, 0.3, "easeOutQuart")
+            end
         end
 
         touchState.isPressed = false
         touchState.touchId = nil
-        touchState.titleNewGameButtonPressed = false
-        touchState.titleContinueButtonPressed = false
-        touchState.titleBelialButtonPressed = false
+        touchState.titleCollectionButtonPressed = false
+        touchState.titleSettingsButtonPressed   = false
+        touchState.titlePlayButtonPressed       = false
         return
     end
 
@@ -1930,6 +2129,12 @@ function Touch.released(x, y, istouch, touchId)
         touchState.nodeConfirmationNextButtonPressed = false
         return
     elseif gameState.gamePhase == "tiles_menu" then
+        -- Reset emboss press state for action buttons on any release
+        if gameState.buttonAnimations then
+            if gameState.buttonAnimations.playButton then gameState.buttonAnimations.playButton.pressed = false end
+            if gameState.buttonAnimations.discardButton then gameState.buttonAnimations.discardButton.pressed = false end
+        end
+
         -- Mode toggle buttons removed - node type determines shop vs fusion mode
         -- (Kept for backward compatibility with old saves that may have tilesMenuMode)
 
@@ -2316,6 +2521,7 @@ function Touch.released(x, y, istouch, touchId)
         -- Release on < SIGN > bottom button row
         if touchState.contractsLeftPressed then
             touchState.contractsLeftPressed = false
+            if gameState.contractsLeftButtonAnimation then gameState.contractsLeftButtonAnimation.pressed = false end
             if gameState.contractsLeftButton and isPointInRect(x, y, gameState.contractsLeftButton) then
                 local cur = gameState.contractsSelectedIndex or 1
                 gameState.contractsSelectedIndex = ((cur - 2) % 3) + 1
@@ -2326,6 +2532,7 @@ function Touch.released(x, y, istouch, touchId)
         end
         if touchState.contractsRightPressed then
             touchState.contractsRightPressed = false
+            if gameState.contractsRightButtonAnimation then gameState.contractsRightButtonAnimation.pressed = false end
             if gameState.contractsRightButton and isPointInRect(x, y, gameState.contractsRightButton) then
                 local cur = gameState.contractsSelectedIndex or 1
                 gameState.contractsSelectedIndex = (cur % 3) + 1
@@ -2336,6 +2543,9 @@ function Touch.released(x, y, istouch, touchId)
         end
         if touchState.contractsSignPressed then
             touchState.contractsSignPressed = false
+            if gameState.contractsSignButtonAnimation then
+                gameState.contractsSignButtonAnimation.pressed = false
+            end
             if gameState.contractsSignButton and isPointInRect(x, y, gameState.contractsSignButton) then
                 Touch.signSelectedContract()
             end
@@ -2482,6 +2692,7 @@ function Touch.released(x, y, istouch, touchId)
         end
         if touchState.restoreLeftPressed then
             touchState.restoreLeftPressed = false
+            if gameState.restoreLeftButtonAnimation then gameState.restoreLeftButtonAnimation.pressed = false end
             if gameState.restoreLeftButton and isPointInRect(x, y, gameState.restoreLeftButton) then
                 local count = #(gameState.activeContracts or {})
                 if count > 1 then
@@ -2495,6 +2706,7 @@ function Touch.released(x, y, istouch, touchId)
         end
         if touchState.restoreRightPressed then
             touchState.restoreRightPressed = false
+            if gameState.restoreRightButtonAnimation then gameState.restoreRightButtonAnimation.pressed = false end
             if gameState.restoreRightButton and isPointInRect(x, y, gameState.restoreRightButton) then
                 local count = #(gameState.activeContracts or {})
                 if count > 1 then
@@ -2508,6 +2720,7 @@ function Touch.released(x, y, istouch, touchId)
         end
         if touchState.restoreSealPressed then
             touchState.restoreSealPressed = false
+            if gameState.restoreSealButtonAnimation then gameState.restoreSealButtonAnimation.pressed = false end
             if gameState.restoreSealButton and isPointInRect(x, y, gameState.restoreSealButton) then
                 Touch.sealSelectedContract()
             end
@@ -2523,6 +2736,7 @@ function Touch.released(x, y, istouch, touchId)
         if casino then
             if touchState.casinoHitPressed then
                 touchState.casinoHitPressed = false
+                if casino.hitButtonAnimation then casino.hitButtonAnimation.pressed = false end
                 if casino.hitButton and isPointInRect(x, y, casino.hitButton) then
                     UI.Audio.playButtonRelease()
                     casinoPlayerHit()
@@ -2533,6 +2747,7 @@ function Touch.released(x, y, istouch, touchId)
             end
             if touchState.casinoStandPressed then
                 touchState.casinoStandPressed = false
+                if casino.standButtonAnimation then casino.standButtonAnimation.pressed = false end
                 if casino.standButton and isPointInRect(x, y, casino.standButton) then
                     UI.Audio.playButtonRelease()
                     casinoPlayerStand()
@@ -2578,6 +2793,9 @@ function Touch.released(x, y, istouch, touchId)
 
     -- Handle play button release (for playing phase AND shop mode)
     if touchState.playButtonPressed then
+        if gameState.buttonAnimations and gameState.buttonAnimations.playButton then
+            gameState.buttonAnimations.playButton.pressed = false
+        end
         if getPlayButtonBounds() and isPointInRect(x, y, getPlayButtonBounds()) then
             if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
                 -- SHOP MODE: Purchase placed tile
@@ -2600,7 +2818,16 @@ function Touch.released(x, y, istouch, touchId)
 
     -- Handle discard button release (for playing phase AND shop modes)
     if touchState.discardButtonPressed then
-        if getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds()) then
+        if gameState.buttonAnimations and gameState.buttonAnimations.discardButton then
+            gameState.buttonAnimations.discardButton.pressed = false
+        end
+        local discardHit
+        if gameState.gamePhase == "artifacts_menu" then
+            discardHit = gameState.artifactsRerollButton and isPointInRect(x, y, gameState.artifactsRerollButton)
+        else
+            discardHit = getDiscardButtonBounds() and isPointInRect(x, y, getDiscardButtonBounds())
+        end
+        if discardHit then
             if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "trade" or not gameState.currentTilesNodeType) then
                 -- TILE SHOP MODE: Reroll tiles
                 Touch.rerollShopTiles()
@@ -2626,6 +2853,9 @@ function Touch.released(x, y, istouch, touchId)
 
     -- Handle sort button release (for playing phase)
     if touchState.sortButtonPressed then
+        if gameState.buttonAnimations and gameState.buttonAnimations.sortButton then
+            gameState.buttonAnimations.sortButton.pressed = false
+        end
         if getSortButtonBounds() and isPointInRect(x, y, getSortButtonBounds()) then
             Touch.sortHandTiles()
         end
@@ -3271,6 +3501,20 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
         touchState.currentX = x
         touchState.currentY = y
 
+        -- Collection menu grid scroll
+        if gameState.collectionMenuOpen and gameState.gamePhase == "title_screen"
+            and touchState.collectionGridDragStartY ~= nil then
+            local delta = touchState.collectionGridDragStartY - y
+            if math.abs(delta) > UI.Layout.scale(6) then
+                touchState.collectionGridIsDragging = true
+            end
+            if touchState.collectionGridIsDragging then
+                local newScroll = (touchState.collectionGridScrollStart or 0) + delta
+                local maxScroll = gameState.collectionMenuMaxScroll or 0
+                gameState.collectionMenuScrollY = math.max(0, math.min(maxScroll, newScroll))
+            end
+            return
+        end
 
         -- Handle map screen dragging (works for both map phase and confirmation phase)
         if (gameState.gamePhase == "map" or gameState.gamePhase == "node_confirmation") and gameState.currentMap then
@@ -3402,7 +3646,7 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
 
                 -- TUTORIAL BONUS: Detect attempt to drag tile from board
                 if touchState.draggedFrom == "board" and gameState.currentRound == 1 and gameState.tutorialEnabled and not gameState.tutorialState.bonusMessageShown then
-                    showTutorialMessage("Drag to the hand or double-tap to return a tile")
+                    showTutorialMessage(I18n.t("tutorial_bonus"))
                     gameState.tutorialState.bonusMessageShown = true
                 end
             end
@@ -3894,7 +4138,7 @@ function Touch.checkGameEnd()
 
             -- Queue coin breakdown items for sequential animation
             table.insert(gameState.coinBreakdownQueue, {
-                text = "+1$ win",
+                text = I18n.t("coin_win"),
                 opacity = 0,
                 coins = winCoins,
                 animated = false,
@@ -3904,7 +4148,7 @@ function Touch.checkGameEnd()
 
             if handsCoins > 0 then
                 table.insert(gameState.coinBreakdownQueue, {
-                    text = "+" .. handsCoins .. "$ hands",
+                    text = string.format(I18n.t("coin_hands"), handsCoins),
                     opacity = 0,
                     coins = handsCoins,
                     animated = false,
@@ -3915,7 +4159,7 @@ function Touch.checkGameEnd()
 
             if discardsCoins > 0 then
                 table.insert(gameState.coinBreakdownQueue, {
-                    text = "+" .. discardsCoins .. "$ discards",
+                    text = string.format(I18n.t("coin_discards"), discardsCoins),
                     opacity = 0,
                     coins = discardsCoins,
                     animated = false,
@@ -3926,7 +4170,7 @@ function Touch.checkGameEnd()
 
             if interestCoins > 0 then
                 table.insert(gameState.coinBreakdownQueue, {
-                    text = "+" .. interestCoins .. "$ interest",
+                    text = string.format(I18n.t("coin_interest"), interestCoins),
                     opacity = 0,
                     coins = interestCoins,
                     animated = false,

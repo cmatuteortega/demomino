@@ -18,6 +18,7 @@ function love.load()
     
     love.graphics.setDefaultFilter("nearest", "nearest")
     
+    require("game.i18n")
     require("game.domino")
     require("game.hand")
     require("game.board")
@@ -227,6 +228,12 @@ function love.load()
         offeredContracts = {},  -- Contracts being offered in shop (always 3)
         contractsSelectedIndex = 1,  -- Which candle (1..3) is highlighted in the contracts menu
         contractsPurchased = {false, false, false},  -- Per-candle "signed" flag (sprite hides when true)
+        contractsSignButtonAnimation = { pressed = false },
+        contractsLeftButtonAnimation  = { pressed = false },
+        contractsRightButtonAnimation = { pressed = false },
+        restoreSealButtonAnimation  = { pressed = false },
+        restoreLeftButtonAnimation  = { pressed = false },
+        restoreRightButtonAnimation = { pressed = false },
         offeredDealContract = nil,  -- Single contract offered at DEAL node
         dealDemonTiles = {},        -- {tile1, tile2} pre-built for rendering
         dealAccepted = false,
@@ -271,12 +278,45 @@ function love.load()
         -- Title screen animation system
         titleTiles = {},  -- Array of 4 animated domino tiles for DEMOMINO
         titleTilesInitialized = false,  -- Track if title tiles have been set up
-        titleNewGameButtonAnimation = {
-            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        titlePlayButtonAnimation = {
+            color = {0.847, 0.357, 0.337, 1},  -- FONT_RED
+            pressed = false
         },
-        titleContinueButtonAnimation = {
-            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        titleSettingsButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
         },
+        titleCollectionButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
+        },
+        titleLanguageButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
+        },
+        collectionMenuOpen = false,
+        collectionMenuAnim = { y = 0 },
+        collectionMenuTab = 1,
+        collectionMenuSelectedDemon = nil,
+        collectionMenuScrollY = 0,
+        collectionMenuMaxScroll = 0,
+        collectionMenuExitButtonPressed = false,
+        collectionMenuTabBounds = {},
+        collectionMenuDemonBounds = {},
+        collectionMenuExitBounds = nil,
+        titleSettingsMenuOpen         = false,
+        titleSettingsMenuAnim         = { y = 0 },
+        titleSettingsToggleBounds     = {},
+        titleSettingsExitBounds       = nil,
+        titleSettingsExitButtonPressed = false,
+        titlePlayModalOpen              = false,
+        titlePlayModalAnim              = { y = 0 },
+        titlePlayModalSelectedIcon      = nil,
+        titlePlayModalIconBounds        = {},
+        titlePlayModalActionBounds      = {},
+        titlePlayModalExitBounds        = nil,
+        titlePlayModalExitButtonPressed   = false,
+        titlePlayModalActionPressedAction = nil,
         titleBelialButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
         },
@@ -346,8 +386,8 @@ function love.load()
             displayedDealerPips = 0,
             displayedPlayerPips = 0,
             pipCountSpeed = 30,
-            hitButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
-            standButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
+            hitButtonAnimation = { color = {0.941, 0.576, 0.608, 1}, pressed = false },
+            standButtonAnimation = { color = {0.941, 0.576, 0.608, 1}, pressed = false },
             nextButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
             hitButton = nil,
             standButton = nil,
@@ -538,6 +578,8 @@ function love.load()
     gameState.musicEnabled = settings.musicEnabled
     gameState.sfxEnabled = settings.sfxEnabled
     gameState.tutorialEnabled = settings.tutorialEnabled
+    gameState.language = settings.language or "en"
+    I18n.setLanguage(gameState.language)
 
     -- Load persistent encounter history (survives save resets)
     local stats = Save.loadStats()
@@ -546,125 +588,8 @@ function love.load()
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
 
-    -- Initialize dialogue content with existing combat phrases
-    gameState.dialogueContent.playing.score = demonDialoguePlayerScores
-    gameState.dialogueContent.playing.win = demonDialoguePlayerWins
-    gameState.dialogueContent.playing.witty = demonDialogueWittyRemarks
-
-    -- Initialize tile shop dialogue
-    gameState.dialogueContent.tiles_menu.greetings = {"Welcome to my shop"}
-    gameState.dialogueContent.tiles_menu.purchase = {"Enjoy it"}
-    gameState.dialogueContent.tiles_menu.idle = {
-        "Cant decide?",
-        "You should know your worth",
-        "Go watch Hereditary"
-    }
-    gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
-
-    -- Pawn node dialogue (MAMMON)
-    gameState.dialogueContent.tiles_menu.pawn_greetings = {
-        "Everything has a price, mortal.",
-        "Sell me your burdens. I'll make it worth your while.",
-        "Ah, another desperate soul. My favourite kind of customer.",
-        "I deal in what others cast aside.",
-        "Bring me your tiles. I'll give you what they're worth... to me."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_sell = {
-        "A fair price for a fair trade.",
-        "Coins well earned, or tiles well lost?",
-        "Such a shame to part with it. I have no such qualms.",
-        "Into my collection it goes.",
-        "More coin for you, more treasure for me."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_reroll = {
-        "Not satisfied? That'll cost you.",
-        "Shuffling the bones... for a price.",
-        "Let's see what else you're willing to part with."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_idle = {
-        "Take your time. My patience is limitless.",
-        "Every tile tells a story. What's yours worth?",
-        "The boneyard never lies."
-    }
-
-    -- Initialize enhance node dialogue
-    gameState.dialogueContent.enhance_menu = {}
-    gameState.dialogueContent.enhance_menu.greetings = {
-        "POWER HAS A PRICE",
-        "I CAN MAKE IT STRONGER",
-        "EVERYTHING HAS ITS LIMIT",
-    }
-    gameState.dialogueContent.enhance_menu.idle = {
-        "CHOOSE CAREFULLY",
-        "THE STORM WAITS FOR NO ONE",
-        "WEAKNESS DISGUSTS ME",
-    }
-    gameState.dialogueContent.enhance_menu.enhance = {
-        "STRONGER!",
-        "YES. THAT'S IT.",
-        "FEEL THE POWER",
-    }
-    gameState.dialogueContent.enhance_menu.tender   = {"GONE SOFT...", "OH. THAT HAPPENS."}
-    gameState.dialogueContent.enhance_menu.relic = {"PERFECTION.", "NO GOING BACK NOW"}
-    gameState.dialogueContent.enhance_menu.break_event = {"OOPS.", "TOO FRAGILE.", "IT COULDN'T HANDLE IT"}
-    gameState.dialogueContent.enhance_menu.pip     = {"GROWING...", "MORE. MORE. MORE."}
-    gameState.dialogueContent.enhance_menu.maxed   = {"AT ITS LIMIT.", "TAKE IT. IT IS DONE."}
-
-    -- Initialize flatten node dialogue
-    gameState.dialogueContent.flatten_menu = {}
-    gameState.dialogueContent.flatten_menu.greetings = {
-        "WEAK. ALL THINGS ARE WEAK.",
-        "I WILL REDUCE IT TO NOTHING.",
-        "BACK TO BASICS. AS IT SHOULD BE.",
-        "BRING ME YOUR STRONGEST. I WILL UNMAKE IT."
-    }
-    gameState.dialogueContent.flatten_menu.idle = {
-        "CHOOSE. OR DON'T.",
-        "THE STRONG FEAR WHAT I DO.",
-        "DESTRUCTION IS A KIND OF GIFT."
-    }
-    gameState.dialogueContent.flatten_menu.flatten = {
-        "FLATTENED.",
-        "REDUCED TO DUST.",
-        "AS IT WAS IN THE BEGINNING."
-    }
-    gameState.dialogueContent.flatten_menu.lucky = {
-        "FORTUNE FAVORS... OCCASIONALLY.",
-        "DUST WITH POTENTIAL.",
-        "EVEN RUINS HAVE THEIR USES."
-    }
-    gameState.dialogueContent.flatten_menu.relic = {
-        "RELIC FROM RUIN. UNEXPECTED.",
-        "DESTRUCTION BREEDS PERFECTION."
-    }
-    gameState.dialogueContent.flatten_menu.reroll = {
-        "AGAIN? FINE.",
-        "BRING ME SOMETHING WORTH DESTROYING.",
-        "THE WEAK ALWAYS WANT ANOTHER CHANCE."
-    }
-
-    -- Initialize casino node dialogue (BELIAL)
-    gameState.dialogueContent.casino_menu = {}
-    gameState.dialogueContent.casino_menu.win = {
-        "LUCK FAVORS THE BOLD.",
-        "ENJOY YOUR WINNINGS, MORTAL.",
-        "WELL PLAYED. FOR NOW.",
-        "THE HOUSE MOURNS ITS LOSS.",
-        "BEGINNER'S LUCK. SURELY.",
-    }
-    gameState.dialogueContent.casino_menu.lose = {
-        "THE HOUSE ALWAYS WINS.",
-        "PERHAPS NEXT TIME, WORM.",
-        "YOUR COINS ARE MINE NOW.",
-        "A DONATION. HOW GENEROUS.",
-        "EXPECTED NOTHING. RECEIVED NOTHING.",
-    }
-    gameState.dialogueContent.casino_menu.push = {
-        "NEITHER OF US WON. HOW BORING.",
-        "A TIE. FATE IS INDECISIVE TODAY.",
-        "KEEP YOUR COINS. I WANT YOUR SOUL.",
-        "DEAD EVEN. HOW UNSATISFYING.",
-    }
+    -- Initialize all dialogue content (language-aware)
+    initializeDialogueContent()
 
     -- Start background music
     UI.Audio.playMusic()
@@ -976,9 +901,9 @@ function initializeRoundIntro()
     local screenHeight = gameState.screen.height
 
     -- Build the text to display
-    local nightSubtitles = { "Entree", "Sorbet", "Main dish", "Dessert", "The Check" }
+    local nightSubtitles = I18n.getNightSubtitles()
     local subtitle = nightSubtitles[gameState.currentDay]
-    local baseText = "Night " .. tostring(gameState.currentDay)
+    local baseText = I18n.t("map_night") .. tostring(gameState.currentDay)
     local nightText = subtitle and (baseText .. ": " .. subtitle) or baseText
 
     -- Calculate center position
@@ -1019,85 +944,13 @@ function initializeRoundIntro()
     }
 end
 
--- Demon dialogue phrases
-
--- Witty remarks - trigger randomly after 5 seconds of no dialogue
-local demonDialogueWittyRemarks = {
-    "Dominoes? How mortal",
-    "Careful, I bite",
-    "Try harder, sinner",
-    "The tiles hunger",
-    "You reek of hope",
-    "Confidence burns fast",
-    "Lovely collapse, darling",
-    "Pray harder next time",
-    "Chaos suits you",
-    "Winning is overrated anyway",
-}
-
--- Player scores - trigger after finishing scoring a hand
-local demonDialoguePlayerScores = {
-    "Good one",
-    "Beltros guapo",
-    "Oh, you scored?",
-    "Beginners luck, clearly...",
-    "A fluke, nothing more",
-    "Enjoy it, mortal",
-    "I blinked, that is all",
-    "Skill? Do not flatter yourself",
-    "I let you have that",
-    "Proud of that?",
-    "Pathetic, yet impressive",
-    "Fine, take your point"
-    -- Example: "Pathetic score.",
-    -- Example: "Is that all?",
-}
-
--- Player wins round - trigger when player WINS the round (demon loses)
-local demonDialoguePlayerWins = {
-    "Impossible...",
-    "The tiles lie...",
-    "I was distracted...",
-    "Luck, not talent...",
-    "This board is cursed...",
-    "You cheated, surely...",
-    "A momentary lapse...",
-    "Enjoy it while it lasts...",
-    "Even Hell stumbles...",
-    "Fuck...",
-}
-
-introDialogue = {
-    "Welcome to Hell",
-    "Make yourself uncomfortable",
-    "Be a guest at our table...",
-    "Our host...",
-    "SATANAS",
-}
-
-demonDiscoveryDialogueLines = {
-    -- Boss demons
-    LUCIFER   = {"FINALLY, A CHALLENGER.", "I HAVE BEEN WAITING AN ETERNITY.", "SHOW ME WHAT HELL HATH WROUGHT."},
-    BEELZEBUB = {"ANOTHER MORSEL.", "YOU CARRY THE STENCH OF THE LIVING.", "SIT. THIS WILL NOT TAKE LONG."},
-    ASTAROTH  = {"I DO NOT RECEIVE GUESTS.", "YET HERE YOU STAND.", "PROCEED. I AM CURIOUS."},
-    ASMODEUS  = {"OH, HOW AMUSING.", "YOU CAME TO ME OF ALL PLACES.", "TRY NOT TO LOSE YOURSELF."},
-    LEVIATHAN = {"THE DEPTHS SWALLOW ALL.", "DO YOU FEEL THE PULL?", "YOU WILL JOIN THE REST, EVENTUALLY."},
-    ABADDON   = {"NOTHING LASTS.", "NOT YOU, NOT YOUR TILES, NOT THIS GAME.", "BEGIN."},
-    AZAZEL    = {"I REMEMBER BEFORE THE FALL.", "YOU WOULD NOT UNDERSTAND.", "LET US SEE WHAT YOU ARE MADE OF."},
-    BAAL      = {"KNEEL.", "...", "I AM GENEROUS TODAY. STAND."},
-    BAPHOMET  = {"ABOVE. BELOW. WITHIN.", "THE TILES KNOW THE WAY.", "FOLLOW THE PATTERN."},
-    BEPHEGOR  = {"UGH. YOU AGAIN.", "OR SOMEONE LIKE YOU. I CANNOT BE BOTHERED.", "MAKE IT QUICK."},
-    MEPHISTO  = {"WELCOME, WELCOME.", "I HAVE HEARD SO MUCH ABOUT YOU.", "SHALL WE PLAY?"},
-    MOLOCH    = {"FEED ME.", "YOUR TILES ARE AN OFFERING.", "BEGIN THE RITUAL."},
-    SAMAEL    = {"DEATH COMES FOR ALL.", "SOME SOONER THAN OTHERS.", "YOUR TILES. YOUR FATE."},
-    -- Shop demons
-    MAMMON    = {"MONEY FIRST.", "SENTIMENT AFTER, IF YOU CAN AFFORD IT.", "BROWSE, BUT DO NOT WASTE MY TIME."},
-    PAIMON    = {"AH. A VISITOR.", "I KNOW WHAT YOU SEEK.", "PERHAPS WE CAN COME TO AN ARRANGEMENT."},
-    LILITH    = {"YOU FOUND ME.", "MOST DO NOT MAKE IT THIS FAR.", "CAREFUL. EVERYTHING HERE HAS A PRICE."},
-    STOLAS    = {"I HAVE CATALOGUED EVERY TILE.", "ELEVEN THOUSAND VARIATIONS.", "WHICH ONE CALLS TO YOU?"},
-    PAZUZU    = {"THE WIND CARRIES DISEASE.", "AND OPPORTUNITY.", "CHOOSE WISELY. I DO NOT GIVE REFUNDS."},
-    BELIAL    = {"HAHA. YOU LOOK LOST.", "GOOD NEWS, I CAN HELP.", "BAD NEWS, EVERYTHING COSTS SOMETHING."},
-}
+-- Initializes all dialogue content and language-dependent globals from I18n.
+-- Called at startup and when the language toggle is pressed.
+function initializeDialogueContent()
+    gameState.dialogueContent = I18n.buildDialogueContent()
+    demonDiscoveryDialogueLines = I18n.getDemonDiscoveryLines()
+    introDialogue = I18n.getIntroDialogue()
+end
 
 function initializeDemonDiscoveryDialogue(demonName)
     local lines = demonDiscoveryDialogueLines[demonName] or {"...", "WHO ARE YOU?", "ENTER."}
@@ -1142,12 +995,13 @@ function getRandomDialoguePhrase(category)
     if bossPhrase then return bossPhrase end
 
     -- Fall back to generic demon dialogue
-    local phrases = demonDialogueWittyRemarks  -- Default to witty remarks
+    local playing = gameState.dialogueContent and gameState.dialogueContent.playing or {}
+    local phrases = playing.witty or {}
 
     if category == "score" then
-        phrases = demonDialoguePlayerScores
+        phrases = playing.score or {}
     elseif category == "win" then
-        phrases = demonDialoguePlayerWins
+        phrases = playing.win or {}
     end
 
     if #phrases == 0 then
@@ -1225,21 +1079,7 @@ function initializeDialogue(text, category)
 end
 
 function triggerVictoryPhrase()
-    local phrases = {
-        "TOTAL DOMINATION",
-        "DOMINO EFFECT",
-        "CHAIN REACTION",
-        "CONNECTING THE DOTS",
-        "SPOT ON!",
-        "PIP PERFECT",
-        "BONE TO PICK",
-        "BAD TO THE BONE",
-        "DOMINATRIX",
-        "DO RE MI NO",
-        "DOMINATING!",
-        "EL DIAABLO",
-        "EL HUEESO"
-    }
+    local phrases = I18n.getVictoryPhrases()
 
     -- Select random phrase
     gameState.victoryPhrase = phrases[love.math.random(1, #phrases)]
@@ -2336,7 +2176,7 @@ function updateFusionDialogue(dt)
     if not fusionState.enteredScreen then
         fusionState.idleTimer = fusionState.idleTimer + dt
         if fusionState.idleTimer >= 1.0 and not dialogue.isActive then
-            Dialogue.show("Drag tiles to fuse them", {
+            Dialogue.show(I18n.t("tutorial_fuse"), {
                 category = "fusion",
                 skipDelay = true,
                 requiresAction = false,
@@ -2478,8 +2318,8 @@ function updateTutorialDialogue(dt)
         if tutState.idleTimerSinceFirstTile >= 5.0 then
             -- Randomly choose one of two messages
             local messages = {
-                "Try selecting tiles to discard them",
-                "If you think its enough... play it"
+                I18n.t("tutorial_idle_1"),
+                I18n.t("tutorial_idle_2"),
             }
             local msg = messages[love.math.random(1, 2)]
             showTutorialMessage(msg, true)  -- requires action (play/discard button)
@@ -2504,20 +2344,20 @@ function updateTutorialDialogue(dt)
             -- Trigger next message after dismiss completes
             -- Check for pending messages first (set by game actions)
             if tutState.pendingMessage == "win" then
-                showTutorialMessage("Good luck, proceed")
+                showTutorialMessage(I18n.t("tutorial_win"))
                 tutState.message6Shown = true
                 tutState.pendingMessage = nil
             elseif tutState.pendingMessage == "continue" then
-                showTutorialMessage("Still missing a couple")
+                showTutorialMessage(I18n.t("tutorial_missing"))
                 tutState.message5Shown = true
                 tutState.pendingMessage = nil
             -- Message 2 after message 1 (auto-dismiss)
             elseif tutState.message1Shown and not tutState.message2Shown then
-                showTutorialMessage("Drag tiles from hand to the center to play", true)  -- requires action
+                showTutorialMessage(I18n.t("tutorial_drag"), true)  -- requires action
                 tutState.message2Shown = true
             -- Message 3 after message 2 (action-based dismiss from tile placement)
             elseif tutState.hasSeenFirstTile and not tutState.message3Shown then
-                showTutorialMessage("Good! Chain as many tiles as you can")
+                showTutorialMessage(I18n.t("tutorial_chain"))
                 tutState.message3Shown = true
             end
         end
@@ -2608,16 +2448,7 @@ end
 
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
-        local button = gameState.buttonAnimations[buttonName]
-        button.pressed = true
-
-        UI.Animation.animateTo(button, {scale = 0.9}, 0.1, "easeOutQuart", function()
-            UI.Animation.animateTo(button, {scale = 1.1}, 0.15, "easeOutBack", function()
-                UI.Animation.animateTo(button, {scale = 1.0}, 0.2, "easeOutQuart", function()
-                    button.pressed = false
-                end)
-            end)
-        end)
+        gameState.buttonAnimations[buttonName].pressed = true
     end
 end
 
@@ -2695,8 +2526,8 @@ function initializeCasino()
     casino.waitingForHitAnim = false
     casino.displayedDealerPips = 0
     casino.displayedPlayerPips = 0
-    casino.hitButtonAnimation   = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
-    casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.hitButtonAnimation   = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}, pressed = false }
+    casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}, pressed = false }
     casino.nextButtonAnimation  = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
     casino.againButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
     casino.hitButton   = nil
@@ -2707,12 +2538,12 @@ function initializeCasino()
     gameState.hand = {}
 
     Dialogue.clear()
-    local betText = casino.betAmount == 1 and "1 COIN" or (casino.betAmount .. " COINS")
+    local betText = casino.betAmount == 1 and ("1 " .. I18n.t("ui_coin")) or (casino.betAmount .. " " .. I18n.t("ui_coins"))
     local introText
     if casino._brokeIntro then
-        introText = "BELIAL ROLLS HIS EYES. FINE. FROM MY OWN POCKET. BET: 1 COIN."
+        introText = I18n.t("casino_broke_intro")
     else
-        introText = "BELIAL GRINS. YOUR BET: " .. betText .. "."
+        introText = string.format(I18n.t("casino_bet_intro"), betText)
     end
     Dialogue.show(introText, {
         category = "casino_intro",
@@ -3610,6 +3441,9 @@ function love.draw()
     -- Each phase draws its own background as before
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.draw()
+        UI.Renderer.drawCollectionMenu()
+        UI.Renderer.drawTitleSettingsMenu()
+        UI.Renderer.drawTitlePlayModal()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "intro_dialogue" then
         UI.Renderer.drawIntroDialogue()
@@ -3633,7 +3467,7 @@ function love.draw()
 
         -- Show first tutorial message after UI is rendered (so margins are calculated correctly)
         if gameState.tutorialState and gameState.tutorialState.needsFirstMessage then
-            showTutorialMessage("Try to score " .. gameState.targetScore .. " points")
+            showTutorialMessage(string.format(I18n.t("tutorial_score"), gameState.targetScore))
             gameState.tutorialState.message1Shown = true
             gameState.tutorialState.needsFirstMessage = false
         end

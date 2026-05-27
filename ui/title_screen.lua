@@ -268,213 +268,103 @@ function UI.TitleScreen.draw()
         -- Draw title screen buttons (NEW GAME and optionally CONTINUE, centered as a group)
         UI.TitleScreen.drawTitleButtons(hasSave)
 
-        -- Settings button (bottom-left corner, same as main game)
-        UI.Renderer.drawSettingsButton()
-
-        -- Best round display (bottom center, aligned with settings button vertically)
-        local stats = Save.loadStats()
-        if stats and stats.bestRound > 1 then
-            -- Get settings button position to align vertically
-            local _, settingsY, settingsSize = UI.Layout.getSettingsButtonPosition()
-            local bestRoundY = settingsY + settingsSize / 2  -- Center vertically with settings button
-            local bestRoundText = "Best Round: " .. stats.bestRound
-
-            -- Draw with shadow centered horizontally
-            local animProps = {
-                shadow = true,
-                shadowOffset = UI.Layout.scale(4)
-            }
-
-            UI.Fonts.drawAnimatedText(bestRoundText, screenWidth / 2, bestRoundY, "large", UI.Colors.FONT_PINK, "center", animProps)
-        end
     end
 
     -- Settings menu overlay (if open) - always show this
     UI.Renderer.drawSettingsMenu()
 end
 
--- Draw title screen buttons (NEW GAME and optionally CONTINUE)
+-- Draw title screen buttons: COLLECTION, SETTINGS, PLAY (Balatro emboss style) + CASINO
 function UI.TitleScreen.drawTitleButtons(hasSave)
-    local screenWidth = gameState.screen.width
+    local screenWidth  = gameState.screen.width
     local screenHeight = gameState.screen.height
-    local time = love.timer.getTime()
+    local time         = love.timer.getTime()
 
-    -- Get font and calculate text dimensions
-    local font = UI.Fonts.get("bigScore")
-    local newGameText = "-NEW-"
-    local continueText = "-RESUME-"
-    local buttonSpacing = UI.Layout.scale(40)
-    local margin = UI.Layout.scale(40)
+    -- Anchor to the hand-strip area so buttons fill it
+    local handArea = UI.Layout.getHandArea()
+    local shadowH  = UI.Layout.scale(4)
+    local gap      = UI.Layout.scale(12)
+    local cr       = UI.Layout.scale(6)
 
-    -- Calculate widths
-    local newGameWidth = 0
-    for i = 1, #newGameText do
-        newGameWidth = newGameWidth + font:getWidth(newGameText:sub(i, i))
+    -- Big buttons (COLLECTION / PLAY): 75% of strip height, wide enough for longest label
+    local bigFont = UI.Fonts.get("title")
+    local bigBh   = math.floor(handArea.height * 0.75)
+    local bigBw   = math.max(UI.Layout.scale(200), bigFont:getWidth(I18n.t("ui_collection")) + UI.Layout.scale(32))
+
+    -- SETTINGS / LANG: 50% of big button height
+    local smallFont = UI.Fonts.get("large")
+    local smallBh   = math.floor(bigBh * 0.50)
+    local smallBw   = math.max(UI.Layout.scale(120), smallFont:getWidth(I18n.t("ui_settings")) + UI.Layout.scale(28))
+
+    -- LANG button (EN / ES): same height as SETTINGS, narrow
+    local langLabel = I18n.getLanguage() == "en" and "EN" or "ES"
+    local langBw    = math.max(UI.Layout.scale(60), smallFont:getWidth("ES") + UI.Layout.scale(24))
+    local langBh    = smallBh
+
+    -- Colors
+    local PLAY_FACE   = UI.Colors.FONT_RED
+    local PLAY_SHADOW = UI.Colors.FONT_RED_DARK
+    local MENU_FACE   = UI.Colors.BACKGROUND_LIGHT
+    local MENU_SHADOW = UI.Colors.OUTLINE
+    local TEXT_COLOR  = UI.Colors.FONT_WHITE
+    local OUTLINE_C   = UI.Colors.OUTLINE
+
+    -- All buttons share the same vertical center inside the strip
+    local centerY = handArea.y + math.floor((handArea.height - shadowH) / 2)
+    local collY   = centerY - math.floor(bigBh   / 2)
+    local setY    = centerY - math.floor(smallBh / 2)
+    local playY   = collY
+
+    -- Horizontal layout centered: LANG | gap | COLLECTION | gap | SETTINGS | gap | PLAY
+    local totalW = langBw + gap + bigBw + gap + smallBw + gap + bigBw
+    local startX = math.floor(screenWidth / 2 - totalW / 2)
+    local langX  = startX
+    local collX  = startX + langBw + gap
+    local setX   = collX + bigBw + gap
+    local playX  = setX + smallBw + gap
+
+    local langY    = centerY - math.floor(langBh / 2)
+
+    local playFont = UI.Fonts.get("demonName")  -- larger font just for PLAY
+
+    -- Draw one Balatro emboss button
+    local function drawEmbossButton(label, x, y, bw, bh, font, faceColor, shadowColor, animState)
+        local faceY   = animState.pressed and (y + shadowH) or y
+        -- Use glyph height (ascent - descent) for true visual centering
+        local glyphH  = font:getAscent() - font:getDescent()
+        local textY   = faceY + math.floor((bh - glyphH) / 2)
+
+        love.graphics.setColor(shadowColor[1], shadowColor[2], shadowColor[3], 1)
+        love.graphics.rectangle("fill", x, y + shadowH, bw, bh, cr)
+
+        local fc = animState.color
+        love.graphics.setColor(fc[1], fc[2], fc[3], fc[4] or 1)
+        love.graphics.rectangle("fill", x, faceY, bw, bh, cr)
+
+        love.graphics.setColor(OUTLINE_C[1], OUTLINE_C[2], OUTLINE_C[3], 0.5)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, faceY, bw, bh, cr)
+
+        love.graphics.setColor(TEXT_COLOR[1], TEXT_COLOR[2], TEXT_COLOR[3], 1)
+        love.graphics.setFont(font)
+        love.graphics.printf(label, x, textY, bw, "center")
     end
 
-    local continueWidth = 0
-    if hasSave then
-        for i = 1, #continueText do
-            continueWidth = continueWidth + font:getWidth(continueText:sub(i, i))
-        end
-    end
+    drawEmbossButton(langLabel,                    langX, langY, langBw,  langBh,  smallFont, MENU_FACE, MENU_SHADOW, gameState.titleLanguageButtonAnimation)
+    drawEmbossButton(I18n.t("ui_collection"),     collX, collY, bigBw,   bigBh,   bigFont,   MENU_FACE, MENU_SHADOW, gameState.titleCollectionButtonAnimation)
+    drawEmbossButton(I18n.t("ui_settings"),       setX,  setY,  smallBw, smallBh, smallFont, MENU_FACE, MENU_SHADOW, gameState.titleSettingsButtonAnimation)
+    drawEmbossButton("PLAY",                      playX, playY, bigBw,   bigBh,   playFont,  PLAY_FACE, PLAY_SHADOW, gameState.titlePlayButtonAnimation)
 
-    -- Calculate total group width
-    local totalWidth = hasSave and (continueWidth + buttonSpacing + newGameWidth) or newGameWidth
+    -- Hit bounds (include shadow slab in height)
+    gameState.titleLanguageButtonBounds   = {x = langX, y = langY, width = langBw,  height = langBh  + shadowH}
+    gameState.titleCollectionButtonBounds = {x = collX, y = collY, width = bigBw,   height = bigBh   + shadowH}
+    gameState.titleSettingsButtonBounds   = {x = setX,  y = setY,  width = smallBw, height = smallBh + shadowH}
+    gameState.titlePlayButtonBounds       = {x = playX, y = playY, width = bigBw,   height = bigBh   + shadowH}
 
-    -- Check if buttons fit on screen, scale down if needed
-    local fontScale = 1.0
-    local availableWidth = screenWidth - (margin * 2)
-    if totalWidth > availableWidth then
-        fontScale = availableWidth / totalWidth
-    end
+    gameState.titleNewGameButtonBounds  = nil
+    gameState.titleContinueButtonBounds = nil
 
-    -- Recalculate widths with scale
-    newGameWidth = newGameWidth * fontScale
-    if hasSave then
-        continueWidth = continueWidth * fontScale
-        totalWidth = continueWidth + buttonSpacing + newGameWidth
-    else
-        totalWidth = newGameWidth
-    end
-
-    -- Position group centered on screen
-    local verticalMargin = UI.Layout.scale(80)
-    local groupCenterX = screenWidth / 2
-    local groupStartX = groupCenterX - totalWidth / 2
-    local textY = screenHeight - font:getHeight() * fontScale - verticalMargin + 5
-
-    -- Draw CONTINUE> button (if save exists)
-    if hasSave then
-        local continueX = groupStartX
-        local textColor = gameState.titleContinueButtonAnimation.color or UI.Colors.FONT_PINK
-
-        -- Add pulsing effect
-        local pulseFactor = math.sin(time * 3) * 0.1 + 0.9
-        local pulsingColor = {
-            textColor[1] * pulseFactor,
-            textColor[2] * pulseFactor,
-            textColor[3] * pulseFactor,
-            textColor[4]
-        }
-
-        -- Draw each character with wave animation
-        local currentX = continueX
-        for i = 1, #continueText do
-            local char = continueText:sub(i, i)
-            local charWidth = font:getWidth(char) * fontScale
-
-            -- Wave animation
-            local phase = time * 2.5 + (i - 1) * 0.2
-            local waveOffset = math.sin(phase) * 3
-
-            local animProps = {
-                shadow = true,
-                shadowOffset = UI.Layout.scale(4),
-                scale = fontScale
-            }
-
-            UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", pulsingColor, "left", animProps)
-
-            currentX = currentX + charWidth
-        end
-
-        -- Store text bounds for touch handling
-        local padding = UI.Layout.scale(20)
-        gameState.titleContinueButtonBounds = {
-            x = continueX - padding,
-            y = textY - padding,
-            width = continueWidth + padding * 2,
-            height = font:getHeight() * fontScale + padding * 2
-        }
-    else
-        gameState.titleContinueButtonBounds = nil
-    end
-
-    -- Draw NEW GAME> button
-    local newGameX = hasSave and (groupStartX + continueWidth + buttonSpacing) or groupStartX
-    local textColor = gameState.titleNewGameButtonAnimation.color or UI.Colors.FONT_WHITE
-
-    -- Draw each character with wave animation
-    local currentX = newGameX
-    for i = 1, #newGameText do
-        local char = newGameText:sub(i, i)
-        local charWidth = font:getWidth(char) * fontScale
-
-        -- Wave animation
-        local phase = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-
-        local animProps = {
-            shadow = true,
-            shadowOffset = UI.Layout.scale(4),
-            scale = fontScale
-        }
-
-        UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "bigScore", textColor, "left", animProps)
-
-        currentX = currentX + charWidth
-    end
-
-    -- Store text bounds for touch handling
-    local padding = UI.Layout.scale(20)
-    gameState.titleNewGameButtonBounds = {
-        x = newGameX - padding,
-        y = textY - padding,
-        width = newGameWidth + padding * 2,
-        height = font:getHeight() * fontScale + padding * 2
-    }
-
-    -- CASINO button — centered between title tiles and NEW/RESUME row
-    local gFont = UI.Fonts.get("title")
-    local gameroomText = "BELIAL'S CASINO>"
-    local gameroomTextWidth = 0
-    for i = 1, #gameroomText do
-        gameroomTextWidth = gameroomTextWidth + gFont:getWidth(gameroomText:sub(i, i))
-    end
-
-    -- Belial icon scaled to match font height
-    local belialIcon = demonIconSprites and demonIconSprites["BELIAL"]
-    local iconH = gFont:getHeight()
-    local iconScale = belialIcon and (iconH / belialIcon:getHeight()) or 0
-    local iconW = belialIcon and (belialIcon:getWidth() * iconScale) or 0
-    local iconGap = belialIcon and UI.Layout.scale(8) or 0
-
-    local gameroomWidth = iconW + iconGap + gameroomTextWidth
-    -- Midpoint between title tile center (28% of screen) and buttons row
-    local gameroomY = screenHeight * 0.28 + (textY - screenHeight * 0.28) / 2 - gFont:getHeight() / 2
-    local groupStartX = screenWidth / 2 - gameroomWidth / 2
-    local gameroomColor = gameState.titleBelialButtonAnimation and gameState.titleBelialButtonAnimation.color or UI.Colors.FONT_PINK
-
-    -- Draw Belial icon
-    if belialIcon then
-        local avgWave = math.sin(time * 2.5) * 3
-        local iconCY = gameroomY + iconH / 2 + avgWave
-        love.graphics.setColor(gameroomColor[1], gameroomColor[2], gameroomColor[3], gameroomColor[4])
-        love.graphics.draw(belialIcon, groupStartX + iconW / 2, iconCY, 0, iconScale, iconScale,
-            belialIcon:getWidth() / 2, belialIcon:getHeight() / 2)
-        love.graphics.setColor(1, 1, 1, 1)
-    end
-
-    -- Draw "-CASINO-" text
-    local currentX = groupStartX + iconW + iconGap
-    for i = 1, #gameroomText do
-        local char = gameroomText:sub(i, i)
-        local charWidth = gFont:getWidth(char)
-        local phase = time * 2.5 + (i - 1) * 0.2
-        local waveOffset = math.sin(phase) * 3
-        UI.Fonts.drawAnimatedText(char, currentX, gameroomY + waveOffset, "title", gameroomColor, "left", {
-            shadow = true, shadowOffset = UI.Layout.scale(3)
-        })
-        currentX = currentX + charWidth
-    end
-
-    gameState.titleBelialButtonBounds = {
-        x = groupStartX - padding,
-        y = gameroomY - padding,
-        width = gameroomWidth + padding * 2,
-        height = gFont:getHeight() + padding * 2
-    }
+    gameState.titleBelialButtonBounds = nil
 end
 
 -- Start a new game

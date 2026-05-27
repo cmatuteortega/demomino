@@ -146,32 +146,52 @@ end
 
 function UI.Layout.getPlayButtonPosition()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
-    local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
     local handArea = UI.Layout.getHandArea()
-
-    -- Position buttons under the hand area: Sort + Discard + Play (3 buttons total)
-    local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10)
-    local startX = (gameState.screen.width - totalButtonWidth) / 2
-
-    local x = startX + sortButtonWidth + UI.Layout.scale(5) + buttonWidth + UI.Layout.scale(10) -- Right-most button (play)
     local y = handArea.y + handArea.height + UI.Layout.scale(15)
 
-    return x, y
+    if gameState.gamePhase == "playing" then
+        -- 3-button cluster: Sort + Discard + Play
+        local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
+        local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10)
+        local startX = (gameState.screen.width - totalButtonWidth) / 2
+        local x = startX + sortButtonWidth + UI.Layout.scale(5) + buttonWidth + UI.Layout.scale(10)
+        return x, y
+    else
+        -- 2-button cluster: Discard (left) + Play (right), centered
+        local gap = UI.Layout.scale(10)
+        local totalW = buttonWidth * 2 + gap
+        local startX = math.floor((gameState.screen.width - totalW) / 2)
+        return startX + buttonWidth + gap, y
+    end
 end
 
 function UI.Layout.getDiscardButtonPosition()
     local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
-    local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
     local handArea = UI.Layout.getHandArea()
-
-    -- Position buttons under the hand area, side by side
-    local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10) -- Sort + spacing + two buttons + spacing
-    local startX = (gameState.screen.width - totalButtonWidth) / 2
-
-    local x = startX + sortButtonWidth + UI.Layout.scale(5) -- Discard button (after sort button)
     local y = handArea.y + handArea.height + UI.Layout.scale(15)
 
-    return x, y
+    if gameState.gamePhase == "playing" then
+        -- 3-button cluster: Sort + Discard + Play
+        local sortButtonWidth, _ = UI.Layout.getSortButtonSize()
+        local totalButtonWidth = sortButtonWidth + UI.Layout.scale(5) + buttonWidth * 2 + UI.Layout.scale(10)
+        local startX = (gameState.screen.width - totalButtonWidth) / 2
+        local x = startX + sortButtonWidth + UI.Layout.scale(5)
+        return x, y
+    else
+        -- 2-button cluster: Discard (left) + Play (right), centered
+        local gap = UI.Layout.scale(10)
+        local totalW = buttonWidth * 2 + gap
+        local startX = math.floor((gameState.screen.width - totalW) / 2)
+        return startX, y
+    end
+end
+
+function UI.Layout.getSingleButtonPosition()
+    local buttonWidth, buttonHeight = UI.Layout.getButtonSize()
+    local handArea = UI.Layout.getHandArea()
+    local x = math.floor((gameState.screen.width - buttonWidth) / 2)
+    local y = handArea.y + handArea.height + UI.Layout.scale(15)
+    return x, y, buttonWidth, buttonHeight
 end
 
 function UI.Layout.getSortButtonSize()
