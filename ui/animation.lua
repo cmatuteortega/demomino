@@ -274,6 +274,19 @@ function UI.Animation.createScorePopup(score, x, y, isBonus)
     })
 end
 
+function UI.Animation.playTilePunchOut(tile)
+    if not tile then return end
+    tile.scoreScale = tile.scoreScale or 1.0
+    tile.scoreShake = tile.scoreShake or 0
+
+    UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
+        UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack")
+    end)
+
+    tile.scoreShake = 5
+    UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
+end
+
 function UI.Animation.createTextPulse(target, property, fromValue, toValue, duration, pulseCount)
     pulseCount = pulseCount or 1
     duration = duration or 0.4

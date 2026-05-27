@@ -140,6 +140,7 @@ function Save.serializeMap(map)
         screenWidth = map.screenWidth or 800,
         screenHeight = map.screenHeight or 600,
         currentNight = map.currentNight or 1,
+        seed = map.seed,
         candles = {},  -- Save candle states
         levels = {}
     }
@@ -226,6 +227,7 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
         screenWidth = mapData.screenWidth or screenWidth or 800,
         screenHeight = mapData.screenHeight or screenHeight or 600,
         currentNight = mapData.currentNight or 1,
+        seed = mapData.seed,
         columns = {}  -- Legacy compatibility
     }
 
@@ -418,7 +420,7 @@ end
 -- Load persistent statistics (separate from save game)
 function Save.loadStats()
     if not love.filesystem.getInfo(STATS_FILE) then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
     end
 
     local success, contents = pcall(function()
@@ -426,7 +428,7 @@ function Save.loadStats()
     end)
 
     if not success or not contents then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
     end
 
     local loadSuccess, stats = pcall(function()
@@ -434,10 +436,41 @@ function Save.loadStats()
     end)
 
     if not loadSuccess or not stats then
-        return {bestRound = 1}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
+    end
+
+    if not stats.encounteredDemons then
+        stats.encounteredDemons = {}
+    end
+    if not stats.discoveredContractGroups then
+        stats.discoveredContractGroups = {}
     end
 
     return stats
+end
+
+-- Record a demon as encountered (persists across runs in stats file)
+-- Returns the updated encounteredDemons table for in-memory sync
+function Save.recordEncounteredDemon(demonName)
+    if not demonName or demonName == "" then
+        return {}
+    end
+    local stats = Save.loadStats()
+    if not stats.encounteredDemons then
+        stats.encounteredDemons = {}
+    end
+    stats.encounteredDemons[demonName] = true
+    Save.saveStats(stats)
+    return stats.encounteredDemons
+end
+
+function Save.recordDiscoveredContractGroup(groupId)
+    if not groupId or groupId == "" then return {} end
+    local stats = Save.loadStats()
+    if not stats.discoveredContractGroups then stats.discoveredContractGroups = {} end
+    stats.discoveredContractGroups[groupId] = true
+    Save.saveStats(stats)
+    return stats.discoveredContractGroups
 end
 
 -- Save persistent statistics
@@ -480,7 +513,8 @@ function Save.saveSettings(gameState)
     local settings = {
         musicEnabled = gameState.musicEnabled,
         sfxEnabled = gameState.sfxEnabled,
-        tutorialEnabled = gameState.tutorialEnabled
+        tutorialEnabled = gameState.tutorialEnabled,
+        language = gameState.language or "en"
     }
 
     local serializedSettings = "return " .. Save.serializeTable(settings)
@@ -494,7 +528,8 @@ function Save.loadSettings()
     local defaultSettings = {
         musicEnabled = true,
         sfxEnabled = true,
-        tutorialEnabled = true
+        tutorialEnabled = true,
+        language = "en"
     }
 
     if not love.filesystem.getInfo(SETTINGS_FILE) then

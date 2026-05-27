@@ -4,8 +4,9 @@ Challenges = {}
 Challenges.TYPES = {
     ANCHOR_TILE = {
         id = "anchor_tile",
-        name = "Fixed Center",
+        name = "Fixed Center",        name_es = "Centro Fijo",
         description = "Play around a fixed center tile",
+        description_es = "Juega alrededor de una ficha central fija",
         color = {0.941, 0.576, 0.608, 1}, -- FONT_PINK from game palette
         icon = "⚓",
         -- Initialize challenge state
@@ -52,18 +53,19 @@ Challenges.TYPES = {
         -- Get display info
         getDisplayText = function(challengeState)
             if challengeState.anchorTile then
-                return string.format("Fixed Center: %d-%d tile",
+                return string.format(I18n.t("challenge_anchor"),
                     challengeState.anchorTile.left,
                     challengeState.anchorTile.right)
             end
-            return "Fixed Center: Active"
+            return I18n.t("challenge_anchor_active")
         end
     },
 
     MAX_TILES = {
         id = "max_tiles",
-        name = "Limited Plays",
+        name = "Limited Plays",       name_es = "Jugadas Limitadas",
         description = "Play max 4 tiles per hand",
+        description_es = "Juega máximo 4 fichas por mano",
         color = {0.8, 0.2, 0.8, 1}, -- Purple
         icon = "4",
         maxTiles = 4,
@@ -90,14 +92,15 @@ Challenges.TYPES = {
             -- No cleanup needed
         end,
         getDisplayText = function(challengeState)
-            return string.format("Max %d tiles per hand", challengeState.maxTilesPerHand or 4)
+            return string.format(I18n.t("challenge_max_tiles"), challengeState.maxTilesPerHand or 4)
         end
     },
 
     BANNED_NUMBER = {
         id = "banned_number",
-        name = "Forbidden Number",
+        name = "Forbidden Number",    name_es = "Número Prohibido",
         description = "One number won't score",
+        description_es = "Un número no anotará",
         color = {0.9, 0.1, 0.1, 1}, -- Red
         icon = "⊘",
         onInit = function(gameState, challengeState)
@@ -135,7 +138,7 @@ Challenges.TYPES = {
             -- No cleanup needed
         end,
         getDisplayText = function(challengeState)
-            return string.format("Number %d banned (no score)", challengeState.bannedNumber or 0)
+            return string.format(I18n.t("challenge_banned"), challengeState.bannedNumber or 0)
         end
     }
 }

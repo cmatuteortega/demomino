@@ -60,13 +60,17 @@ function Scoring.getScoreBreakdown(tiles)
     local relicCount = 0
 
     for _, tile in ipairs(tiles) do
-        tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
-        if Domino.isDouble(tile) then
-            doubleCount = doubleCount + 1
-        end
-        -- Count relic tiles for multiplier bonus
-        if tile.tileType == "relic" then
-            relicCount = relicCount + 1
+        if tile.baalSum ~= nil then
+            -- BAAL overrides entire sum contribution; doubles, enhance, and relic are all superseded
+            tileValues = tileValues + tile.baalSum
+        else
+            tileValues = tileValues + Domino.getValue(tile) + (tile.enhanceBonus or 0)
+            if Domino.isDouble(tile) then
+                doubleCount = doubleCount + 1
+            end
+            if tile.tileType == "relic" then
+                relicCount = relicCount + 1
+            end
         end
     end
 
@@ -77,30 +81,119 @@ function Scoring.getScoreBreakdown(tiles)
     local contractMultBonus = 0
     local contractTilePipBonus = 0
 
-    if gameState and gameState.activeContracts then
-        -- Add "Lucky Five" tile pip bonuses (per-tile bonuses like +25 per 5 pip)
+    if gameState and gameState.activeContracts and not gameState.samaelActive then
+        -- Lucky pip bonuses (per-tile, e.g. Lucky Five, Lucky Zero, etc.)
         for _, tile in ipairs(tiles) do
             contractTilePipBonus = contractTilePipBonus + Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
         end
 
-        -- Add "Greedy" final base bonus
+        -- Greedy: flat base bonus
         contractBaseBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
 
-        -- Add "Low Stakes" conditional base bonus
+        -- Low Stakes / High Roller: conditional base bonus
         contractBaseBonus = contractBaseBonus + Contracts.calculateConditionalBaseBonus(tiles, gameState.activeContracts)
 
-        -- Add "Perfect Loop" multiplier bonus
+        -- Dark Exchange: zero out demon tile sum contributions
+        contractBaseBonus = contractBaseBonus - Contracts.calculateDemonOverrideSum(tiles, gameState.activeContracts)
+
+        -- Wild Card: odd/even special-pip tiles add to sum
+        contractTilePipBonus = contractTilePipBonus + Contracts.calculateSpecialTileSumBonus(tiles, gameState.activeContracts)
+
+        -- Echo: tiles with matching pip score their sum+mult contribution twice
+        local echoBonuses = Contracts.calculateEchoPipBonus(tiles, gameState.activeContracts)
+        contractTilePipBonus = contractTilePipBonus + echoBonuses.sumBonus
+
+        -- Perfect Loop: conditional multiplier bonus
         contractMultBonus = Contracts.calculateMultiplierBonus(tiles, gameState.activeContracts)
 
-        -- Add "Small Hand" conditional multiplier bonus
+        -- Small Hand: conditional multiplier bonus
         contractMultBonus = contractMultBonus + Contracts.calculateConditionalMultiplier(tiles, gameState.activeContracts)
+
+        -- Bold Pact: flat mult bonus
+        contractMultBonus = contractMultBonus + Contracts.calculateFlatMultBonus(gameState.activeContracts)
+
+        -- Tender Grace: mult per tender tile
+        contractMultBonus = contractMultBonus + Contracts.calculateTileTypeMultBonus(tiles, gameState.activeContracts)
+
+        -- Dark Exchange: extra mult per demon tile
+        contractMultBonus = contractMultBonus + Contracts.calculateDemonOverrideMult(tiles, gameState.activeContracts)
+
+        -- Collector: relic tiles in hand add mult
+        contractMultBonus = contractMultBonus + Contracts.calculateHandRelicMult(gameState.activeContracts)
+
+        -- Echo: extra mult from doubled tiles
+        contractMultBonus = contractMultBonus + echoBonuses.multBonus
+
+        -- Long Haul: +1 mult per tile beyond 3
+        contractMultBonus = contractMultBonus + Contracts.calculateLongHaulMult(tiles, gameState.activeContracts)
+
+        -- All In: +5 mult if all hand tiles played
+        contractMultBonus = contractMultBonus + Contracts.calculateAllInMult(tiles, gameState.activeContracts)
+
+        -- Zero Hero: +80 base if chain has a 0-0 tile
+        contractBaseBonus = contractBaseBonus + Contracts.calculateZeroHeroBase(tiles, gameState.activeContracts)
+
+        -- Bookends: +30 base if first and last tiles are doubles
+        contractBaseBonus = contractBaseBonus + Contracts.calculateBookendsBase(tiles, gameState.activeContracts)
+
+        -- Dead End: +2 mult per pip value appearing exactly once
+        contractMultBonus = contractMultBonus + Contracts.calculateDeadEndMult(tiles, gameState.activeContracts)
+
+        -- Double Down: +6 base per double tile
+        contractBaseBonus = contractBaseBonus + Contracts.calculateDoubleDownBase(tiles, gameState.activeContracts)
+
+        -- No Doubles: +4 mult if chain has zero doubles
+        contractMultBonus = contractMultBonus + Contracts.calculateNoDoublesMult(tiles, gameState.activeContracts)
+
+        -- Even Steven: +50 base, +2 mult if all pips even
+        local evenBonuses = Contracts.calculateAllEvenPipsBonus(tiles, gameState.activeContracts)
+        contractBaseBonus = contractBaseBonus + evenBonuses.sumBonus
+        contractMultBonus = contractMultBonus + evenBonuses.multBonus
+
+        -- Odd One Out: +50 base, +2 mult if all pips odd
+        local oddBonuses = Contracts.calculateAllOddPipsBonus(tiles, gameState.activeContracts)
+        contractBaseBonus = contractBaseBonus + oddBonuses.sumBonus
+        contractMultBonus = contractMultBonus + oddBonuses.multBonus
+
+        -- Tide Pool: +30 base if chain has a pip <=1 and a pip >=5
+        contractBaseBonus = contractBaseBonus + Contracts.calculateTidePoolBase(tiles, gameState.activeContracts)
+
+        -- Miser: +1 mult per 3 coins held
+        contractMultBonus = contractMultBonus + Contracts.calculateMiserMult(gameState.activeContracts)
+
+        -- Grudge: +1 mult per discard used this round
+        contractMultBonus = contractMultBonus + Contracts.calculateGrudgeMult(gameState.activeContracts)
+
+        -- Relic Pact: +8 base per relic tile played
+        contractBaseBonus = contractBaseBonus + Contracts.calculateRelicPactBase(tiles, gameState.activeContracts)
+
+        -- Packrat: +2 mult per unique tile type in chain
+        contractMultBonus = contractMultBonus + Contracts.calculatePackratMult(tiles, gameState.activeContracts)
     end
 
     baseValue = baseValue + contractTilePipBonus + contractBaseBonus
 
-    -- Calculate multiplier (number of tiles on board + 1 per relic tile + contract bonus)
-    local multiplier = #tiles + relicCount + contractMultBonus
+    -- Calculate multiplier: BAAL tiles contribute baalMult; normal tiles contribute +1 (+1 more for relic)
+    local multiplier = contractMultBonus
+    for _, tile in ipairs(tiles) do
+        if tile.baalMult ~= nil then
+            multiplier = multiplier + tile.baalMult
+        else
+            local tileMultValue = 1
+            if gameState and gameState.activeContracts and not gameState.samaelActive then
+                local override = Contracts.getTileMultOverride(tile, gameState.activeContracts)
+                if override then tileMultValue = override end
+            end
+            multiplier = multiplier + tileMultValue
+            if tile.tileType == "relic" then multiplier = multiplier + 1 end
+        end
+    end
     local total = baseValue * multiplier
+
+    -- All Doubles: x2 final score if every tile in chain is a double
+    if gameState and gameState.activeContracts and not gameState.samaelActive then
+        total = total * Contracts.calculateAllDoublesFinalMult(tiles, gameState.activeContracts)
+    end
 
     return {
         baseValue = baseValue,
@@ -136,6 +229,18 @@ function Scoring.updateHighScore(score)
 end
 
 function Scoring.getTileContribution(tile, activeContracts)
+    if tile.baalSum ~= nil then
+        return {
+            pipSum             = tile.baalSum,
+            enhanceBonus       = 0,
+            doubleBonus        = 0,
+            contractBonus      = 0,
+            contractBonusLabel = nil,
+            totalSum           = tile.baalSum,
+            mult               = tile.baalMult,
+            multBonus          = 0,
+        }
+    end
     local pipSum = Domino.getValue(tile)
     local doubleBonus = Domino.isDouble(tile) and 10 or 0
     local contractBonus = 0
@@ -154,6 +259,10 @@ function Scoring.getTileContribution(tile, activeContracts)
         end
     end
     local multBonus = tile.tileType == "relic" and 1 or 0
+    if activeContracts then
+        local override = Contracts.getTileMultOverride(tile, activeContracts)
+        if override then multBonus = override - 1 end
+    end
     return {
         pipSum             = pipSum,
         enhanceBonus       = tile.enhanceBonus or 0,

@@ -18,12 +18,14 @@ function love.load()
     
     love.graphics.setDefaultFilter("nearest", "nearest")
     
+    require("game.i18n")
     require("game.domino")
     require("game.hand")
     require("game.board")
     require("game.validation")
     require("game.scoring")
     require("game.challenges")
+    require("game.boss_behaviors")
     require("game.demon_data")  -- Load before map (map uses DemonData)
     require("game.map")
     require("game.save")
@@ -46,6 +48,7 @@ function love.load()
     loadCoinSprite()
     loadDemonIconSprites()
     loadCandleSprites()
+    loadContractSprites()
     loadToolSprites()
     loadCupSprites()
     loadMapItemSprites()
@@ -56,7 +59,8 @@ function love.load()
             height = screenHeight,
             scale = math.min(screenWidth / 800, screenHeight / 600)
         },
-        debugFireHand = false,  -- set true to draw fire on every hand tile (for testing)
+        debugFireHand = false,    -- set true to draw fire on every hand tile (for testing)
+        debugBossOverride = nil,  -- set to a boss name to force all combat nodes to that boss; nil to disable
         deck = {},
         hand = {},
         placedTiles = {},
@@ -65,6 +69,7 @@ function love.load()
         placementOrder = {},
         discardsUsed = 0,
         maxDiscardsPerRound = 2,  -- Base discards per round
+        handSizeTarget = 7,       -- Non-negative tiles to maintain in hand (bosses may lower this)
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
@@ -96,7 +101,7 @@ function love.load()
             scale = 1.0
         },
         -- Next button (NEXT >>) animation system
-        nextButtonText = "NEXT>",
+        nextButtonText = ">>",
         nextButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK initially
         },
@@ -158,6 +163,9 @@ function love.load()
             idleTimer = 0,
             idleTriggerTime = 8.0  -- Show idle dialogue after 8s
         },
+        -- Tile mitosis system
+        mitosisHand = {},
+        mitosisSlotTile = nil,
         -- Tile flatten system
         flattenHand = {},
         flattenSlotTile = nil,
@@ -218,6 +226,14 @@ function love.load()
         -- Contracts system
         activeContracts = {},  -- Currently active contracts (max 2)
         offeredContracts = {},  -- Contracts being offered in shop (always 3)
+        contractsSelectedIndex = 1,  -- Which candle (1..3) is highlighted in the contracts menu
+        contractsPurchased = {false, false, false},  -- Per-candle "signed" flag (sprite hides when true)
+        contractsSignButtonAnimation = { pressed = false },
+        contractsLeftButtonAnimation  = { pressed = false },
+        contractsRightButtonAnimation = { pressed = false },
+        restoreSealButtonAnimation  = { pressed = false },
+        restoreLeftButtonAnimation  = { pressed = false },
+        restoreRightButtonAnimation = { pressed = false },
         offeredDealContract = nil,  -- Single contract offered at DEAL node
         dealDemonTiles = {},        -- {tile1, tile2} pre-built for rendering
         dealAccepted = false,
@@ -236,6 +252,7 @@ function love.load()
             toolContext = nil,    -- "stack" | "shop" for tool tooltips
             toolSpriteLeft = 0,   -- left-edge X of tool sprite (stack positioning)
         },
+        bossDescriptionButtonBounds = nil,  -- Hit rect for the "?" boss mechanic tooltip button
         relicTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to relic
         tenderTransmuterSelectionMode = false,  -- Track if player is selecting a tile to transmute to tender
         toolButtonBounds = {},  -- Array of clickable bounds for tool buttons (DEPRECATED - use toolSpriteBounds)
@@ -261,12 +278,52 @@ function love.load()
         -- Title screen animation system
         titleTiles = {},  -- Array of 4 animated domino tiles for DEMOMINO
         titleTilesInitialized = false,  -- Track if title tiles have been set up
-        titleNewGameButtonAnimation = {
+        titlePlayButtonAnimation = {
+            color = {0.847, 0.357, 0.337, 1},  -- FONT_RED
+            pressed = false
+        },
+        titleSettingsButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
+        },
+        titleCollectionButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
+        },
+        titleLanguageButtonAnimation = {
+            color = {0.365, 0.224, 0.286, 1},  -- BACKGROUND_LIGHT
+            pressed = false
+        },
+        collectionMenuOpen = false,
+        collectionMenuAnim = { y = 0 },
+        collectionMenuTab = 1,
+        collectionMenuSelectedDemon = nil,
+        collectionMenuSelectedContractGroup = nil,
+        collectionMenuScrollY = 0,
+        collectionMenuMaxScroll = 0,
+        collectionMenuExitButtonPressed = false,
+        collectionMenuTabBounds = {},
+        collectionMenuDemonBounds = {},
+        collectionMenuContractBounds = {},
+        collectionMenuExitBounds = nil,
+        discoveredContractGroups = {},
+        titleSettingsMenuOpen         = false,
+        titleSettingsMenuAnim         = { y = 0 },
+        titleSettingsToggleBounds     = {},
+        titleSettingsExitBounds       = nil,
+        titleSettingsExitButtonPressed = false,
+        titlePlayModalOpen              = false,
+        titlePlayModalAnim              = { y = 0 },
+        titlePlayModalSelectedIcon      = nil,
+        titlePlayModalIconBounds        = {},
+        titlePlayModalActionBounds      = {},
+        titlePlayModalExitBounds        = nil,
+        titlePlayModalExitButtonPressed   = false,
+        titlePlayModalActionPressedAction = nil,
+        titleBelialButtonAnimation = {
             color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
         },
-        titleContinueButtonAnimation = {
-            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
-        },
+        gameroomMode = false,
         -- Round introduction animation system
         roundIntroAnimation = {
             phase = "typing",  -- "typing", "pausing", "moving", "revealing", "complete"
@@ -313,6 +370,31 @@ function love.load()
             centerX  = 0,
             centerY  = 0,
             pendingAction = nil, -- called when fully closed
+        },
+        -- Casino / Gamble node state
+        casino = {
+            phase = "idle",         -- "dialogue"|"dealer_draw"|"player_draw"|"player_turn"|"dealer_turn"|"resolving"|"done"
+            betAmount = 0,
+            betPaid = false,
+            dealerTiles = {},       -- demon tiles on board, each has visualX/targetX slide animation fields
+            dealerPips = 0,
+            playerPips = 0,
+            playerBusted = false,
+            dealerBusted = false,
+            result = nil,           -- "win"|"lose"|"push"
+            resolved = false,
+            dealerDrawTimer = 0,
+            dealerDrawDelay = 0.6,
+            waitingForHitAnim = false,
+            displayedDealerPips = 0,
+            displayedPlayerPips = 0,
+            pipCountSpeed = 30,
+            hitButtonAnimation = { color = {0.941, 0.576, 0.608, 1}, pressed = false },
+            standButtonAnimation = { color = {0.941, 0.576, 0.608, 1}, pressed = false },
+            nextButtonAnimation = { color = {0.941, 0.576, 0.608, 1} },
+            hitButton = nil,
+            standButton = nil,
+            nextButton = nil,
         },
         -- Dialogue content storage (populated by user prompts)
         dialogueContent = {
@@ -372,6 +454,33 @@ function love.load()
                 },
                 actions = {}
             },
+            deal_artifacts_menu = {  -- Deal-Artifacts node (Paimon)
+                greetings = {
+                    "A GIFT, FREELY GIVEN. TAKE IT.",
+                    "I ASK NOTHING. THE ARTIFACT IS YOURS.",
+                    "POWER WITHOUT PRICE. CURIOUS, NO?",
+                },
+                idle = {
+                    "DO NOT OVERTHINK A FREE GIFT.",
+                    "IT WILL NOT BITE. PROBABLY.",
+                    "TAKE IT. OR DON'T. I HAVE OTHERS.",
+                },
+                accept = {
+                    "GOOD. USE IT WELL.",
+                    "A WISE CHOICE. AS EXPECTED.",
+                    "IT IS DONE.",
+                },
+                accept_full = {
+                    "YOUR SATCHEL IS FULL. COIN INSTEAD.",
+                    "NO ROOM FOR MORE. COMPENSATION AWARDED.",
+                    "THREE IS ENOUGH. TAKE THE GOLD.",
+                },
+                skip = {
+                    "THEN LEAVE IT.",
+                    "SUIT YOURSELF.",
+                    "YOUR LOSS, NOT MINE.",
+                }
+            },
             deal_menu = {  -- Deal node (Stolas)
                 greetings = {
                     "A CONTRACT, IN EXCHANGE FOR COMPANY.",
@@ -390,7 +499,7 @@ function love.load()
                 },
                 accept_full = {
                     "YOUR ROSTER IS FULL. TAKE COIN INSTEAD.",
-                    "NO ROOM FOR THE CONTRACT — COMPENSATION AWARDED.",
+                    "NO ROOM FOR THE CONTRACT - COMPENSATION AWARDED.",
                     "CONSIDER THE COIN A CONSOLATION.",
                 },
                 skip = {
@@ -417,6 +526,24 @@ function love.load()
         },
         introSkipButtonBounds = nil,  -- Clickable area bounds
         fromNewGame = false,  -- Flag to track if we came from NEW GAME button
+        -- Demon discovery dialogue (first-encounter interstitial)
+        demonDiscoveryAnimation = {
+            phase = "typing",
+            currentLineIndex = 1,
+            text = "",
+            currentCharIndex = 0,
+            charTimer = 0,
+            charsPerSecond = 8,
+            showPrompt = false,
+            isPressed = false,
+            demonName = "",
+            lines = {}
+        },
+        demonDiscoverySkipButtonAnimation = {
+            color = {0.941, 0.576, 0.608, 1}  -- FONT_PINK
+        },
+        demonDiscoverySkipButtonBounds = nil,
+        pendingNodeEntry = nil,
         -- Tutorial state tracking (uses combat dialogue system for display)
         tutorialState = {
             hasSeenFirstTile = false,  -- Player placed first tile on board
@@ -454,106 +581,19 @@ function love.load()
     gameState.musicEnabled = settings.musicEnabled
     gameState.sfxEnabled = settings.sfxEnabled
     gameState.tutorialEnabled = settings.tutorialEnabled
+    gameState.language = settings.language or "en"
+    I18n.setLanguage(gameState.language)
+
+    -- Load persistent encounter history (survives save resets)
+    local stats = Save.loadStats()
+    gameState.encounteredDemons = stats.encounteredDemons or {}
+    gameState.discoveredContractGroups = stats.discoveredContractGroups or {}
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
 
-    -- Initialize dialogue content with existing combat phrases
-    gameState.dialogueContent.playing.score = demonDialoguePlayerScores
-    gameState.dialogueContent.playing.win = demonDialoguePlayerWins
-    gameState.dialogueContent.playing.witty = demonDialogueWittyRemarks
-
-    -- Initialize tile shop dialogue
-    gameState.dialogueContent.tiles_menu.greetings = {"Welcome to my shop"}
-    gameState.dialogueContent.tiles_menu.purchase = {"Enjoy it"}
-    gameState.dialogueContent.tiles_menu.idle = {
-        "Cant decide?",
-        "You should know your worth",
-        "Go watch Hereditary"
-    }
-    gameState.dialogueContent.tiles_menu.actions = {"Take your chances"}  -- For reroll
-
-    -- Pawn node dialogue (MAMMON)
-    gameState.dialogueContent.tiles_menu.pawn_greetings = {
-        "Everything has a price, mortal.",
-        "Sell me your burdens. I'll make it worth your while.",
-        "Ah, another desperate soul. My favourite kind of customer.",
-        "I deal in what others cast aside.",
-        "Bring me your tiles. I'll give you what they're worth... to me."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_sell = {
-        "A fair price for a fair trade.",
-        "Coins well earned, or tiles well lost?",
-        "Such a shame to part with it. I have no such qualms.",
-        "Into my collection it goes.",
-        "More coin for you, more treasure for me."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_reroll = {
-        "Not satisfied? That'll cost you.",
-        "Shuffling the bones... for a price.",
-        "Let's see what else you're willing to part with."
-    }
-    gameState.dialogueContent.tiles_menu.pawn_idle = {
-        "Take your time. My patience is limitless.",
-        "Every tile tells a story. What's yours worth?",
-        "The boneyard never lies."
-    }
-
-    -- Initialize enhance node dialogue
-    gameState.dialogueContent.enhance_menu = {}
-    gameState.dialogueContent.enhance_menu.greetings = {
-        "POWER HAS A PRICE",
-        "I CAN MAKE IT STRONGER",
-        "EVERYTHING HAS ITS LIMIT",
-    }
-    gameState.dialogueContent.enhance_menu.idle = {
-        "CHOOSE CAREFULLY",
-        "THE STORM WAITS FOR NO ONE",
-        "WEAKNESS DISGUSTS ME",
-    }
-    gameState.dialogueContent.enhance_menu.enhance = {
-        "STRONGER!",
-        "YES. THAT'S IT.",
-        "FEEL THE POWER",
-    }
-    gameState.dialogueContent.enhance_menu.tender   = {"GONE SOFT...", "OH. THAT HAPPENS."}
-    gameState.dialogueContent.enhance_menu.relic = {"PERFECTION.", "NO GOING BACK NOW"}
-    gameState.dialogueContent.enhance_menu.break_event = {"OOPS.", "TOO FRAGILE.", "IT COULDN'T HANDLE IT"}
-    gameState.dialogueContent.enhance_menu.pip     = {"GROWING...", "MORE. MORE. MORE."}
-    gameState.dialogueContent.enhance_menu.maxed   = {"AT ITS LIMIT.", "TAKE IT. IT IS DONE."}
-
-    -- Initialize flatten node dialogue
-    gameState.dialogueContent.flatten_menu = {}
-    gameState.dialogueContent.flatten_menu.greetings = {
-        "WEAK. ALL THINGS ARE WEAK.",
-        "I WILL REDUCE IT TO NOTHING.",
-        "BACK TO BASICS. AS IT SHOULD BE.",
-        "BRING ME YOUR STRONGEST. I WILL UNMAKE IT."
-    }
-    gameState.dialogueContent.flatten_menu.idle = {
-        "CHOOSE. OR DON'T.",
-        "THE STRONG FEAR WHAT I DO.",
-        "DESTRUCTION IS A KIND OF GIFT."
-    }
-    gameState.dialogueContent.flatten_menu.flatten = {
-        "FLATTENED.",
-        "REDUCED TO DUST.",
-        "AS IT WAS IN THE BEGINNING."
-    }
-    gameState.dialogueContent.flatten_menu.lucky = {
-        "FORTUNE FAVORS... OCCASIONALLY.",
-        "DUST WITH POTENTIAL.",
-        "EVEN RUINS HAVE THEIR USES."
-    }
-    gameState.dialogueContent.flatten_menu.relic = {
-        "RELIC FROM RUIN. UNEXPECTED.",
-        "DESTRUCTION BREEDS PERFECTION."
-    }
-    gameState.dialogueContent.flatten_menu.reroll = {
-        "AGAIN? FINE.",
-        "BRING ME SOMETHING WORTH DESTROYING.",
-        "THE WEAK ALWAYS WANT ANOTHER CHANCE."
-    }
+    -- Initialize all dialogue content (language-aware)
+    initializeDialogueContent()
 
     -- Start background music
     UI.Audio.playMusic()
@@ -658,8 +698,8 @@ function initializeGame(isNewRound)
     -- Initialize empty hand first
     gameState.hand = {}
 
-    -- Draw tiles: fill until 7 non-negative tiles are present (negative tiles don't count as slots)
-    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+    -- Draw tiles: fill until handSizeTarget non-negative tiles are present (negative tiles don't count as slots)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
 
     -- Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -680,9 +720,9 @@ function initializeGame(isNewRound)
     gameState.scoreAnimation = nil
     gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false, yOffset = 0},
-        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -715,6 +755,11 @@ end
 function initializeCombatRound()
     -- Reset only combat-specific state while preserving map progress and tile collection
 
+    -- Debug: force a specific boss for all combat nodes
+    if gameState.debugBossOverride then
+        gameState.currentDemonName = gameState.debugBossOverride
+    end
+
     -- STEP 1: Clear old combat state FIRST
     gameState.placedTiles = {}
     gameState.hand = {}
@@ -724,15 +769,17 @@ function initializeCombatRound()
     gameState.placementOrder = {}
     gameState.discardsUsed = 0
     gameState.maxDiscardsPerRound = 2  -- Reset to base value
+    gameState.handSizeTarget = 7       -- Reset to base value (bosses may override)
+    gameState.maxHandsPerRound = 3     -- Reset to base value (bosses may override)
     gameState.playsUsed = 0
     gameState.handsPlayed = 0
     gameState.scoreAnimation = nil
     gameState.winSequenceTriggered = false  -- Reset win sequence flag
     gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false, yOffset = 0},
-        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -789,15 +836,23 @@ function initializeCombatRound()
         winDialogueShown = false
     }
 
+    -- STEP 1.5: Boss pre-deck hooks (e.g. BAAL randomizes tile values before deck is built)
+    BossBehaviors.onPreDeck(gameState)
+
     -- STEP 2: Create fresh deck from player's collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
 
-    -- STEP 3: Initialize challenges (can now take a tile from deck for anchor)
-    Challenges.initialize(gameState)
+    -- STEP 3: Initialize challenges (skip for boss rounds — they have their own behavior)
+    if not gameState.isBossRound then
+        Challenges.initialize(gameState)
+    end
+
+    -- STEP 3.5: Apply boss-specific modifiers (no-op for non-boss demons)
+    BossBehaviors.initialize(gameState)
 
     -- STEP 4: Draw tiles from deck to hand (negative tiles don't consume a hand slot)
-    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+    Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
 
     -- STEP 5: Sort hand BEFORE animating so tiles animate to their final sorted positions
     Hand.sortByValue(gameState.hand)
@@ -850,9 +905,9 @@ function initializeRoundIntro()
     local screenHeight = gameState.screen.height
 
     -- Build the text to display
-    local nightSubtitles = { "Entree", "Sorbet", "Main dish", "Dessert", "The Check" }
+    local nightSubtitles = I18n.getNightSubtitles()
     local subtitle = nightSubtitles[gameState.currentDay]
-    local baseText = "Night " .. tostring(gameState.currentDay)
+    local baseText = I18n.t("map_night") .. tostring(gameState.currentDay)
     local nightText = subtitle and (baseText .. ": " .. subtitle) or baseText
 
     -- Calculate center position
@@ -893,70 +948,64 @@ function initializeRoundIntro()
     }
 end
 
--- Demon dialogue phrases
+-- Initializes all dialogue content and language-dependent globals from I18n.
+-- Called at startup and when the language toggle is pressed.
+function initializeDialogueContent()
+    gameState.dialogueContent = I18n.buildDialogueContent()
+    demonDiscoveryDialogueLines = I18n.getDemonDiscoveryLines()
+    introDialogue = I18n.getIntroDialogue()
+end
 
--- Witty remarks - trigger randomly after 5 seconds of no dialogue
-local demonDialogueWittyRemarks = {
-    "Dominoes? How mortal",
-    "Careful, I bite",
-    "Try harder, sinner",
-    "The tiles hunger",
-    "You reek of hope",
-    "Confidence burns fast",
-    "Lovely collapse, darling",
-    "Pray harder next time",
-    "Chaos suits you",
-    "Winning is overrated anyway",
-}
+function initializeDemonDiscoveryDialogue(demonName)
+    local lines = demonDiscoveryDialogueLines[demonName] or {"...", "WHO ARE YOU?", "ENTER."}
+    local anim = gameState.demonDiscoveryAnimation
+    anim.lines = lines
+    anim.demonName = demonName
+    anim.phase = "typing"
+    anim.currentLineIndex = 1
+    anim.text = lines[1]
+    anim.currentCharIndex = 0
+    anim.charTimer = 0
+    anim.showPrompt = false
+    anim.isPressed = false
+    anim.pressedDuringWaiting = false
+    gameState.demonDiscoverySkipButtonAnimation.color = {0.941, 0.576, 0.608, 1}
+end
 
--- Player scores - trigger after finishing scoring a hand
-local demonDialoguePlayerScores = {
-    "Good one",
-    "Beltros guapo",
-    "Oh, you scored?",
-    "Beginners luck, clearly...",
-    "A fluke, nothing more",
-    "Enjoy it, mortal",
-    "I blinked, that is all",
-    "Skill? Do not flatter yourself",
-    "I let you have that",
-    "Proud of that?",
-    "Pathetic, yet impressive",
-    "Fine, take your point"
-    -- Example: "Pathetic score.",
-    -- Example: "Is that all?",
-}
+function updateDemonDiscovery(dt)
+    local anim = gameState.demonDiscoveryAnimation
 
--- Player wins round - trigger when player WINS the round (demon loses)
-local demonDialoguePlayerWins = {
-    "Impossible...",
-    "The tiles lie...",
-    "I was distracted...",
-    "Luck, not talent...",
-    "This board is cursed...",
-    "You cheated, surely...",
-    "A momentary lapse...",
-    "Enjoy it while it lasts...",
-    "Even Hell stumbles...",
-    "Fuck...",
-}
+    if anim.phase == "typing" then
+        local speedMultiplier = anim.isPressed and 2.0 or 1.0
+        anim.charTimer = anim.charTimer + (dt * speedMultiplier)
+        local timePerChar = 1.0 / anim.charsPerSecond
 
-introDialogue = {
-    "Welcome to Hell",
-    "Make yourself uncomfortable",
-    "Be a guest at our table...",
-    "Our host...",
-    "SATANAS",
-}
+        if anim.charTimer >= timePerChar then
+            anim.charTimer = 0
+            anim.currentCharIndex = anim.currentCharIndex + 1
+            UI.Audio.playTypewriter()
+            if anim.currentCharIndex >= #anim.text then
+                anim.currentCharIndex = #anim.text
+                anim.phase = "waiting"
+                anim.showPrompt = true
+            end
+        end
+    end
+end
 
 function getRandomDialoguePhrase(category)
-    -- Select a random phrase from specified category
-    local phrases = demonDialogueWittyRemarks  -- Default to witty remarks
+    -- Check for boss-specific dialogue first
+    local bossPhrase = BossBehaviors.getDialogue(gameState.currentDemonName, category)
+    if bossPhrase then return bossPhrase end
+
+    -- Fall back to generic demon dialogue
+    local playing = gameState.dialogueContent and gameState.dialogueContent.playing or {}
+    local phrases = playing.witty or {}
 
     if category == "score" then
-        phrases = demonDialoguePlayerScores
+        phrases = playing.score or {}
     elseif category == "win" then
-        phrases = demonDialoguePlayerWins
+        phrases = playing.win or {}
     end
 
     if #phrases == 0 then
@@ -1034,21 +1083,7 @@ function initializeDialogue(text, category)
 end
 
 function triggerVictoryPhrase()
-    local phrases = {
-        "TOTAL DOMINATION",
-        "DOMINO EFFECT",
-        "CHAIN REACTION",
-        "CONNECTING THE DOTS",
-        "SPOT ON!",
-        "PIP PERFECT",
-        "BONE TO PICK",
-        "BAD TO THE BONE",
-        "DOMINATRIX",
-        "DO RE MI NO",
-        "DOMINATING!",
-        "EL DIAABLO",
-        "EL HUEESO"
-    }
+    local phrases = I18n.getVictoryPhrases()
 
     -- Select random phrase
     gameState.victoryPhrase = phrases[love.math.random(1, #phrases)]
@@ -1561,48 +1596,50 @@ function updateScoringSequence(dt)
             -- Final tile finished, prepare contract bonuses
             seq.contractBonuses = {}
 
-            -- Add Greedy bonus if active
-            local greedyBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
-            if greedyBonus > 0 then
-                table.insert(seq.contractBonuses, {
-                    name = "GREEDY",
-                    value = greedyBonus,
-                    multiplierBonus = 0,
-                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                })
-            end
+            if not gameState.samaelActive then
+                -- Add Greedy bonus if active
+                local greedyBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
+                if greedyBonus > 0 then
+                    table.insert(seq.contractBonuses, {
+                        name = "GREEDY",
+                        value = greedyBonus,
+                        multiplierBonus = 0,
+                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                    })
+                end
 
-            -- Add Low Stakes conditional base bonus if active
-            local lowStakesBonus = Contracts.calculateConditionalBaseBonus(seq.tiles, gameState.activeContracts)
-            if lowStakesBonus > 0 then
-                table.insert(seq.contractBonuses, {
-                    name = "LOW STAKES",
-                    value = lowStakesBonus,
-                    multiplierBonus = 0,
-                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                })
-            end
+                -- Add Low Stakes conditional base bonus if active
+                local lowStakesBonus = Contracts.calculateConditionalBaseBonus(seq.tiles, gameState.activeContracts)
+                if lowStakesBonus > 0 then
+                    table.insert(seq.contractBonuses, {
+                        name = "LOW STAKES",
+                        value = lowStakesBonus,
+                        multiplierBonus = 0,
+                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                    })
+                end
 
-            -- Add Perfect Loop multiplier bonus if active
-            local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
-            if perfectLoopBonus > 0 then
-                table.insert(seq.contractBonuses, {
-                    name = "PERFECT LOOP",
-                    value = 0,  -- Doesn't add to base
-                    multiplierBonus = perfectLoopBonus,
-                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                })
-            end
+                -- Add Perfect Loop multiplier bonus if active
+                local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
+                if perfectLoopBonus > 0 then
+                    table.insert(seq.contractBonuses, {
+                        name = "PERFECT LOOP",
+                        value = 0,  -- Doesn't add to base
+                        multiplierBonus = perfectLoopBonus,
+                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                    })
+                end
 
-            -- Add Small Hand conditional multiplier bonus if active
-            local smallHandBonus = Contracts.calculateConditionalMultiplier(seq.tiles, gameState.activeContracts)
-            if smallHandBonus > 0 then
-                table.insert(seq.contractBonuses, {
-                    name = "SMALL HAND",
-                    value = 0,  -- Doesn't add to base
-                    multiplierBonus = smallHandBonus,
-                    color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                })
+                -- Add Small Hand conditional multiplier bonus if active
+                local smallHandBonus = Contracts.calculateConditionalMultiplier(seq.tiles, gameState.activeContracts)
+                if smallHandBonus > 0 then
+                    table.insert(seq.contractBonuses, {
+                        name = "SMALL HAND",
+                        value = 0,  -- Doesn't add to base
+                        multiplierBonus = smallHandBonus,
+                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
+                    })
+                end
             end
 
             -- Check if we have any contract bonuses to animate
@@ -1638,16 +1675,17 @@ function updateScoringSequence(dt)
                     local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
                     if isBanned then addedValue = 0 end
 
-                    -- Apply "Lucky Five" contract bonus (per tile with 5 pip) — skip if banned
+                    -- Apply lucky pip / wild card contract bonuses — skip if banned or Samael
                     local contractBonus = 0
-                    if not isBanned then
+                    if not isBanned and not gameState.samaelActive then
                         contractBonus = Contracts.calculateTilePipBonus(tile, gameState.activeContracts)
+                        contractBonus = contractBonus + Contracts.calculateSpecialTileSumBonus({tile}, gameState.activeContracts)
                         addedValue = addedValue + contractBonus
                     end
 
                     -- Check for coin rewards from "One Dollar" contract
                     local coinReward = Contracts.calculateCoinReward(tile, gameState.activeContracts)
-                    if coinReward > 0 then
+                    if coinReward > 0 and not gameState.samaelActive then
                         -- Award coins with falling animation
                         local currentTarget = gameState.coinsAnimation.targetCoins or gameState.coins
                         updateCoins(currentTarget + coinReward, {hasBonus = false})
@@ -1661,6 +1699,22 @@ function updateScoringSequence(dt)
                         if tile.tileType == "relic" then
                             multiplierIncrement = multiplierIncrement + 1
                         end
+
+                        -- Dark Exchange: demon tiles give 0 sum + extra mult
+                        if not gameState.samaelActive then
+                            for _, c in ipairs(gameState.activeContracts) do
+                                if c.effectType == "demon_override" and tile.tileType == "demon" then
+                                    -- Undo this tile's sum contribution already added above
+                                    local demonSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
+                                    if Domino.isDouble(tile) then demonSum = demonSum + 10 end
+                                    seq.accumulatedValue = seq.accumulatedValue - demonSum
+                                    gameState.formulaTargetValue = seq.accumulatedValue
+                                    -- Extra mult
+                                    multiplierIncrement = multiplierIncrement + c.effectValue
+                                end
+                            end
+                        end
+
                         seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
                         gameState.multiplierTargetValue = seq.accumulatedMultiplier
                     end
@@ -1676,7 +1730,48 @@ function updateScoringSequence(dt)
                         isBanned   = isBanned,
                     }
                     animateTileScoring(tile, valueInfo)
-                    
+                    BossBehaviors.onTileScored(gameState, tile)
+
+                    -- Echo contracts: tiles with trigger pip score their contribution N+1 times
+                    if not isBanned and not gameState.samaelActive then
+                        local echoHitIndex = 0
+                        for _, c in ipairs(gameState.activeContracts) do
+                            if c.effectType == "echo_pip_bonus" then
+                                if tile.left == c.triggerPip or tile.right == c.triggerPip then
+                                    echoHitIndex = echoHitIndex + 1
+                                    local echoSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
+                                    if Domino.isDouble(tile) then echoSum = echoSum + 10 end
+                                    local echoMult = tile.baalMult ~= nil and tile.baalMult
+                                        or (1 + (tile.tileType == "relic" and 1 or 0))
+                                    seq.accumulatedValue = seq.accumulatedValue + echoSum
+                                    seq.accumulatedMultiplier = seq.accumulatedMultiplier + echoMult
+                                    gameState.formulaTargetValue = seq.accumulatedValue
+                                    gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                                    -- Each echo punch fires after the previous one finishes: 0.4s per hit
+                                    local punchDelay = 0.4 * echoHitIndex
+                                    local delay = {t = 0}
+                                    UI.Animation.animateTo(delay, {t = 1}, punchDelay, "easeOutQuart", function()
+                                        tile.scoreShake = 5
+                                        UI.Animation.animateTo(tile, {scoreShake = 0}, 0.3, "easeOutQuart")
+                                        UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
+                                            UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack")
+                                        end)
+                                        UI.Audio.playTilePlaced()
+                                        UI.Animation.createFloatingText("ECHO!", tile.x, tile.y - UI.Layout.scale(60), {
+                                            color        = {0.4, 1.0, 0.9, 1},
+                                            fontSize     = "large",
+                                            duration     = 1.2,
+                                            riseDistance = UI.Layout.scale(40),
+                                            startScale   = 0.4,
+                                            endScale     = 1.1,
+                                            easing       = "easeOutBack",
+                                        })
+                                    end)
+                                end
+                            end
+                        end
+                    end
+
                     seq.currentTileIndex = seq.currentTileIndex + 1
                 else
                     -- All tiles have been triggered, wait for final tile to finish animating
@@ -1952,7 +2047,11 @@ function completeScoringSequence()
 
     if not isGameEnding then
         -- Only refill hand if game is continuing
-        local drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, 7)
+        local drawnTiles = BossBehaviors.onDraw(gameState)
+        if not drawnTiles then
+            local drawnCount
+            drawnCount, drawnTiles = Hand.refillHandNegativeAware(gameState.hand, gameState.deck, gameState.handSizeTarget)
+        end
 
         -- Animate ONLY the newly drawn tiles from right (not the entire hand)
         if drawnTiles and #drawnTiles > 0 then
@@ -2081,7 +2180,7 @@ function updateFusionDialogue(dt)
     if not fusionState.enteredScreen then
         fusionState.idleTimer = fusionState.idleTimer + dt
         if fusionState.idleTimer >= 1.0 and not dialogue.isActive then
-            Dialogue.show("Drag tiles to fuse them", {
+            Dialogue.show(I18n.t("tutorial_fuse"), {
                 category = "fusion",
                 skipDelay = true,
                 requiresAction = false,
@@ -2223,8 +2322,8 @@ function updateTutorialDialogue(dt)
         if tutState.idleTimerSinceFirstTile >= 5.0 then
             -- Randomly choose one of two messages
             local messages = {
-                "Try selecting tiles to discard them",
-                "If you think its enough... play it"
+                I18n.t("tutorial_idle_1"),
+                I18n.t("tutorial_idle_2"),
             }
             local msg = messages[love.math.random(1, 2)]
             showTutorialMessage(msg, true)  -- requires action (play/discard button)
@@ -2249,20 +2348,20 @@ function updateTutorialDialogue(dt)
             -- Trigger next message after dismiss completes
             -- Check for pending messages first (set by game actions)
             if tutState.pendingMessage == "win" then
-                showTutorialMessage("Good luck, proceed")
+                showTutorialMessage(I18n.t("tutorial_win"))
                 tutState.message6Shown = true
                 tutState.pendingMessage = nil
             elseif tutState.pendingMessage == "continue" then
-                showTutorialMessage("Still missing a couple")
+                showTutorialMessage(I18n.t("tutorial_missing"))
                 tutState.message5Shown = true
                 tutState.pendingMessage = nil
             -- Message 2 after message 1 (auto-dismiss)
             elseif tutState.message1Shown and not tutState.message2Shown then
-                showTutorialMessage("Drag tiles from hand to the center to play", true)  -- requires action
+                showTutorialMessage(I18n.t("tutorial_drag"), true)  -- requires action
                 tutState.message2Shown = true
             -- Message 3 after message 2 (action-based dismiss from tile placement)
             elseif tutState.hasSeenFirstTile and not tutState.message3Shown then
-                showTutorialMessage("Good! Chain as many tiles as you can")
+                showTutorialMessage(I18n.t("tutorial_chain"))
                 tutState.message3Shown = true
             end
         end
@@ -2353,16 +2452,7 @@ end
 
 function animateButtonPress(buttonName)
     if gameState.buttonAnimations and gameState.buttonAnimations[buttonName] then
-        local button = gameState.buttonAnimations[buttonName]
-        button.pressed = true
-
-        UI.Animation.animateTo(button, {scale = 0.9}, 0.1, "easeOutQuart", function()
-            UI.Animation.animateTo(button, {scale = 1.1}, 0.15, "easeOutBack", function()
-                UI.Animation.animateTo(button, {scale = 1.0}, 0.2, "easeOutQuart", function()
-                    button.pressed = false
-                end)
-            end)
-        end)
+        gameState.buttonAnimations[buttonName].pressed = true
     end
 end
 
@@ -2385,6 +2475,378 @@ function updateCandleLightAnimation(dt)
         end
     end
 end
+
+-- ── Casino / Gamble node ──────────────────────────────────────────────────────
+
+function initializeCasino()
+    local casino = gameState.casino
+
+    -- Broke player charity
+    if gameState.coins <= 0 then
+        updateCoins(1)
+        -- Special intro dialogue is set below after state reset; flag it here
+        casino._brokeIntro = true
+    else
+        casino._brokeIntro = false
+    end
+
+    casino.phase = "dialogue"
+    casino.betAmount = math.max(1, math.ceil(gameState.coins / 3))
+    casino.betPaid = false
+    casino.dealerTiles = {}
+
+    -- Dealer deck: standard 28 tiles, shuffled
+    casino.dealerDeck = {}
+    for i = 0, 6 do
+        for j = i, 6 do
+            table.insert(casino.dealerDeck, {left = i, right = j})
+        end
+    end
+    for k = #casino.dealerDeck, 2, -1 do
+        local r = love.math.random(k)
+        casino.dealerDeck[k], casino.dealerDeck[r] = casino.dealerDeck[r], casino.dealerDeck[k]
+    end
+
+    -- Player deck: shuffled copy of tileCollection
+    casino.playerDeck = {}
+    for _, ct in ipairs(gameState.tileCollection) do
+        local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+        if pips <= 21 then
+            table.insert(casino.playerDeck, ct)
+        end
+    end
+    for k = #casino.playerDeck, 2, -1 do
+        local r = love.math.random(k)
+        casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
+    end
+
+    casino.dealerPips = 0
+    casino.playerPips = 0
+    casino.playerBusted = false
+    casino.dealerBusted = false
+    casino.result = nil
+    casino.resolved = false
+    casino.dealerDrawTimer = 0
+    casino.waitingForHitAnim = false
+    casino.displayedDealerPips = 0
+    casino.displayedPlayerPips = 0
+    casino.hitButtonAnimation   = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}, pressed = false }
+    casino.standButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}, pressed = false }
+    casino.nextButtonAnimation  = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.againButtonAnimation = { color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]} }
+    casino.hitButton   = nil
+    casino.standButton = nil
+    casino.nextButton  = nil
+    casino.againButton = nil
+
+    gameState.hand = {}
+
+    Dialogue.clear()
+    local betText = casino.betAmount == 1 and ("1 " .. I18n.t("ui_coin")) or (casino.betAmount .. " " .. I18n.t("ui_coins"))
+    local introText
+    if casino._brokeIntro then
+        introText = I18n.t("casino_broke_intro")
+    else
+        introText = string.format(I18n.t("casino_bet_intro"), betText)
+    end
+    Dialogue.show(introText, {
+        category = "casino_intro",
+        skipDelay = true,
+        requiresAction = false,
+        autoDissmissTime = 3.0
+    })
+end
+
+local function casinoGetTileSize()
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local sampleSprite = dominoSprites and dominoSprites["00"]
+    local tileW = sampleSprite and (sampleSprite.sprite:getWidth() * spriteScale) or UI.Layout.scale(50)
+    local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
+    return tileW, tileH
+end
+
+local function casinoSpawnDealerTile()
+    local casino = gameState.casino
+    -- Draw from shuffled dealer deck (reshuffle if exhausted)
+    if #casino.dealerDeck == 0 then
+        for i = 0, 6 do
+            for j = i, 6 do
+                table.insert(casino.dealerDeck, {left = i, right = j})
+            end
+        end
+        for k = #casino.dealerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.dealerDeck[k], casino.dealerDeck[r] = casino.dealerDeck[r], casino.dealerDeck[k]
+        end
+    end
+    local pick = table.remove(casino.dealerDeck)
+    local tile = Domino.new(pick.left, pick.right, pick.left, pick.right)
+    tile.tileType = "demon"
+    tile.id = tostring(pick.left) .. tostring(pick.right) .. "_d" .. (#casino.dealerTiles + 1)
+
+    local boardArea = UI.Layout.getBoardArea()
+    local tileW, tileH = casinoGetTileSize()
+    local tileGap = UI.Layout.scale(8)
+    local targetY = boardArea.y + boardArea.height / 2
+
+    tile.visualX  = -(tileW)
+    tile.visualY  = targetY
+    tile.startX   = -(tileW)
+    tile.targetX  = 0  -- recalculated below after insert
+    tile.slideProgress = 0
+    tile.slideDuration = 0.5
+    tile.sliding  = true
+
+    casino.dealerPips = casino.dealerPips + pick.left + pick.right
+    table.insert(casino.dealerTiles, tile)
+
+    -- Recenter all dealer tiles around board midpoint
+    local boardMidX = boardArea.x + boardArea.width / 2
+    local n = #casino.dealerTiles
+    local totalGroupW = n * tileW + (n - 1) * tileGap
+    local groupStartX = boardMidX - totalGroupW / 2
+    for idx, t in ipairs(casino.dealerTiles) do
+        local newTargetX = groupStartX + (idx - 1) * (tileW + tileGap) + tileW / 2
+        if math.abs((t.targetX or 0) - newTargetX) > 1 then
+            t.startX = t.visualX
+            t.targetX = newTargetX
+            t.slideProgress = 0
+            t.sliding = true
+        end
+    end
+end
+
+local function casinoDrawPlayerTile()
+    local casino = gameState.casino
+    -- Draw from shuffled player deck (reshuffle from collection if exhausted)
+    if #casino.playerDeck == 0 then
+        for _, ct in ipairs(gameState.tileCollection) do
+            local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+            if pips <= 21 then
+                table.insert(casino.playerDeck, ct)
+            end
+        end
+        for k = #casino.playerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
+        end
+    end
+
+    local source
+    if #casino.playerDeck > 0 then
+        source = table.remove(casino.playerDeck)
+    else
+        -- Fallback: 0-0 relic tile; add it to collection permanently
+        local relicTile = Domino.new(0, 0, 0, 0)
+        relicTile.tileType = "relic"
+        table.insert(gameState.tileCollection, relicTile)
+        source = relicTile
+    end
+
+    local chosenTile = Domino.new(source.left, source.right, source.left, source.right)
+    chosenTile.tileType = source.tileType or "regular"
+    chosenTile.enhanceBonus = source.enhanceBonus or 0
+
+    table.insert(gameState.hand, chosenTile)
+    local pipsAdded = Domino.getNumericValue(source.left or 0) + Domino.getNumericValue(source.right or 0)
+    casino.playerPips = casino.playerPips + pipsAdded
+    chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
+
+    Hand.updatePositions(gameState.hand, true)  -- skipSort: preserve insertion order
+    Hand.animateTilesDraw(gameState.hand, 0, {chosenTile})
+end
+
+-- Called by touch.lua when player presses HIT
+function casinoPlayerHit()
+    local casino = gameState.casino
+    if casino.phase ~= "player_turn" or casino.waitingForHitAnim then return end
+
+    -- Draw from player deck (reshuffle if exhausted)
+    if #casino.playerDeck == 0 then
+        for _, ct in ipairs(gameState.tileCollection) do
+            local pips = Domino.getNumericValue(ct.left or 0) + Domino.getNumericValue(ct.right or 0)
+            if pips <= 21 then
+                table.insert(casino.playerDeck, ct)
+            end
+        end
+        for k = #casino.playerDeck, 2, -1 do
+            local r = love.math.random(k)
+            casino.playerDeck[k], casino.playerDeck[r] = casino.playerDeck[r], casino.playerDeck[k]
+        end
+    end
+    if #casino.playerDeck == 0 then return end
+    local source = table.remove(casino.playerDeck)
+    local chosenTile = Domino.new(source.left, source.right, source.left, source.right)
+    chosenTile.tileType = source.tileType or "regular"
+    chosenTile.enhanceBonus = source.enhanceBonus or 0
+
+    table.insert(gameState.hand, chosenTile)
+    local pipsAdded = Domino.getNumericValue(source.left or 0) + Domino.getNumericValue(source.right or 0)
+    casino.playerPips = casino.playerPips + pipsAdded
+    chosenTile.id = tostring(source.left) .. tostring(source.right) .. "_cp" .. #gameState.hand
+
+    Hand.updatePositions(gameState.hand, true)  -- skipSort: preserve insertion order
+    Hand.animateTilesDraw(gameState.hand, 0, {chosenTile})
+    casino.waitingForHitAnim = true
+
+    if casino.playerPips > 21 then
+        casino.playerBusted = true
+    end
+end
+
+-- Called by touch.lua when player presses STAND
+function casinoPlayerStand()
+    local casino = gameState.casino
+    if casino.phase ~= "player_turn" or casino.waitingForHitAnim then return end
+    casino.phase = "dealer_turn"
+    casino.dealerDrawTimer = 0.3
+end
+
+function updateCasino(dt)
+    local casino = gameState.casino
+    if not casino then return end
+
+    -- Advance slide animations for all dealer tiles
+    for _, tile in ipairs(casino.dealerTiles) do
+        if tile.sliding then
+            tile.slideProgress = math.min(1.0, tile.slideProgress + dt / tile.slideDuration)
+            local t = 1.0 - (1.0 - tile.slideProgress) ^ 4  -- easeOutQuart
+            tile.visualX = tile.startX + (tile.targetX - tile.startX) * t
+            if tile.slideProgress >= 1.0 then
+                tile.sliding = false
+                UI.Audio.playTilePlaced()
+            end
+        end
+    end
+
+    -- Animate pip count displays
+    if casino.displayedDealerPips < casino.dealerPips then
+        casino.displayedDealerPips = math.min(casino.dealerPips,
+            casino.displayedDealerPips + casino.pipCountSpeed * dt)
+    end
+    if casino.displayedPlayerPips < casino.playerPips then
+        casino.displayedPlayerPips = math.min(casino.playerPips,
+            casino.displayedPlayerPips + casino.pipCountSpeed * dt)
+    end
+
+    local phase = casino.phase
+
+    if phase == "dialogue" then
+        -- Wait for bet dialogue to be dismissed, then deduct bet and spawn dealer tile
+        local d = gameState.dialogueAnimation
+        if not casino.betPaid and not d.isActive then
+            casino.betPaid = true
+            if casino.betAmount > 0 then
+                updateCoins(gameState.coins - casino.betAmount)
+            end
+            casinoSpawnDealerTile()
+            casino.phase = "dealer_draw"
+        end
+
+    elseif phase == "dealer_draw" then
+        -- Wait for tile slide and pip counter to settle, then draw player's first tile
+        local allSlidesDone = true
+        for _, tile in ipairs(casino.dealerTiles) do
+            if tile.sliding then allSlidesDone = false; break end
+        end
+        if allSlidesDone and casino.displayedDealerPips >= casino.dealerPips then
+            casinoDrawPlayerTile()
+            casino.phase = "player_draw"
+        end
+
+    elseif phase == "player_draw" then
+        -- Wait for hand draw animation and pip counter, then enable player input
+        local handDone = true
+        for _, tile in ipairs(gameState.hand) do
+            if tile.isDrawing then handDone = false; break end
+        end
+        if handDone and casino.displayedPlayerPips >= casino.playerPips then
+            casino.phase = "player_turn"
+        end
+
+    elseif phase == "player_turn" then
+        -- Handle post-hit animation wait
+        if casino.waitingForHitAnim then
+            local handDone = true
+            for _, tile in ipairs(gameState.hand) do
+                if tile.isDrawing then handDone = false; break end
+            end
+            if handDone and casino.displayedPlayerPips >= casino.playerPips then
+                casino.waitingForHitAnim = false
+                if casino.playerBusted then
+                    casino.phase = "resolving"
+                end
+                -- else stay in player_turn, buttons reappear
+            end
+        end
+
+    elseif phase == "dealer_turn" then
+        casino.dealerDrawTimer = casino.dealerDrawTimer - dt
+        if casino.dealerDrawTimer <= 0 then
+            -- Only proceed once all current slides and pip count are done
+            local allSlidesDone = true
+            for _, tile in ipairs(casino.dealerTiles) do
+                if tile.sliding then allSlidesDone = false; break end
+            end
+            local pipsDone = (casino.displayedDealerPips >= casino.dealerPips)
+            if allSlidesDone and pipsDone then
+                if casino.dealerPips >= 17 or casino.dealerPips > 21 then
+                    casino.dealerBusted = casino.dealerPips > 21
+                    casino.phase = "resolving"
+                else
+                    casinoSpawnDealerTile()
+                    casino.dealerDrawTimer = casino.dealerDrawDelay
+                end
+            end
+        end
+
+    elseif phase == "resolving" then
+        if not casino.resolved then
+            casino.resolved = true
+
+            if casino.playerBusted then
+                casino.result = "lose"
+            elseif casino.dealerBusted then
+                casino.result = "win"
+            elseif casino.playerPips > casino.dealerPips then
+                casino.result = "win"
+            elseif casino.playerPips == casino.dealerPips then
+                casino.result = "push"
+            else
+                casino.result = "lose"
+            end
+
+            -- Award coins: win returns bet + equal profit (1:1); push returns bet only
+            if casino.result == "win" then
+                updateCoins(gameState.coins + casino.betAmount * 2)
+            elseif casino.result == "push" then
+                updateCoins(gameState.coins + casino.betAmount)
+            end
+
+            -- Show result dialogue
+            local phrases = gameState.dialogueContent.casino_menu and
+                            gameState.dialogueContent.casino_menu[casino.result] or {}
+            local resultText
+            if #phrases > 0 then
+                resultText = phrases[love.math.random(#phrases)]
+            else
+                resultText = casino.result == "win" and "YOU WIN!" or
+                             casino.result == "push" and "PUSH." or "YOU LOSE."
+            end
+            Dialogue.show(resultText, {
+                category = "casino_result",
+                skipDelay = true,
+                requiresAction = false,
+                autoDissmissTime = 3.5
+            })
+
+            casino.phase = "done"
+        end
+    end
+end
+
+-- ── End casino ────────────────────────────────────────────────────────────────
 
 local function updateIrisAnimation(dt)
     local ia = gameState.irisAnimation
@@ -2415,9 +2877,9 @@ end
 -- ── Hand tile fire simulation ─────────────────────────────────────────────────
 -- 2× coarser grid = 2× larger flame pixels. TILE_FIRE_H > TILE_FIRE_SPRITE_H lets
 -- flames overflow above tile. Visual output size is unchanged (renderer scales to fit).
-local TILE_FIRE_W        = 10   -- fire grid width  (controls horizontal pixel size)
-local TILE_FIRE_SPRITE_H = 20   -- fire rows that map to the sprite height
-local TILE_FIRE_H        = 30   -- total fire rows (30-20=10 rows extend above sprite)
+TILE_FIRE_W        = 10   -- fire grid width  (controls horizontal pixel size)
+TILE_FIRE_SPRITE_H = 20   -- fire rows that map to the sprite height
+TILE_FIRE_H        = 30   -- total fire rows (30-20=10 rows extend above sprite)
 
 -- Heat-source mask derived from the domino sprite's alpha channel.
 -- All standard tiles share the same outer rounded-rectangle boundary, so 00.png
@@ -2487,10 +2949,19 @@ local function initTileFire(domino)
     domino.fireImage:setFilter("nearest", "nearest")
 end
 
-local function stepTileFire(domino)
+local function stepTileFire(domino, emitting)
     local grid = domino.fireGrid
-    for x = 1, TILE_FIRE_W do
-        grid[TILE_FIRE_H][x] = heatSourceMask[x]
+    if emitting ~= false then
+        for x = 1, TILE_FIRE_W do
+            grid[TILE_FIRE_H][x] = heatSourceMask[x]
+        end
+    else
+        -- Source gone: kill base glow immediately so no residual heat lingers at the bottom.
+        for x = 1, TILE_FIRE_W do
+            grid[TILE_FIRE_H][x]     = 0
+            grid[TILE_FIRE_H - 1][x] = 0
+            grid[TILE_FIRE_H - 2][x] = 0
+        end
     end
     -- Scatter toward center with alternating scan direction.
     -- Alternating left↔right each step cancels the iteration-order bias that
@@ -2509,14 +2980,16 @@ local function stepTileFire(domino)
             local heat = grid[y][x]
             local xOff, decay
             if y > bodyThreshold then
-                -- Body: near-vertical columns, minimal decay
+                -- Body: near-vertical columns, minimal decay; fast burn-off when source is gone
                 xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
-                decay = love.math.random() < 0.60 and 1 or 0
+                decay = emitting ~= false and (love.math.random() < 0.60 and 1 or 0)
+                                          or love.math.random(8, 12)
             else
                 -- Tips: center-inward scatter, faster decay so flames die naturally
                 local inward = x < mid and 1 or -1
                 xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
-                decay = love.math.random(2, 3)
+                decay = emitting ~= false and love.math.random(2, 3)
+                                          or love.math.random(15, 20)
             end
             local tx = math.max(1, math.min(TILE_FIRE_W, x + xOff))
             grid[y - 1][tx] = math.max(0, heat - decay)
@@ -2539,6 +3012,206 @@ local function updateHandFire()
     for _, domino in ipairs(gameState.hand) do
         if not domino.fireGrid then initTileFire(domino) end
         if _fireFrame == 0 then stepTileFire(domino) end
+    end
+end
+
+-- ── Board tile fire simulation (BEELZEBUB — horizontal/tilted tiles) ──────────
+-- Same visual cell size as the vertical fire (3.2px per cell at native resolution).
+-- Tilted tiles are 64×32 px, so the grid is 20 wide × 15 tall (10 cover sprite, 5 overflow).
+TILE_FIRE_TILTED_W        = 20
+TILE_FIRE_TILTED_SPRITE_H = 10
+TILE_FIRE_TILTED_H        = 12
+
+local heatSourceMaskTilted = (function()
+    local imgData = love.image.newImageData("sprites/titled_tiles/00t.png")
+    local imgW, imgH = imgData:getWidth(), imgData:getHeight()
+    local mask = {}
+    for fx = 1, TILE_FIRE_TILTED_W do
+        local px = math.max(0, math.min(imgW - 1,
+                    math.floor((fx - 0.5) / TILE_FIRE_TILTED_W * imgW)))
+        local inside = false
+        for row = 0, 4 do
+            local _, _, _, a = imgData:getPixel(px, imgH - 1 - row)
+            if a > 0.1 then inside = true; break end
+        end
+        mask[fx] = inside and 36 or 0
+    end
+    return mask
+end)()
+
+local function initTileFireTilted(domino)
+    domino.fireGridTilted = {}
+    for y = 1, TILE_FIRE_TILTED_H do
+        domino.fireGridTilted[y] = {}
+        for x = 1, TILE_FIRE_TILTED_W do
+            domino.fireGridTilted[y][x] = 0
+        end
+    end
+    for seedY = TILE_FIRE_TILTED_H - 2, TILE_FIRE_TILTED_H do
+        for x = 1, TILE_FIRE_TILTED_W do
+            domino.fireGridTilted[seedY][x] = heatSourceMaskTilted[x]
+        end
+    end
+    domino.fireDataTilted  = love.image.newImageData(TILE_FIRE_TILTED_W, TILE_FIRE_TILTED_H)
+    domino.fireImageTilted = love.graphics.newImage(domino.fireDataTilted)
+    domino.fireImageTilted:setFilter("nearest", "nearest")
+end
+
+local function stepTileFireTilted(domino, emitting)
+    local grid = domino.fireGridTilted
+    if emitting ~= false then
+        for x = 1, TILE_FIRE_TILTED_W do
+            grid[TILE_FIRE_TILTED_H][x] = heatSourceMaskTilted[x]
+        end
+    else
+        for x = 1, TILE_FIRE_TILTED_W do
+            grid[TILE_FIRE_TILTED_H][x]     = 0
+            grid[TILE_FIRE_TILTED_H - 1][x] = 0
+            grid[TILE_FIRE_TILTED_H - 2][x] = 0
+        end
+    end
+    local mid = (TILE_FIRE_TILTED_W + 1) * 0.5
+    domino._fireScanLeftTilted = not (domino._fireScanLeftTilted ~= false)
+    local x0, x1, dx = domino._fireScanLeftTilted and 1 or TILE_FIRE_TILTED_W,
+                        domino._fireScanLeftTilted and TILE_FIRE_TILTED_W or 1,
+                        domino._fireScanLeftTilted and 1 or -1
+    local bodyThreshold = TILE_FIRE_TILTED_H - math.floor(TILE_FIRE_TILTED_SPRITE_H * 2 / 3)
+    for y = 2, TILE_FIRE_TILTED_H do
+        for x = x0, x1, dx do
+            local heat = grid[y][x]
+            local xOff, decay
+            if y > bodyThreshold then
+                xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
+                decay = emitting ~= false and (love.math.random() < 0.60 and 1 or 0)
+                                          or love.math.random(8, 12)
+            else
+                local inward = x < mid and 1 or -1
+                xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
+                decay = emitting ~= false and love.math.random(2, 3)
+                                          or love.math.random(15, 20)
+            end
+            local tx = math.max(1, math.min(TILE_FIRE_TILTED_W, x + xOff))
+            grid[y - 1][tx] = math.max(0, heat - decay)
+        end
+    end
+    local data = domino.fireDataTilted
+    for y = 1, TILE_FIRE_TILTED_H do
+        for x = 1, TILE_FIRE_TILTED_W do
+            local col = tileFirePalette[grid[y][x] + 1]
+            data:setPixel(x - 1, y - 1, col[1], col[2], col[3], col[4])
+        end
+    end
+    domino.fireImageTilted:replacePixels(data)
+end
+
+-- BEELZEBUB: apply mutation rules and map new pip values for one tile side
+local function beelzebubTransformPip(value)
+    if value == "even" or value == "odd" then return 3 end
+    if type(value) == "number" and value > 6 then return 6 end
+    return value
+end
+
+-- Starts the board-fire burn animation for BEELZEBUB's onBeforeScore.
+-- Fire sweeps left-to-right across tiles (C), each tile has its own emit window so
+-- particles die out in a staggered wave (A+B). Mutations happen per-tile at their
+-- fire peak so the sprite change is always hidden under flame.
+function animateBeelzebubBurn(tiles, callback)
+    if #tiles == 0 then callback(); return end
+    local newValues = {}
+    for i, tile in ipairs(tiles) do
+        local newLeft  = beelzebubTransformPip(tile.left)
+        local newRight = beelzebubTransformPip(tile.right)
+        if type(newLeft)  == "number" and newLeft  > 0 then newLeft  = newLeft  - 1 end
+        if type(newRight) == "number" and newRight > 0 then newRight = newRight - 1 end
+        newValues[i] = {left = newLeft, right = newRight}
+    end
+    local stagger    = 0.13   -- seconds between each tile igniting
+    local emitWindow = 0.55   -- how long each tile actively spawns particles
+    local fadeDelay  = 0.05   -- brief decay buffer before alpha fade begins
+    local fadeDur    = 0.20   -- alpha fade duration
+    local lastEmitUntil = 0
+    for i, tile in ipairs(tiles) do
+        tile._fireStartAt   = (i - 1) * stagger
+        tile._fireEmitUntil = tile._fireStartAt + emitWindow
+        tile._mutateAt      = tile._fireStartAt + emitWindow * 0.5  -- mutate at fire peak
+        tile._fireAlpha     = 0
+        tile._mutated       = false
+        if tile._fireEmitUntil > lastEmitUntil then
+            lastEmitUntil = tile._fireEmitUntil
+        end
+        if tile.orientation == "vertical" then
+            initTileFire(tile)
+        else
+            initTileFireTilted(tile)
+        end
+    end
+    gameState.beelzebubBurn = {
+        tiles     = tiles,
+        newValues = newValues,
+        timer     = 0,
+        fireFrame = 0,
+        duration  = lastEmitUntil + fadeDelay + fadeDur + 0.05,
+        fadeDelay = fadeDelay,
+        fadeDur   = fadeDur,
+        callback  = callback,
+    }
+end
+
+local function updateBeelzebubBurn(dt)
+    local burn = gameState.beelzebubBurn
+    if not burn then return end
+    burn.timer    = burn.timer + dt
+    burn.fireFrame = (burn.fireFrame + 1) % 6
+    for i, tile in ipairs(burn.tiles) do
+        local t        = burn.timer
+        local started  = t >= tile._fireStartAt
+        local emitting = started and t < tile._fireEmitUntil
+
+        -- A: per-tile alpha — invisible before ignition, full during emit, then fade out
+        if not started then
+            tile._fireAlpha = 0
+        elseif emitting then
+            tile._fireAlpha = 1.0
+        else
+            local fadeStart = tile._fireEmitUntil + burn.fadeDelay
+            tile._fireAlpha = math.max(0, 1.0 - (t - fadeStart) / burn.fadeDur)
+        end
+
+        -- Mutate pips at the midpoint of this tile's fire window (hidden under flames)
+        if not tile._mutated and t >= tile._mutateAt then
+            tile._mutated = true
+            tile.left,      tile.right      = burn.newValues[i].left, burn.newValues[i].right
+            tile.leftScore, tile.rightScore = nil, nil
+            for _, collTile in ipairs(gameState.tileCollection) do
+                if collTile.id == tile.id then
+                    collTile.left,      collTile.right      = tile.left, tile.right
+                    collTile.leftScore, collTile.rightScore = nil, nil
+                    break
+                end
+            end
+        end
+
+        -- B+C: only step fire after ignition; pass emitting so decay accelerates when source stops
+        if started and burn.fireFrame == 0 then
+            if tile.orientation == "vertical" then
+                stepTileFire(tile, emitting)
+            else
+                stepTileFireTilted(tile, emitting)
+            end
+        end
+    end
+    if burn.timer >= burn.duration then
+        for _, tile in ipairs(burn.tiles) do
+            tile.fireGridTilted, tile.fireDataTilted, tile.fireImageTilted = nil, nil, nil
+            tile._fireScanLeftTilted = nil
+            tile.fireGrid, tile.fireData, tile.fireImage = nil, nil, nil
+            tile._fireScanLeft = nil
+            tile._fireStartAt, tile._fireEmitUntil = nil, nil
+            tile._mutateAt, tile._mutated           = nil, nil
+            tile._fireAlpha                         = nil
+        end
+        gameState.beelzebubBurn = nil
+        burn.callback()
     end
 end
 
@@ -2571,6 +3244,8 @@ function love.update(dt)
         if UI.Audio.isMapAmbiancePlaying() then
             UI.Audio.stopMapAmbiance()
         end
+    elseif gameState.gamePhase == "demon_discovery" then
+        updateDemonDiscovery(dt)
     elseif gameState.gamePhase == "round_intro" then
         updateRoundIntro(dt)
         -- Stop map ambiance during round intro
@@ -2593,10 +3268,20 @@ function love.update(dt)
         if gameState.gamePhase == "playing" then
             Hand.update(dt)
             updateHandFire()
+            updateBeelzebubBurn(dt)
             updateScoringSequence(dt)
             updateFormulaCountAnimation(dt)
         end
-    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" then
+    elseif gameState.gamePhase == "casino" then
+        Dialogue.update(dt)
+        updateCasino(dt)
+        -- Dampen map ambiance inside casino
+        if UI.Audio.isMapAmbiancePlaying() then
+            UI.Audio.dampenMapAmbiance()
+        end
+        -- Update hand tile animations
+        Hand.update(dt)
+    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" or gameState.gamePhase == "restore_menu" then
         -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
@@ -2609,7 +3294,7 @@ function love.update(dt)
             -- Handle idle timer for shop/contracts flavour text
             local dialogue = gameState.dialogueAnimation
             local idlePhase = gameState.gamePhase
-            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu") then
+            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu" or idlePhase == "deal_artifacts_menu" or idlePhase == "restore_menu") then
                 dialogue.idleTimer = dialogue.idleTimer + dt
 
                 -- Trigger random idle remark after 10 seconds
@@ -2666,6 +3351,14 @@ function love.update(dt)
                     Hand.updateDrawAnimations(gameState.flattenHand, dt)
                     Hand.updateDiscardAnimations(gameState.flattenHand, dt)
                     Hand.updateIdleAnimations(gameState.flattenHand, dt)
+                end
+            elseif tileNodeType == "mitosis" then
+                -- Update mitosis hand with all animations
+                if gameState.mitosisHand then
+                    Hand.updatePositions(gameState.mitosisHand)
+                    Hand.updateDrawAnimations(gameState.mitosisHand, dt)
+                    Hand.updateDiscardAnimations(gameState.mitosisHand, dt)
+                    Hand.updateIdleAnimations(gameState.mitosisHand, dt)
                 end
             else
                 -- Update shop hand tiles with all animations (like combat hand)
@@ -2752,9 +3445,14 @@ function love.draw()
     -- Each phase draws its own background as before
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.draw()
+        UI.Renderer.drawCollectionMenu()
+        UI.Renderer.drawTitleSettingsMenu()
+        UI.Renderer.drawTitlePlayModal()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "intro_dialogue" then
         UI.Renderer.drawIntroDialogue()
+    elseif gameState.gamePhase == "demon_discovery" then
+        UI.Renderer.drawDemonDiscovery()
     elseif gameState.gamePhase == "round_intro" then
         UI.Renderer.drawRoundIntro()
     elseif gameState.gamePhase == "playing" or gameState.gamePhase == "won" then
@@ -2773,7 +3471,7 @@ function love.draw()
 
         -- Show first tutorial message after UI is rendered (so margins are calculated correctly)
         if gameState.tutorialState and gameState.tutorialState.needsFirstMessage then
-            showTutorialMessage("Try to score " .. gameState.targetScore .. " points")
+            showTutorialMessage(string.format(I18n.t("tutorial_score"), gameState.targetScore))
             gameState.tutorialState.message1Shown = true
             gameState.tutorialState.needsFirstMessage = false
         end
@@ -2803,7 +3501,6 @@ function love.draw()
         UI.Renderer.drawSettingsMenu()
     elseif gameState.gamePhase == "tiles_menu" then
         UI.Renderer.drawTilesMenu()
-        UI.Renderer.drawCombatCandles()
         UI.Renderer.drawDialogue()  -- Draw dialogue on tile shop screen
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -2828,6 +3525,29 @@ function love.draw()
     elseif gameState.gamePhase == "deal_menu" then
         UI.Renderer.drawDealMenu()
         UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "deal_artifacts_menu" then
+        UI.Renderer.drawDealArtifactsMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "restore_menu" then
+        UI.Renderer.drawRestoreMenu()
+        UI.Renderer.drawCombatCandles()
+        UI.Renderer.drawDialogue()
+        UI.Renderer.drawTilesCountButton()
+        UI.Renderer.drawSettingsButton()
+        if gameState.deckPreviewOpen then UI.Renderer.drawDeckPreview() end
+        UI.Renderer.drawSettingsMenu()
+    elseif gameState.gamePhase == "casino" then
+        UI.Renderer.drawCasino()
         UI.Renderer.drawDialogue()
         UI.Renderer.drawTilesCountButton()
         UI.Renderer.drawSettingsButton()
@@ -3260,7 +3980,7 @@ function loadDominoSprites()
             local reverseKey = "even" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = false
+                flipped = true
             }
         end
     end
@@ -3277,7 +3997,7 @@ function loadDominoSprites()
             local reverseKey = "odd" .. i
             dominoTiltedSprites[reverseKey] = {
                 sprite = rawTiltedSprites[key],
-                flipped = false
+                flipped = true
             }
         end
     end
@@ -3419,6 +4139,7 @@ function loadNodeSprites()
         enhance = "tile",    -- ENHANCE nodes use tile sprite (same as alchemy/trade)
         pawn = "tile",       -- PAWN nodes use tile sprite (same as alchemy/trade)
         flatten = "tile",    -- FLATTEN nodes use tile sprite (same as enhance)
+        mitosis = "tile",    -- MITOSIS nodes use tile sprite (same as alchemy)
         start = "tile",      -- Fallback to tile sprite
         boss = "combat"      -- Fallback to combat sprite
     }
@@ -3459,12 +4180,16 @@ function loadDemonIconSprites()
     local demonNames = {
         -- Boss demons
         "LUCIFER", "BEELZEBUB", "ASTAROTH", "ASMODEUS", "LEVIATHAN",
+        "ABADDON", "AZAZEL", "BAAL", "BAPHOMET", "BEPHEGOR",
+        "MEPHISTO", "MOLOCH", "SAMAEL",
         -- Shop demons
         "MAMMON", "PAIMON", "LILITH", "STOLAS",
         -- Other demons (for completeness)
         "BELIAL", "PAZUZU",
         -- Intro dialogue
         "IMPLOYEE",
+        -- Unknown (first-encounter mystery icon)
+        "UNKNOWN",
         -- Fallback
         "NOT_FOUND"
     }
@@ -3533,6 +4258,35 @@ function loadCandleSprites()
     candleLightAnimationTime = 0
     candleLightFrameIndex = 1
     candleLightFrameDuration = 1 / 8  -- 8 fps (slower animation)
+end
+
+function loadContractSprites()
+    contractSprites = {
+        candleholder = nil,
+        candles = {},
+    }
+    if love.filesystem.getInfo("sprites/contracts/candleholder.png") then
+        contractSprites.candleholder = love.graphics.newImage("sprites/contracts/candleholder.png")
+        contractSprites.candleholder:setFilter("nearest", "nearest")
+    end
+    for i = 1, 3 do
+        local filename = "sprites/contracts/candle-contract-" .. i .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local sprite = love.graphics.newImage(filename)
+            sprite:setFilter("nearest", "nearest")
+            contractSprites.candles[i] = sprite
+        end
+    end
+    local groupIds = {"GREED","LUST","ENVY","DECEIT","VAINGLORY","GLUTTONY","PRIDE","WRATH","SLOTH","CRUELTY","UNKNOWN"}
+    contractSprites.groups = {}
+    for _, gid in ipairs(groupIds) do
+        local filename = "sprites/contracts/" .. gid .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local spr = love.graphics.newImage(filename)
+            spr:setFilter("nearest", "nearest")
+            contractSprites.groups[gid] = spr
+        end
+    end
 end
 
 function loadToolSprites()

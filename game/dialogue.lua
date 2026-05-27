@@ -60,7 +60,16 @@ function Dialogue.calculateMaxWidth()
         local iconWidth = demonName ~= "" and (demonFont:getHeight() * 1.3 + UI.Layout.scale(8)) or 0
         local nameWidth = demonFont:getWidth(demonName)
 
-        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+        -- Subtitle is drawn at the same X origin in "large" font and may be wider than the name
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            local subtitleFont = UI.Fonts.get("large")
+            subtitleWidth = subtitleFont:getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40  -- +shadow +40px margin
     elseif phase == "map" then
         -- Map screen: "Night X" counter + shadow
         local dayText = "Night " .. tostring(gameState.currentDay)
@@ -69,27 +78,53 @@ function Dialogue.calculateMaxWidth()
         local nameWidth = dayFont:getWidth(dayText)
 
         leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
-    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" then
+    elseif phase == "casino" then
+        -- Casino: BELIAL demon name + subtitle
+        local demonName = "BELIAL"
+        local demonFont = UI.Fonts.get("demonName")
+        local leftX = UI.Layout.scale(60)
+        local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
+        local nameWidth = demonFont:getWidth(demonName)
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            subtitleWidth = UI.Fonts.get("large"):getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" or phase == "restore_menu" or phase == "deal_artifacts_menu" then
         -- Shop screens: demon name (MAMMON, PAIMON, LILITH, STOLAS) + shadow
         local demonName = "MAMMON"  -- Default for shops (longest name)
         if phase == "artifacts_menu" then
             demonName = "PAIMON"
         elseif phase == "contracts_menu" or phase == "deal_menu" then
             demonName = "STOLAS"
+        elseif phase == "restore_menu" then
+            demonName = "STOLAS"
+        elseif phase == "deal_artifacts_menu" then
+            demonName = "PAIMON"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             demonName = "LILITH"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "enhance" or gameState.currentTilesNodeType == "flatten") then
             demonName = "PAZUZU"
         end
 
-        local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
+        local demonFont = UI.Fonts.get("demonName")
         local leftX = UI.Layout.scale(60)
 
         -- Estimate icon width
         local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
         local nameWidth = demonFont:getWidth(demonName)
 
-        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+        -- Subtitle may be wider than the name (e.g. STOLAS "PRÍNCIPE DEL INFIERNO")
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            subtitleWidth = UI.Fonts.get("large"):getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40  -- +shadow +40px margin
     else
         -- Default: use standard left margin
         leftBoundary = UI.Layout.scale(60) + shadowOffset + 40
@@ -127,46 +162,13 @@ function Dialogue.calculateMaxWidth()
         local roundStartX = rightX - roundWidth - UI.Layout.scale(10)
         rightBoundary = roundStartX - 40  -- -40px margin from leftmost char
 
-    elseif phase == "tiles_menu" then
-        -- Tile shop: "TRADE", "ALCHEMY", or "ENHANCE" title (right-aligned from rightX)
-        local nodeType = gameState.currentTilesNodeType
-        local nodeTitle = (nodeType == "alchemy" or nodeType == "alchemy_subtract") and "ALCHEMY"
-                       or (nodeType == "enhance" or nodeType == "flatten") and "ENHANCE"
-                       or "TRADE"
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth(nodeTitle)
-
-        -- Text starts at: rightX - titleWidth
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "artifacts_menu" then
-        -- Artifacts shop: "ARTIFACTS" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("ARTIFACTS")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "contracts_menu" then
-        -- Contracts: "CONTRACTS" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("CONTRACTS")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
-
-    elseif phase == "deal_menu" then
-        -- Deal: "DEAL" title (right-aligned from rightX)
-        local titleFont = UI.Fonts.get("formulaScore")
-        local rightX = screenWidth - UI.Layout.scale(40)
-        local titleWidth = titleFont:getWidth("DEAL")
-
-        local titleStartX = rightX - titleWidth
-        rightBoundary = titleStartX - 40  -- -40px margin from leftmost char
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" or phase == "casino" then
+        -- All shop/casino screens: >> button in top-right (bigScore * 0.65, rightX = screenWidth - scale(70))
+        local skipFont  = UI.Fonts.get("bigScore")
+        local skipScale = 0.65
+        local btnW      = skipFont:getWidth(">") * skipScale * 2
+        local rightX    = screenWidth - UI.Layout.scale(70)
+        rightBoundary   = rightX - btnW - UI.Layout.scale(15)
 
     else
         -- Default: use standard right margin

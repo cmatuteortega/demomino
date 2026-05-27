@@ -44,11 +44,18 @@ function Map.selectDemonName(usedNames, isBoss)
 end
 
 -- Generate a new DAG-based map with 8-12 depth levels and 5-6 possible paths
-function Map.generateMap(screenWidth, screenHeight, currentNight)
+function Map.generateMap(screenWidth, screenHeight, currentNight, seed)
     -- Use default dimensions if not provided for backward compatibility
     screenWidth = screenWidth or 800
     screenHeight = screenHeight or 600
     currentNight = currentNight or 1
+
+    -- Seeding: generate a seed if none provided, then apply it
+    if not seed then
+        seed = (os.time() * 1000 + math.random(1000)) % 2147483647
+    end
+    love.math.setRandomSeed(seed)
+
     local map = {
         nodes = {},        -- All nodes in the DAG
         levels = {},       -- Nodes organized by depth level
@@ -79,6 +86,7 @@ function Map.generateMap(screenWidth, screenHeight, currentNight)
         screenWidth = screenWidth,
         screenHeight = screenHeight,
         currentNight = currentNight,
+        seed = seed,
 
         -- Legacy compatibility for renderer
         columns = {}
@@ -172,7 +180,7 @@ function Map.createNode(depth, path, nodeType)
         id = nodeId,           -- Unique identifier for DAG
         depth = depth,         -- Level in the DAG (1-12)
         path = path,           -- Path index (1-6)
-        nodeType = nodeType,   -- "start", "combat", "trade", "alchemy", "artifacts", "contracts", "boss"
+        nodeType = nodeType,   -- "start", "combat", "trade", "alchemy", "artifacts", "contracts", "boss", "gamble", "restore"
         completed = false,
         connections = {},      -- Array of connected node IDs (directed edges)
         position = {x = 0, y = 0}, -- Position coordinates
@@ -205,20 +213,26 @@ function Map.assignDemonNames(map)
                 -- TRADE / PAWN node - always MAMMON
                 node.demonName = "MAMMON"
             elseif node.nodeType == "alchemy" then
-                -- ALCHEMY node - always PAIMON
-                node.demonName = "PAIMON"
-            elseif node.nodeType == "alchemy_subtract" then
-                -- ALCHEMY SUBTRACT node - always PAIMON
-                node.demonName = "PAIMON"
-            elseif node.nodeType == "artifacts" then
-                -- ARTIFACTS node - always LILITH
+                -- ALCHEMY node - always LILITH
                 node.demonName = "LILITH"
-            elseif node.nodeType == "contracts" or node.nodeType == "deal" then
-                -- CONTRACTS / DEAL node - always STOLAS
+            elseif node.nodeType == "alchemy_subtract" then
+                -- ALCHEMY SUBTRACT node - always LILITH
+                node.demonName = "LILITH"
+            elseif node.nodeType == "mitosis" then
+                -- MITOSIS node - always LILITH
+                node.demonName = "LILITH"
+            elseif node.nodeType == "artifacts" or node.nodeType == "deal-artifacts" then
+                -- ARTIFACTS / DEAL-ARTIFACTS node - always PAIMON
+                node.demonName = "PAIMON"
+            elseif node.nodeType == "contracts" or node.nodeType == "deal" or node.nodeType == "restore" then
+                -- CONTRACTS / DEAL / RESTORE node - always STOLAS
                 node.demonName = "STOLAS"
             elseif node.nodeType == "enhance" or node.nodeType == "flatten" then
                 -- ENHANCE / FLATTEN node - always PAZUZU
                 node.demonName = "PAZUZU"
+            elseif node.nodeType == "gamble" then
+                -- GAMBLE node - always BELIAL
+                node.demonName = "BELIAL"
             end
         end
     end
@@ -238,14 +252,20 @@ function Map.selectRandomNodeType(depth, numLevels, currentNight)
     -- Weighted non-combat selection
     local roll = love.math.random()
     if roll < 0.40 then
-        local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten"}
+        local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten", "mitosis"}
         return shopGroup[love.math.random(1, #shopGroup)]
-    elseif roll < 0.55 then
+    elseif roll < 0.52 then
         return "contracts"
-    elseif roll < 0.70 then
+    elseif roll < 0.58 then
         return "deal"
-    else
+    elseif roll < 0.64 then
+        return "deal-artifacts"
+    elseif roll < 0.74 then
+        return "restore"
+    elseif roll < 0.90 then
         return "artifacts"
+    else
+        return "gamble"
     end
 end
 

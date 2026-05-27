@@ -4,42 +4,56 @@ UI.Fonts = {}
 local fontCache = {}
 local fontPath = "Pixellari.ttf"
 
-function UI.Fonts.load()
-    fontCache = {}
-    
-    local baseScale = gameState and gameState.screen and gameState.screen.scale or 1
-    
-    local sizes = {
-        small = math.max(12 * baseScale, 8),
-        medium = math.max(16 * baseScale, 12),
-        large = math.max(24 * baseScale, 18),
-        larger = math.max(24 * baseScale, 25),
-        title = math.max(40 * baseScale, 30), 
-        score = math.max(20 * baseScale, 16),
-        bigScore = math.max(96 * baseScale, 72), 
-        demonName = math.max(60 * baseScale, 45),
+local glyphFontCache = {}
+local glyphFontPath  = "glyph.otf"
+
+local function buildSizes(baseScale)
+    return {
+        small        = math.max(12 * baseScale, 8),
+        medium       = math.max(16 * baseScale, 12),
+        large        = math.max(24 * baseScale, 18),
+        larger       = math.max(24 * baseScale, 25),
+        title        = math.max(40 * baseScale, 30),
+        score        = math.max(20 * baseScale, 16),
+        bigScore     = math.max(96 * baseScale, 72),
+        demonName    = math.max(60 * baseScale, 45),
         formulaScore = math.max(72 * baseScale, 54),
-        button = math.max(14 * baseScale, 12),
-        counter = math.max(35 * baseScale, 26)
+        button       = math.max(14 * baseScale, 12),
+        counter      = math.max(35 * baseScale, 26),
     }
-    
+end
+
+function UI.Fonts.load()
+    fontCache      = {}
+    glyphFontCache = {}
+
+    local baseScale = gameState and gameState.screen and gameState.screen.scale or 1
+    local sizes     = buildSizes(baseScale)
+
     for size, pixels in pairs(sizes) do
         if love.filesystem.getInfo(fontPath) then
             fontCache[size] = love.graphics.newFont(fontPath, pixels)
         else
             fontCache[size] = love.graphics.newFont(pixels)
         end
+        if love.filesystem.getInfo(glyphFontPath) then
+            glyphFontCache[size] = love.graphics.newFont(glyphFontPath, pixels)
+        else
+            glyphFontCache[size] = fontCache[size]
+        end
     end
 end
 
 function UI.Fonts.get(size)
     size = size or "medium"
-    
-    if not fontCache[size] then
-        UI.Fonts.load()
-    end
-    
+    if not fontCache[size] then UI.Fonts.load() end
     return fontCache[size] or love.graphics.getFont()
+end
+
+function UI.Fonts.getGlyph(size)
+    size = size or "medium"
+    if not glyphFontCache[size] then UI.Fonts.load() end
+    return glyphFontCache[size] or UI.Fonts.get(size)
 end
 
 function UI.Fonts.recalculate()

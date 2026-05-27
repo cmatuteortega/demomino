@@ -282,7 +282,9 @@ function Domino.clone(domino)
         visualY = domino.visualY or 0,
         dragScale = domino.dragScale or 1.0,
         dragOpacity = domino.dragOpacity or 1.0,
-        isAnimating = domino.isAnimating or false
+        isAnimating = domino.isAnimating or false,
+        baalSum  = domino.baalSum,
+        baalMult = domino.baalMult,
     }
 end
 
