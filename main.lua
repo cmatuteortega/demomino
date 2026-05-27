@@ -298,12 +298,15 @@ function love.load()
         collectionMenuAnim = { y = 0 },
         collectionMenuTab = 1,
         collectionMenuSelectedDemon = nil,
+        collectionMenuSelectedContractGroup = nil,
         collectionMenuScrollY = 0,
         collectionMenuMaxScroll = 0,
         collectionMenuExitButtonPressed = false,
         collectionMenuTabBounds = {},
         collectionMenuDemonBounds = {},
+        collectionMenuContractBounds = {},
         collectionMenuExitBounds = nil,
+        discoveredContractGroups = {},
         titleSettingsMenuOpen         = false,
         titleSettingsMenuAnim         = { y = 0 },
         titleSettingsToggleBounds     = {},
@@ -584,6 +587,7 @@ function love.load()
     -- Load persistent encounter history (survives save resets)
     local stats = Save.loadStats()
     gameState.encounteredDemons = stats.encounteredDemons or {}
+    gameState.discoveredContractGroups = stats.discoveredContractGroups or {}
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -716,9 +720,9 @@ function initializeGame(isNewRound)
     gameState.scoreAnimation = nil
     gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false, yOffset = 0},
-        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -773,9 +777,9 @@ function initializeCombatRound()
     gameState.winSequenceTriggered = false  -- Reset win sequence flag
     gameState.activeDieSprites = {}  -- Clear dice from previous round
     gameState.buttonAnimations = {
-        playButton = {scale = 1.0, pressed = false, yOffset = 0},
-        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-        sortButton = {scale = 1.0, pressed = false, yOffset = 0}
+        playButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0},
+        sortButton = {scale = 1.0, pressed = false, yOffset = 0, pressFloat = 0}
     }
     gameState.maxTilesCounterAnimation = {
         color = {UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], UI.Colors.FONT_WHITE[4]},
@@ -4271,6 +4275,16 @@ function loadContractSprites()
             local sprite = love.graphics.newImage(filename)
             sprite:setFilter("nearest", "nearest")
             contractSprites.candles[i] = sprite
+        end
+    end
+    local groupIds = {"GREED","LUST","ENVY","DECEIT","VAINGLORY","GLUTTONY","PRIDE","WRATH","SLOTH","CRUELTY","UNKNOWN"}
+    contractSprites.groups = {}
+    for _, gid in ipairs(groupIds) do
+        local filename = "sprites/contracts/" .. gid .. ".png"
+        if love.filesystem.getInfo(filename) then
+            local spr = love.graphics.newImage(filename)
+            spr:setFilter("nearest", "nearest")
+            contractSprites.groups[gid] = spr
         end
     end
 end

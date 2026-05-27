@@ -58,6 +58,28 @@ local function getDragThreshold()
     return isMobile and math.max(20, baseThreshold * gameState.screen.scale) or baseThreshold
 end
 
+local function clearMenuInputState()
+    touchState.contractsNextButtonPressed = false
+    touchState.contractsLeftPressed       = false
+    touchState.contractsSignPressed       = false
+    touchState.contractsRightPressed      = false
+    touchState.dealNextButtonPressed      = false
+    touchState.dealAcceptButtonPressed    = false
+    touchState.restoreNextButtonPressed   = false
+    touchState.restoreLeftPressed         = false
+    touchState.restoreSealPressed         = false
+    touchState.restoreRightPressed        = false
+    touchState.isPressed                  = false
+    touchState.touchId                    = nil
+    touchState.draggedTile                = nil
+    touchState.draggedFrom                = nil
+    touchState.draggedIndex               = nil
+    touchState.draggedSlotIndex           = nil
+    touchState.isDraggingMap              = false
+    touchState.pressedToolIndex           = nil
+    touchState.pressedToolId              = nil
+end
+
 local function isInHandArea(x, y)
     local handArea = UI.Layout.getHandArea()
     return x >= handArea.x and x <= handArea.x + handArea.width and
@@ -490,6 +512,7 @@ function Touch.pressed(x, y, istouch, touchId)
             touchState.contractsRightPressed = true
             return
         end
+        return
     end
 
     -- Handle NEXT> and ACCEPT button press on deal screen
@@ -692,9 +715,11 @@ function Touch.pressed(x, y, istouch, touchId)
                 UI.Audio.playButtonTap()
                 gameState.collectionMenuTab = i
                 gameState.collectionMenuSelectedDemon = nil
+                gameState.collectionMenuSelectedContractGroup = nil
                 gameState.collectionMenuScrollY = 0
                 touchState.collectionMenuExitPressed = false
                 touchState.collectionGridPressedDemon = nil
+                touchState.collectionGridPressedContractGroup = nil
                 return
             end
         end
@@ -708,6 +733,7 @@ function Touch.pressed(x, y, istouch, touchId)
         end
         -- Grid area: record press start for tap-vs-drag distinction
         touchState.collectionGridPressedDemon = nil
+        touchState.collectionGridPressedContractGroup = nil
         touchState.collectionGridDragStartY = y
         touchState.collectionGridScrollStart = gameState.collectionMenuScrollY or 0
         touchState.collectionGridIsDragging = false
@@ -715,6 +741,13 @@ function Touch.pressed(x, y, istouch, touchId)
             for _, cell in ipairs(gameState.collectionMenuDemonBounds or {}) do
                 if isPointInRect(x, y, cell) then
                     touchState.collectionGridPressedDemon = cell.name
+                    break
+                end
+            end
+        elseif gameState.collectionMenuTab == 2 then
+            for _, cell in ipairs(gameState.collectionMenuContractBounds or {}) do
+                if isPointInRect(x, y, cell) then
+                    touchState.collectionGridPressedContractGroup = cell.groupId
                     break
                 end
             end
@@ -790,16 +823,26 @@ function Touch.pressed(x, y, istouch, touchId)
             -- Tile shop / pawn / flatten mode: Allow button press
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
+            if gameState.currentTilesNodeType == "flatten" then
+                local anim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+                if anim then
+                    anim.pressFloat = 1.0
+                    UI.Animation.animateTo(anim, {pressFloat = 0}, 0.15, "easeOutQuart")
+                end
+            end
+            return
         elseif gameState.gamePhase == "artifacts_menu" then
             -- Artifacts shop mode: Allow button press for purchasing tools
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
+            return
         elseif #gameState.placedTiles > 0 then
             -- Playing mode: Only if tiles placed
             animateButtonPress("playButton")
             touchState.playButtonPressed = true
+            return
         end
-        return
+        -- alchemy/alchemy_subtract/mitosis/enhance: fall through to emboss section
     end
 
     -- Artifacts reroll: use stored single-centered bounds
@@ -825,12 +868,16 @@ function Touch.pressed(x, y, istouch, touchId)
             if gameState.enhanceButton and isPointInRect(x, y, gameState.enhanceButton) then
                 UI.Audio.playButtonTap()
                 animateButtonPress("playButton")
+                local anim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+                if anim then anim.pressFloat = 1.0; UI.Animation.animateTo(anim, {pressFloat = 0}, 0.15, "easeOutQuart") end
                 return
             end
         elseif nodeType == "alchemy" or nodeType == "alchemy_subtract" then
             if gameState.fuseButton and isPointInRect(x, y, gameState.fuseButton) then
                 UI.Audio.playButtonTap()
                 animateButtonPress("playButton")
+                local anim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+                if anim then anim.pressFloat = 1.0; UI.Animation.animateTo(anim, {pressFloat = 0}, 0.15, "easeOutQuart") end
                 return
             end
             if gameState.fusionRerollButton and isPointInRect(x, y, gameState.fusionRerollButton) then
@@ -842,6 +889,8 @@ function Touch.pressed(x, y, istouch, touchId)
             if gameState.duplicateButton and isPointInRect(x, y, gameState.duplicateButton) then
                 UI.Audio.playButtonTap()
                 animateButtonPress("playButton")
+                local anim = gameState.buttonAnimations and gameState.buttonAnimations.playButton
+                if anim then anim.pressFloat = 1.0; UI.Animation.animateTo(anim, {pressFloat = 0}, 0.15, "easeOutQuart") end
                 return
             end
             if gameState.mitosisRerollButton and isPointInRect(x, y, gameState.mitosisRerollButton) then
@@ -1566,11 +1615,18 @@ function Touch.released(x, y, istouch, touchId)
 
         -- Collection menu grid release: confirm tap only if we didn't drag
         if gameState.collectionMenuOpen and touchState.collectionGridDragStartY ~= nil then
-            if not touchState.collectionGridIsDragging and touchState.collectionGridPressedDemon then
-                UI.Audio.playButtonTap()
-                gameState.collectionMenuSelectedDemon = touchState.collectionGridPressedDemon
+            if not touchState.collectionGridIsDragging then
+                if touchState.collectionGridPressedDemon then
+                    UI.Audio.playButtonTap()
+                    gameState.collectionMenuSelectedDemon = touchState.collectionGridPressedDemon
+                end
+                if touchState.collectionGridPressedContractGroup then
+                    UI.Audio.playButtonTap()
+                    gameState.collectionMenuSelectedContractGroup = touchState.collectionGridPressedContractGroup
+                end
             end
             touchState.collectionGridPressedDemon = nil
+            touchState.collectionGridPressedContractGroup = nil
             touchState.collectionGridDragStartY = nil
             touchState.collectionGridScrollStart = nil
             touchState.collectionGridIsDragging = false
@@ -2492,6 +2548,7 @@ function Touch.released(x, y, istouch, touchId)
                     }, 0.2, "easeOutQuart")
                 end
                 Dialogue.clear()
+                clearMenuInputState()
                 gameState.gamePhase = "map"
             else
                 -- Released outside — reset color
@@ -2602,6 +2659,7 @@ function Touch.released(x, y, istouch, touchId)
                 end
                 UI.Audio.playButtonRelease()
                 Dialogue.clear()
+                clearMenuInputState()
                 gameState.gamePhase = "map"
             else
                 if gameState.dealNextButtonAnimation then
@@ -2642,6 +2700,7 @@ function Touch.released(x, y, istouch, touchId)
                 end
                 UI.Audio.playButtonRelease()
                 Dialogue.clear()
+                clearMenuInputState()
                 gameState.gamePhase = "map"
             else
                 if gameState.dealNextButtonAnimation then
@@ -2677,6 +2736,7 @@ function Touch.released(x, y, istouch, touchId)
                     }, 0.2, "easeOutQuart")
                 end
                 Dialogue.clear()
+                clearMenuInputState()
                 gameState.gamePhase = "map"
             else
                 if gameState.restoreNextButtonAnimation then
@@ -3501,14 +3561,14 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
         touchState.currentX = x
         touchState.currentY = y
 
-        -- Collection menu grid scroll
+        -- Collection menu grid scroll (tab 1 only — tab 2 has 8 items, no scroll needed)
         if gameState.collectionMenuOpen and gameState.gamePhase == "title_screen"
             and touchState.collectionGridDragStartY ~= nil then
             local delta = touchState.collectionGridDragStartY - y
             if math.abs(delta) > UI.Layout.scale(6) then
                 touchState.collectionGridIsDragging = true
             end
-            if touchState.collectionGridIsDragging then
+            if touchState.collectionGridIsDragging and gameState.collectionMenuTab == 1 then
                 local newScroll = (touchState.collectionGridScrollStart or 0) + delta
                 local maxScroll = gameState.collectionMenuMaxScroll or 0
                 gameState.collectionMenuScrollY = math.max(0, math.min(maxScroll, newScroll))
@@ -6497,6 +6557,12 @@ function Touch.purchaseContract(contract)
         expiresAtRound = gameState.currentRound + 3,
     })
 
+    -- Record contract group discovery (first equip only)
+    local groupId = Contracts.getGroupIdForContract(contract.id)
+    if groupId and not (gameState.discoveredContractGroups and gameState.discoveredContractGroups[groupId]) then
+        gameState.discoveredContractGroups = Save.recordDiscoveredContractGroup(groupId)
+    end
+
     -- Trigger purchase dialogue
     local purchaseText = Dialogue.getRandomPhrase("contracts_menu", "purchase")
     if purchaseText then
@@ -7582,6 +7648,11 @@ function Touch.acceptDeal()
             conditionValue = contract.conditionValue,
             expiresAtRound = gameState.currentRound + 3,
         })
+        -- Record contract group discovery (first equip only)
+        local groupId = Contracts.getGroupIdForContract(contract.id)
+        if groupId and not (gameState.discoveredContractGroups and gameState.discoveredContractGroups[groupId]) then
+            gameState.discoveredContractGroups = Save.recordDiscoveredContractGroup(groupId)
+        end
         UI.Animation.createFloatingText("CONTRACT SEALED!", screenCX, screenCY - UI.Layout.scale(60), {
             color = UI.Colors.FONT_PINK, fontSize = "large",
             duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,

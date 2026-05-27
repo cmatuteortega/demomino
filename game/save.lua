@@ -420,7 +420,7 @@ end
 -- Load persistent statistics (separate from save game)
 function Save.loadStats()
     if not love.filesystem.getInfo(STATS_FILE) then
-        return {bestRound = 1, encounteredDemons = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
     end
 
     local success, contents = pcall(function()
@@ -428,7 +428,7 @@ function Save.loadStats()
     end)
 
     if not success or not contents then
-        return {bestRound = 1, encounteredDemons = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
     end
 
     local loadSuccess, stats = pcall(function()
@@ -436,11 +436,14 @@ function Save.loadStats()
     end)
 
     if not loadSuccess or not stats then
-        return {bestRound = 1, encounteredDemons = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
     end
 
     if not stats.encounteredDemons then
         stats.encounteredDemons = {}
+    end
+    if not stats.discoveredContractGroups then
+        stats.discoveredContractGroups = {}
     end
 
     return stats
@@ -459,6 +462,15 @@ function Save.recordEncounteredDemon(demonName)
     stats.encounteredDemons[demonName] = true
     Save.saveStats(stats)
     return stats.encounteredDemons
+end
+
+function Save.recordDiscoveredContractGroup(groupId)
+    if not groupId or groupId == "" then return {} end
+    local stats = Save.loadStats()
+    if not stats.discoveredContractGroups then stats.discoveredContractGroups = {} end
+    stats.discoveredContractGroups[groupId] = true
+    Save.saveStats(stats)
+    return stats.discoveredContractGroups
 end
 
 -- Save persistent statistics

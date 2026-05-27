@@ -110,6 +110,7 @@ local strings = {
         ui_settings        = "SETTINGS",
         ui_loadout         = "LOADOUT",
         ui_demons          = "DEMONS",
+        ui_contracts       = "CONTRACTS",
         -- Tile types
         tile_bone          = "BONE",
         tile_relic         = "RELIC",
@@ -136,6 +137,8 @@ local strings = {
         challenge_banned   = "Number %d banned (no score)",
         ui_tiles_counter   = "Tiles: ",
         ui_instead         = "+5$ INSTEAD",
+        contract_1round    = "1 round remaining",
+        contract_nrounds   = "%d rounds remaining",
         -- Coin award breakdown
         coin_win           = "+1$ win",
         coin_hands         = "+%d$ hands",
@@ -263,6 +266,7 @@ local strings = {
         ui_settings        = "AJUSTES",
         ui_loadout         = "EQUIPAMIENTO",
         ui_demons          = "DEMONIOS",
+        ui_contracts       = "CONTRATOS",
         -- Tile types
         tile_bone          = "HUESO",
         tile_relic         = "RELIQUIA",
@@ -289,6 +293,8 @@ local strings = {
         challenge_banned   = "Número %d prohibido (sin puntaje)",
         ui_tiles_counter   = "Fichas: ",
         ui_instead         = "+5$ EN CAMBIO",
+        contract_1round    = "1 ronda restante",
+        contract_nrounds   = "%d rondas restantes",
         -- Coin award breakdown
         coin_win           = "+1$ ganar",
         coin_hands         = "+%d$ manos",

@@ -79,34 +79,52 @@ function Dialogue.calculateMaxWidth()
 
         leftBoundary = leftX + nameWidth + shadowOffset + 40  -- +shadow +40px margin
     elseif phase == "casino" then
-        -- Casino: BELIAL demon name
+        -- Casino: BELIAL demon name + subtitle
         local demonName = "BELIAL"
         local demonFont = UI.Fonts.get("demonName")
         local leftX = UI.Layout.scale(60)
         local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
         local nameWidth = demonFont:getWidth(demonName)
-        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40
-    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" then
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            subtitleWidth = UI.Fonts.get("large"):getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40
+    elseif phase == "tiles_menu" or phase == "artifacts_menu" or phase == "contracts_menu" or phase == "deal_menu" or phase == "restore_menu" or phase == "deal_artifacts_menu" then
         -- Shop screens: demon name (MAMMON, PAIMON, LILITH, STOLAS) + shadow
         local demonName = "MAMMON"  -- Default for shops (longest name)
         if phase == "artifacts_menu" then
             demonName = "PAIMON"
         elseif phase == "contracts_menu" or phase == "deal_menu" then
             demonName = "STOLAS"
+        elseif phase == "restore_menu" then
+            demonName = "STOLAS"
+        elseif phase == "deal_artifacts_menu" then
+            demonName = "PAIMON"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             demonName = "LILITH"
         elseif phase == "tiles_menu" and (gameState.currentTilesNodeType == "enhance" or gameState.currentTilesNodeType == "flatten") then
             demonName = "PAZUZU"
         end
 
-        local demonFont = UI.Fonts.get("demonName")  -- Changed from formulaScore
+        local demonFont = UI.Fonts.get("demonName")
         local leftX = UI.Layout.scale(60)
 
         -- Estimate icon width
         local iconWidth = demonFont:getHeight() * 1.3 + UI.Layout.scale(8)
         local nameWidth = demonFont:getWidth(demonName)
 
-        leftBoundary = leftX + iconWidth + nameWidth + shadowOffset + 40  -- +shadow +40px margin
+        -- Subtitle may be wider than the name (e.g. STOLAS "PRÍNCIPE DEL INFIERNO")
+        local subtitleWidth = 0
+        local subtitle = DemonData.getSubtitle(demonName)
+        if subtitle ~= "" then
+            subtitleWidth = UI.Fonts.get("large"):getWidth(subtitle)
+        end
+        local textWidth = math.max(nameWidth, subtitleWidth)
+
+        leftBoundary = leftX + iconWidth + textWidth + shadowOffset + 40  -- +shadow +40px margin
     else
         -- Default: use standard left margin
         leftBoundary = UI.Layout.scale(60) + shadowOffset + 40

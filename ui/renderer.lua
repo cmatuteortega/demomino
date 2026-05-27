@@ -1951,7 +1951,7 @@ function UI.Renderer.drawScore(score)
     -- Draw tiles left counter vertically centered at the play/discard/sort button row
     local tilesLeft = #gameState.deck
     local totalTiles = gameState.tileCollection and #gameState.tileCollection or 28
-    local tilesText = "Tiles: " .. tilesLeft .. "/" .. totalTiles
+    local tilesText = I18n.t("ui_tiles_counter") .. tilesLeft .. "/" .. totalTiles
     local tilesColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
 
     local margin = UI.Layout.scale(40)
@@ -2223,7 +2223,9 @@ end
 local function drawEmbossButton(label, x, y, bw, bh, font, faceColor, shadowColor, pressed, enabled)
     local shadowH = UI.Layout.scale(3)
     local cr      = UI.Layout.scale(5)
-    local faceY   = pressed and (y + shadowH) or y
+    -- pressed may be boolean or a 0-1 float (animation-driven)
+    local pressFrac = type(pressed) == "number" and pressed or (pressed and 1 or 0)
+    local faceY   = y + math.floor(shadowH * pressFrac)
     local dimA    = enabled and 1 or 0.45
 
     love.graphics.setColor(shadowColor[1], shadowColor[2], shadowColor[3], dimA)
@@ -3044,7 +3046,9 @@ function UI.Renderer.drawDemonDiscovery()
 
     local textY = screenHeight * 0.35 + UI.Layout.scale(80)
     local textWidth = font:getWidth(displayText)
-    local textX = screenWidth / 2 - textWidth / 2
+    local maxLineWidth = screenWidth * 0.85
+    local dynScale = (textWidth > maxLineWidth) and (maxLineWidth / textWidth) or 1.0
+    local textX = screenWidth / 2 - (textWidth * dynScale) / 2
 
     local currentX = textX
     for charIdx, char in ipairs(utf8chars(displayText)) do
@@ -3054,11 +3058,11 @@ function UI.Renderer.drawDemonDiscovery()
         local animProps = {
             shadow = true,
             shadowOffset = UI.Layout.scale(4),
-            scale = 1.0,
+            scale = dynScale,
             shake = 0
         }
         UI.Fonts.drawAnimatedText(char, currentX, textY + waveOffset, "large", textColor, "left", animProps)
-        currentX = currentX + charWidth
+        currentX = currentX + charWidth * dynScale
     end
 
     gameState.demonDiscoverySkipButtonBounds = nil
@@ -3793,10 +3797,13 @@ function UI.Renderer.drawContractCandles(handArea)
             local baseY = holderY + offset.y * holderScale
             local topY = baseY - ch
 
-            love.graphics.setColor(1, 1, 1, 1)
+            local shopContract = gameState.offeredContracts and gameState.offeredContracts[i]
+            local tint = shopContract and Contracts.getTintForContract(shopContract.id) or {1, 1, 1}
+            love.graphics.setColor(tint[1], tint[2], tint[3], 1)
             love.graphics.draw(candleSprite, cx - cw / 2, topY, 0, holderScale, holderScale)
 
             -- Animated flame on top of the candle
+            love.graphics.setColor(1, 1, 1, 1)
             if candleLightFrames and #candleLightFrames > 0 then
                 local frame = candleLightFrames[candleLightFrameIndex or 1]
                 if frame then
@@ -6456,7 +6463,7 @@ function UI.Renderer.drawEnhanceButton()
     local shadowColor = (faceColor == UI.Colors.FONT_RED) and UI.Colors.FONT_RED_DARK or UI.Colors.OUTLINE
     drawEmbossButton(buttonText, playX, playY + yOffset, buttonWidth, buttonHeight,
         UI.Fonts.get("button"), faceColor, shadowColor,
-        buttonAnim and buttonAnim.pressed or false, enabled)
+        buttonAnim and buttonAnim.pressFloat or 0, enabled)
 
     gameState.enhanceButton = {
         x = playX, y = playY + yOffset,
@@ -6655,7 +6662,7 @@ function UI.Renderer.drawFlattenButton()
 
     drawEmbossButton(buttonText, playX, playY + yOffset, buttonWidth, buttonHeight,
         UI.Fonts.get("button"), UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE,
-        buttonAnim and buttonAnim.pressed or false, enabled)
+        buttonAnim and buttonAnim.pressFloat or 0, enabled)
 
     gameState.flattenButton = {
         x = playX, y = playY + yOffset,
@@ -6864,7 +6871,7 @@ function UI.Renderer.drawFuseButton()
 
     drawEmbossButton(buttonText, playX, playY + yOffset, buttonWidth, buttonHeight,
         UI.Fonts.get("button"), UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE,
-        buttonAnim and buttonAnim.pressed or false, canFuse)
+        buttonAnim and buttonAnim.pressFloat or 0, canFuse)
 
     gameState.fuseButton = {x = playX, y = playY + yOffset, width = buttonWidth, height = buttonHeight, enabled = canFuse}
 end
@@ -7091,7 +7098,7 @@ function UI.Renderer.drawDuplicateButton()
 
     drawEmbossButton(buttonText, playX, playY + yOffset, buttonWidth, buttonHeight,
         UI.Fonts.get("button"), UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE,
-        buttonAnim and buttonAnim.pressed or false, canDuplicate)
+        buttonAnim and buttonAnim.pressFloat or 0, canDuplicate)
 
     gameState.duplicateButton = {x = playX, y = playY + yOffset, width = buttonWidth, height = buttonHeight, enabled = canDuplicate}
 end
@@ -7238,7 +7245,8 @@ function UI.Renderer.drawCombatCandles()
         local flameH = sh * candleScale * 1.25
         local totalH = sh * candleScale + flameH
 
-        love.graphics.setColor(1, 1, 1, 1)
+        local tint = Contracts.getTintForContract(contract.id)
+        love.graphics.setColor(tint[1], tint[2], tint[3], 1)
         love.graphics.draw(candleSprite, cx, handAreaY, 0, candleScale, candleScale, sw / 2, sh / 2)
 
         table.insert(gameState.combatCandleBounds, {
@@ -7250,6 +7258,7 @@ function UI.Renderer.drawCombatCandles()
             pivotY = handAreaY,
         })
 
+        love.graphics.setColor(1, 1, 1, 1)
         if candleLightFrames and #candleLightFrames > 0 and not gameState.samaelActive then
             local flameFrame = candleLightFrames[candleLightFrameIndex or 1]
             if flameFrame then
@@ -7488,15 +7497,16 @@ function UI.Renderer.drawTooltip()
 
     elseif tt.type == "contract" and tt.data then
         local contractSealed = gameState.samaelActive
-        local contractName = I18n.str(tt.data, "name") or I18n.t("ui_contract")
+        local contractDef = (tt.data.id and Contracts.getById(tt.data.id)) or tt.data
+        local contractName = I18n.str(contractDef, "name") or I18n.t("ui_contract")
         local titleText = contractSealed and (contractName .. " " .. I18n.t("ui_contract_sealed")) or contractName
-        local descText  = I18n.str(tt.data, "description") or ""
+        local descText  = I18n.str(contractDef, "description") or ""
         local descColor = contractSealed and {0.5, 0.5, 0.5, 1} or C_BODY
 
         local remainText = ""
         if tt.data.expiresAtRound then
             local remaining = tt.data.expiresAtRound - gameState.currentRound
-            remainText = remaining .. " round" .. (remaining == 1 and "" or "s") .. " remaining"
+            remainText = remaining == 1 and I18n.t("contract_1round") or string.format(I18n.t("contract_nrounds"), remaining)
         end
 
         local fMed   = UI.Fonts.get("medium")
@@ -7619,7 +7629,7 @@ function UI.Renderer.drawTilesCountButton()
     local screenWidth = gameState.screen.width
 
     local total    = gameState.tileCollection and #gameState.tileCollection or 0
-    local tilesText = "Tiles: " .. total
+    local tilesText = I18n.t("ui_tiles_counter") .. total
     local textColor = gameState.deckPreviewTilesButtonAnimation and gameState.deckPreviewTilesButtonAnimation.color or UI.Colors.FONT_PINK
 
     local margin      = UI.Layout.scale(40)
@@ -7834,7 +7844,7 @@ function UI.Renderer.drawCollectionMenu()
     love.graphics.printf(I18n.t("ui_collection"), mx, titleY, mw, "center")
 
     -- Tabs
-    local tabLabels = {I18n.t("ui_demons"), "---", "---"}
+    local tabLabels = {I18n.t("ui_demons"), I18n.t("ui_contracts"), "---"}
     local embossShadH = UI.Layout.scale(4)
     local embossCr    = UI.Layout.scale(4)
 
@@ -7957,6 +7967,52 @@ function UI.Renderer.drawCollectionMenu()
         end
 
         love.graphics.setScissor()
+    elseif gameState.collectionMenuTab == 2 then
+        local cols     = 5
+        local cellPad  = UI.Layout.scale(5)
+        local cellW    = math.floor((mw - pad * 2) / cols)
+        local cellH    = cellW
+        local iconSize = math.floor(cellW * 0.55)
+        local time     = love.timer.getTime()
+
+        gameState.collectionMenuContractBounds = {}
+        for idx, group in ipairs(Contracts.GROUPS) do
+            local col = (idx - 1) % cols
+            local row = math.floor((idx - 1) / cols)
+            local cx  = mx + pad + col * cellW
+            local cy  = gridTop + row * cellH
+
+            gameState.collectionMenuContractBounds[idx] = {
+                x = cx + cellPad*0.5, y = cy + cellPad*0.5 + slideY,
+                width = cellW - cellPad, height = cellH - cellPad,
+                groupId = group.id
+            }
+
+            if gameState.collectionMenuSelectedContractGroup == group.id then
+                love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.35)
+                love.graphics.rectangle("fill", cx + cellPad*0.5, cy + cellPad*0.5,
+                    cellW - cellPad, cellH - cellPad, UI.Layout.scale(3))
+            end
+
+            love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 0.1)
+            love.graphics.setLineWidth(1)
+            love.graphics.rectangle("line", cx + cellPad*0.5, cy + cellPad*0.5,
+                cellW - cellPad, cellH - cellPad, UI.Layout.scale(3))
+
+            local isDiscovered = gameState.discoveredContractGroups and gameState.discoveredContractGroups[group.id]
+            local sprite = contractSprites and contractSprites.groups and (
+                isDiscovered
+                    and (contractSprites.groups[group.id] or contractSprites.groups["UNKNOWN"])
+                    or   contractSprites.groups["UNKNOWN"]
+            )
+            if sprite then
+                local sprW, sprH = sprite:getWidth(), sprite:getHeight()
+                local scale = math.min(iconSize / sprW, iconSize / sprH)
+                local bob = math.sin(time * 1.8 + col * 0.9) * UI.Layout.scale(2)
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(sprite, cx + cellW/2, cy + cellH/2 + bob, 0, scale, scale, sprW/2, sprH/2)
+            end
+        end
     end
 
     -- Detail strip
@@ -7997,6 +8053,53 @@ function UI.Renderer.drawCollectionMenu()
             love.graphics.setFont(descFont)
             love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
             love.graphics.printf(desc, indentX, textY + nameH + UI.Layout.scale(3), mw - pad * 3, "left")
+        end
+    elseif gameState.collectionMenuTab == 2 and gameState.collectionMenuSelectedContractGroup then
+        local gid = gameState.collectionMenuSelectedContractGroup
+        local isDiscovered = gameState.discoveredContractGroups and gameState.discoveredContractGroups[gid]
+        local groupData = nil
+        for _, g in ipairs(Contracts.GROUPS) do
+            if g.id == gid then groupData = g; break end
+        end
+        if groupData then
+            if not isDiscovered then
+                local nameFont = UI.Fonts.get("larger")
+                local indentX  = mx + pad * 2
+                local textY    = detailY + math.floor((detailH - nameFont:getHeight()) / 2)
+                love.graphics.setFont(nameFont)
+                love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
+                love.graphics.print("???", indentX, textY)
+            else
+                local gname    = I18n.str(groupData, "name")
+                local sub      = I18n.str(groupData, "subtitle")
+                local desc2    = I18n.str(groupData, "description")
+                local nameFont = UI.Fonts.get("larger")
+                local subFont  = UI.Fonts.get("large")
+                local descFont = UI.Fonts.get("medium")
+                local nameH    = nameFont:getHeight()
+                local descH    = desc2 ~= "" and (descFont:getHeight() + UI.Layout.scale(3)) or 0
+                local totalH   = nameH + descH
+                local indentX  = mx + pad * 2
+                local textY    = detailY + math.floor((detailH - totalH) / 2)
+
+                love.graphics.setFont(nameFont)
+                love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
+                love.graphics.print(gname, indentX, textY)
+
+                if sub ~= "" then
+                    local nameW    = nameFont:getWidth(gname)
+                    local subBaseY = textY + math.floor((nameH - subFont:getHeight()) / 2)
+                    love.graphics.setFont(subFont)
+                    love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1)
+                    love.graphics.print(sub, indentX + nameW + UI.Layout.scale(8), subBaseY)
+                end
+
+                if desc2 ~= "" then
+                    love.graphics.setFont(descFont)
+                    love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
+                    love.graphics.printf(desc2, indentX, textY + nameH + UI.Layout.scale(3), mw - pad * 3, "left")
+                end
+            end
         end
     end
 
