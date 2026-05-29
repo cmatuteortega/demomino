@@ -41,7 +41,9 @@ local touchState = {
     casinoAgainPressed         = false,
     -- Tool sprite press tracking (for touch release selection)
     pressedToolIndex = nil,
-    pressedToolId = nil
+    pressedToolId = nil,
+    -- Title settings modal toggle tracking
+    titleSettingsPressedToggleKey = nil
 }
 
 -- Adjust drag threshold based on device type and context
@@ -688,14 +690,8 @@ function Touch.pressed(x, y, istouch, touchId)
         for _, b in ipairs(gameState.titleSettingsToggleBounds or {}) do
             if isPointInRect(x, y, b) then
                 UI.Audio.playButtonTap()
-                if b.key == "sfx" then
-                    UI.Audio.toggleSFX(); Save.saveSettings(gameState)
-                elseif b.key == "music" then
-                    UI.Audio.toggleMusic(); Save.saveSettings(gameState)
-                elseif b.key == "tutorial" then
-                    gameState.tutorialEnabled = not gameState.tutorialEnabled
-                    Save.saveSettings(gameState)
-                end
+                gameState.titleSettingsPressedKey = b.key
+                touchState.titleSettingsPressedToggleKey = b.key
                 break
             end
         end
@@ -1770,6 +1766,27 @@ function Touch.released(x, y, istouch, touchId)
                 }, 0.3, "easeOutQuart")
             end
         end
+
+        -- Title settings toggle release: fire action and clear pressed state
+        if touchState.titleSettingsPressedToggleKey then
+            local key = touchState.titleSettingsPressedToggleKey
+            touchState.titleSettingsPressedToggleKey = nil
+            gameState.titleSettingsPressedKey = nil
+            for _, b in ipairs(gameState.titleSettingsToggleBounds or {}) do
+                if b.key == key and isPointInRect(x, y, b) then
+                    if key == "sfx" then
+                        UI.Audio.toggleSFX(); Save.saveSettings(gameState)
+                    elseif key == "music" then
+                        UI.Audio.toggleMusic(); Save.saveSettings(gameState)
+                    elseif key == "tutorial" then
+                        gameState.tutorialEnabled = not gameState.tutorialEnabled
+                        Save.saveSettings(gameState)
+                    end
+                    break
+                end
+            end
+        end
+        gameState.titleSettingsPressedKey = nil
 
         touchState.isPressed = false
         touchState.touchId = nil
@@ -3561,14 +3578,14 @@ function Touch.moved(x, y, dx, dy, istouch, touchId)
         touchState.currentX = x
         touchState.currentY = y
 
-        -- Collection menu grid scroll (tab 1 only — tab 2 has 8 items, no scroll needed)
+        -- Collection menu grid scroll (both tabs)
         if gameState.collectionMenuOpen and gameState.gamePhase == "title_screen"
             and touchState.collectionGridDragStartY ~= nil then
             local delta = touchState.collectionGridDragStartY - y
             if math.abs(delta) > UI.Layout.scale(6) then
                 touchState.collectionGridIsDragging = true
             end
-            if touchState.collectionGridIsDragging and gameState.collectionMenuTab == 1 then
+            if touchState.collectionGridIsDragging then
                 local newScroll = (touchState.collectionGridScrollStart or 0) + delta
                 local maxScroll = gameState.collectionMenuMaxScroll or 0
                 gameState.collectionMenuScrollY = math.max(0, math.min(maxScroll, newScroll))
@@ -4823,14 +4840,9 @@ function Touch.routeToNode(node)
     elseif nodeType == "deal" then
         -- Random contract offer (excluding already-owned)
         gameState.offeredDealContract = Contracts.getRandomForDeal(gameState.activeContracts)
-        -- Build two 1-1 demon tiles for display
-        local t1 = Domino.new(1, 1, 1, 1)
-        t1.tileType = "demon"
-        t1.id = "11"
-        local t2 = Domino.new(1, 1, 1, 1)
-        t2.tileType = "demon"
-        t2.id = "11"
-        gameState.dealDemonTiles = {t1, t2}
+        local tier = (gameState.offeredDealContract and gameState.offeredDealContract.tier) or 4
+        gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
+        Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
         gameState.dealAccepted = false
         gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
         gameState.gamePhase = "deal_menu"
@@ -4847,13 +4859,9 @@ function Touch.routeToNode(node)
     elseif nodeType == "deal-artifacts" then
         local toolOffers = Tools.generateRandomToolOffers(1)
         gameState.offeredDealArtifact = Tools.getDefinition(toolOffers[1])
-        local t1 = Domino.new(1, 1, 1, 1)
-        t1.tileType = "demon"
-        t1.id = "11"
-        local t2 = Domino.new(1, 1, 1, 1)
-        t2.tileType = "demon"
-        t2.id = "11"
-        gameState.dealDemonTiles = {t1, t2}
+        local tier = (gameState.offeredDealArtifact and gameState.offeredDealArtifact.tier) or 4
+        gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
+        Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
         gameState.dealAccepted = false
         gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
         gameState.gamePhase = "deal_artifacts_menu"
@@ -7600,19 +7608,47 @@ end
 -- DEAL NODE HELPERS
 -- ============================================================
 
+-- Seed slide-from-left state on each drawback tile. The renderer will fill in
+-- targetX once it knows the layout; visualX starts off-screen and gets advanced
+-- by updateDealDrawbackSlide(dt) in main.lua.
+function Touch.initDealDrawbackSlide(tiles)
+    if not tiles then return end
+    for i, tile in ipairs(tiles) do
+        tile.visualX = -10000
+        tile.startX = -10000
+        tile.targetX = nil
+        tile.slideProgress = 0
+        tile.slideDuration = 0.5
+        tile.slideDelay = (i - 1) * 0.15
+        tile.sliding = true
+    end
+end
+
+-- Floating-text label for the drawback when accepted, varies by tile type/count.
+local function describeDrawback(tiles)
+    if not tiles or #tiles == 0 then return "" end
+    if #tiles == 1 then
+        local t = tiles[1]
+        if t.tileType == "tender" then
+            return "+1 TENDER " .. tostring(t.left) .. "/" .. tostring(t.right)
+        end
+        return "+1 DEMON " .. tostring(t.left) .. "/" .. tostring(t.right)
+    end
+    return "+" .. #tiles .. " DEMON TILES"
+end
+
 function Touch.acceptDeal()
     if gameState.dealAccepted then return end
     gameState.dealAccepted = true
 
-    -- Add 2 demon 1-1 tiles to collection
-    local d1 = Domino.new(1, 1, 1, 1)
-    d1.tileType = "demon"
-    d1.id = "11"
-    local d2 = Domino.new(1, 1, 1, 1)
-    d2.tileType = "demon"
-    d2.id = "11"
-    table.insert(gameState.tileCollection, d1)
-    table.insert(gameState.tileCollection, d2)
+    -- Add the rolled drawback tiles to the collection
+    local drawback = gameState.dealDemonTiles or {}
+    for _, src in ipairs(drawback) do
+        local t = Domino.new(src.left, src.right, src.leftScore, src.rightScore)
+        t.tileType = src.tileType
+        t.id = src.id
+        table.insert(gameState.tileCollection, t)
+    end
 
     -- Refresh deck from updated collection
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
@@ -7665,7 +7701,7 @@ function Touch.acceptDeal()
         end
     end
 
-    UI.Animation.createFloatingText("+2 DEMON TILES", screenCX, screenCY - UI.Layout.scale(30), {
+    UI.Animation.createFloatingText(describeDrawback(drawback), screenCX, screenCY - UI.Layout.scale(30), {
         color = UI.Colors.FONT_RED, fontSize = "small",
         duration = 2.0, riseDistance = 30, startScale = 0.7, endScale = 1.0,
         easing = "easeOutQuart"
@@ -7677,15 +7713,14 @@ function Touch.acceptArtifactDeal()
     if gameState.dealAccepted then return end
     gameState.dealAccepted = true
 
-    -- Always add 2 demon 1-1 tiles to collection (same as deal)
-    local d1 = Domino.new(1, 1, 1, 1)
-    d1.tileType = "demon"
-    d1.id = "11"
-    local d2 = Domino.new(1, 1, 1, 1)
-    d2.tileType = "demon"
-    d2.id = "11"
-    table.insert(gameState.tileCollection, d1)
-    table.insert(gameState.tileCollection, d2)
+    -- Add the rolled drawback tiles to the collection (same as deal)
+    local drawback = gameState.dealDemonTiles or {}
+    for _, src in ipairs(drawback) do
+        local t = Domino.new(src.left, src.right, src.leftScore, src.rightScore)
+        t.tileType = src.tileType
+        t.id = src.id
+        table.insert(gameState.tileCollection, t)
+    end
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
 
@@ -7722,7 +7757,7 @@ function Touch.acceptArtifactDeal()
         end
     end
 
-    UI.Animation.createFloatingText("+2 DEMON TILES", screenCX, screenCY - UI.Layout.scale(30), {
+    UI.Animation.createFloatingText(describeDrawback(drawback), screenCX, screenCY - UI.Layout.scale(30), {
         color = UI.Colors.FONT_RED, fontSize = "small",
         duration = 2.0, riseDistance = 30, startScale = 0.7, endScale = 1.0,
         easing = "easeOutQuart"

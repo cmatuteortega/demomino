@@ -3,7 +3,7 @@ Tools = {}
 -- Tool definitions
 local toolDefinitions = {
     tileInjector = {
-        id = "tileInjector",
+        id = "tileInjector", tier = 1,
         name = "TILE INJECTOR",       name_es = "INYECTOR DE FICHAS",
         description = "Add 1 extra tile\nfrom deck to hand",
         description_es = "Añade 1 ficha extra\ndel mazo a la mano",
@@ -11,7 +11,7 @@ local toolDefinitions = {
         color = {0.4, 0.8, 1.0, 1}  -- Light Blue
     },
     tileLoader = {
-        id = "tileLoader",
+        id = "tileLoader", tier = 2,
         name = "TILE LOADER",         name_es = "CARGADOR DE FICHAS",
         description = "Add 2 extra tiles\nfrom deck to hand",
         description_es = "Añade 2 fichas extra\ndel mazo a la mano",
@@ -19,7 +19,7 @@ local toolDefinitions = {
         color = {0.3, 0.7, 0.9, 1}  -- Blue
     },
     demonReloader = {
-        id = "demonReloader",
+        id = "demonReloader", tier = 3,
         name = "DEMON RELOADER",      name_es = "RECARGADOR DEMONIO",
         description = "Reload the current\ndemon tile",
         description_es = "Recarga la ficha\ndemonio actual",
@@ -27,7 +27,7 @@ local toolDefinitions = {
         color = {0.9, 0.3, 0.3, 1}  -- Red
     },
     transformer = {
-        id = "transformer",
+        id = "transformer", tier = 2,
         name = "TRANSFORMER",         name_es = "TRANSFORMADOR",
         description = "Transform a tile\nto 6-6 for this round",
         description_es = "Transforma una ficha\na 6-6 esta ronda",
@@ -35,7 +35,7 @@ local toolDefinitions = {
         color = {0.9, 0.7, 0.2, 1}  -- Gold
     },
     extraHand = {
-        id = "extraHand",
+        id = "extraHand", tier = 3,
         name = "EXTRA HAND",          name_es = "MANO EXTRA",
         description = "Gain +1 play\nfor this round",
         description_es = "Gana +1 jugada\npara esta ronda",
@@ -43,7 +43,7 @@ local toolDefinitions = {
         color = {0.5, 0.9, 0.5, 1}  -- Green
     },
     extraDiscard = {
-        id = "extraDiscard",
+        id = "extraDiscard", tier = 2,
         name = "EXTRA DISCARD",       name_es = "DESCARTE EXTRA",
         description = "Gain +1 discard\nfor this round",
         description_es = "Gana +1 descarte\npara esta ronda",
@@ -51,7 +51,7 @@ local toolDefinitions = {
         color = {0.7, 0.4, 0.9, 1}  -- Purple
     },
     knife = {
-        id = "knife",
+        id = "knife", tier = 4,
         name = "KNIFE",               name_es = "CUCHILLO",
         description = "Cut target score\nin half (rounded up)",
         description_es = "Reduce el puntaje objetivo\na la mitad (redondeado arriba)",
@@ -59,7 +59,7 @@ local toolDefinitions = {
         color = {0.9, 0.9, 0.9, 1}  -- Silver/White
     },
     relicTransmuter = {
-        id = "relicTransmuter",
+        id = "relicTransmuter", tier = 4,
         name = "RELIC TRANSMUTER",    name_es = "TRANSMUTADOR RELIQUIA",
         description = "Turn a tile into\nRelic permanently",
         description_es = "Convierte una ficha en\nReliquia permanentemente",
@@ -67,7 +67,7 @@ local toolDefinitions = {
         color = {0.125, 0.145, 0.263, 1}  -- Relic Blue
     },
     tenderTransmuter = {
-        id = "tenderTransmuter",
+        id = "tenderTransmuter", tier = 4,
         name = "TENDER TRANSMUTER",   name_es = "TRANSMUTADOR TIERNO",
         description = "Turn a tile into\nTender permanently",
         description_es = "Convierte una ficha en\nTierno permanentemente",

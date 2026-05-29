@@ -1,6 +1,6 @@
 function love.conf(t)
     t.identity = "demomino"                    -- The name of the save directory
-    t.version = "11.4"                         -- The LÖVE version this game was made for
+    t.version = "12.0"                         -- The LÖVE version this game was made for
     t.console = false                          -- Attach a console (Windows only)
 
     t.window.title = "Domino Deckbuilder"     -- The window title

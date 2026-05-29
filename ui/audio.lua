@@ -649,4 +649,34 @@ function UI.Audio.playDismissDialogue()
     end
 end
 
+local _appPausedSources = {}
+
+function UI.Audio.pauseAll()
+    local ok, paused = pcall(love.audio.pause)
+    if ok and type(paused) == "table" then
+        _appPausedSources = paused
+    else
+        _appPausedSources = {}
+        local function maybePause(s)
+            if s and s:isPlaying() then
+                s:pause()
+                table.insert(_appPausedSources, s)
+            end
+        end
+        maybePause(music)
+        maybePause(mapDinnerAmbiance)
+        maybePause(currentChipLoopSource)
+        maybePause(scoreAnimatingSound)
+    end
+end
+
+function UI.Audio.resumeAll()
+    for _, s in ipairs(_appPausedSources) do
+        if s then
+            love.audio.play(s)
+        end
+    end
+    _appPausedSources = {}
+end
+
 return UI.Audio

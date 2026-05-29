@@ -31,6 +31,7 @@ function love.load()
     require("game.save")
     require("game.tools")
     require("game.contracts")
+    require("game.drawbacks")
     require("game.dialogue")
     require("ui.touch")
     require("ui.layout")
@@ -312,6 +313,7 @@ function love.load()
         titleSettingsToggleBounds     = {},
         titleSettingsExitBounds       = nil,
         titleSettingsExitButtonPressed = false,
+        titleSettingsPressedKey       = nil,
         titlePlayModalOpen              = false,
         titlePlayModalAnim              = { y = 0 },
         titlePlayModalSelectedIcon      = nil,
@@ -2848,6 +2850,28 @@ end
 
 -- ── End casino ────────────────────────────────────────────────────────────────
 
+function updateDealDrawbackSlide(dt)
+    local tiles = gameState.dealDemonTiles
+    if not tiles then return end
+    for _, tile in ipairs(tiles) do
+        if tile.sliding then
+            if (tile.slideDelay or 0) > 0 then
+                tile.slideDelay = tile.slideDelay - dt
+            else
+                tile.slideProgress = math.min(1.0, (tile.slideProgress or 0) + dt / (tile.slideDuration or 0.5))
+                local t = 1.0 - (1.0 - tile.slideProgress) ^ 4  -- easeOutQuart
+                if tile.targetX and tile.startX then
+                    tile.visualX = tile.startX + (tile.targetX - tile.startX) * t
+                end
+                if tile.slideProgress >= 1.0 then
+                    tile.sliding = false
+                    UI.Audio.playTilePlaced()
+                end
+            end
+        end
+    end
+end
+
 local function updateIrisAnimation(dt)
     local ia = gameState.irisAnimation
     if not ia.active then return end
@@ -3215,7 +3239,38 @@ local function updateBeelzebubBurn(dt)
     end
 end
 
+local _appFocused = true
+local _appVisible = true
+local _appPaused = false
+
+local function _pauseApp()
+    if not _appPaused then
+        _appPaused = true
+        UI.Audio.pauseAll()
+    end
+end
+
+local function _resumeApp()
+    if _appFocused and _appVisible and _appPaused then
+        _appPaused = false
+        UI.Audio.resumeAll()
+        love.timer.step()
+    end
+end
+
+function love.focus(focused)
+    _appFocused = focused
+    if focused then _resumeApp() else _pauseApp() end
+end
+
+function love.visible(visible)
+    _appVisible = visible
+    if visible then _resumeApp() else _pauseApp() end
+end
+
 function love.update(dt)
+    if _appPaused then return end
+    if dt > 0.1 then dt = 1/60 end
     Touch.update(dt)
     updateIrisAnimation(dt)
     UI.Animation.update(dt)
@@ -3282,6 +3337,9 @@ function love.update(dt)
         -- Update hand tile animations
         Hand.update(dt)
     elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" or gameState.gamePhase == "restore_menu" then
+        if gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" then
+            updateDealDrawbackSlide(dt)
+        end
         -- Handle mode-specific dialogue for tiles_menu sub-modes
         if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
             updateFusionDialogue(dt)
@@ -3616,19 +3674,22 @@ function love.resize(w, h)
 end
 
 function love.mousepressed(x, y, button, istouch)
-    if istouch or button == 1 then
-        Touch.pressed(x, y, istouch)
+    if istouch then return end  -- Touch events are handled by love.touchpressed
+    if button == 1 then
+        Touch.pressed(x, y, false)
     end
 end
 
 function love.mousereleased(x, y, button, istouch)
-    if istouch or button == 1 then
-        Touch.released(x, y, istouch)
+    if istouch then return end  -- Touch events are handled by love.touchreleased
+    if button == 1 then
+        Touch.released(x, y, false)
     end
 end
 
 function love.mousemoved(x, y, dx, dy, istouch)
-    Touch.moved(x, y, dx, dy, istouch)
+    if istouch then return end  -- Touch events are handled by love.touchmoved
+    Touch.moved(x, y, dx, dy, false)
 end
 
 function love.touchpressed(id, x, y, dx, dy, pressure)

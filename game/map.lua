@@ -1,5 +1,36 @@
 Map = {}
 
+-- Weight per node type per night tier. Nights >= 4 use the [4] column.
+-- Missing key = unavailable on that night. Add a new node = add one row.
+--
+-- Spotlight pattern: a newly-unlocked node carries an above-staple weight on
+-- its introduction night so the player actually encounters it, then settles to
+-- a smaller weight on later nights when newer nodes take the spotlight.
+Map.NODE_WEIGHTS = {
+    -- Always-on staples (demote as more variety unlocks)
+    trade              = { [1]=35, [2]=18, [3]=12, [4]=10 },
+    pawn               = { [1]=20, [2]=12, [3]=9,  [4]=8  },
+    contracts          = { [1]=25, [2]=16, [3]=12, [4]=10 },
+    artifacts          = { [1]=20, [2]=14, [3]=12, [4]=10 },
+    -- Night 2 unlocks (spotlight 16-18 on intro)
+    enhance            = {         [2]=18, [3]=10, [4]=9  },
+    mitosis            = {         [2]=16, [3]=9,  [4]=8  },
+    deal               = {         [2]=16, [3]=9,  [4]=8  },
+    -- Night 3 unlocks (spotlight 12-14 on intro)
+    alchemy            = {                 [3]=14, [4]=9  },
+    flatten            = {                 [3]=12, [4]=8  },
+    restore            = {                 [3]=12, [4]=8  },
+    gamble             = {                 [3]=5,  [4]=3  }, -- capped, kept rare
+    -- Night 4 unlocks (spotlight 12 on intro)
+    alchemy_subtract   = {                         [4]=12 },
+    ["deal-artifacts"] = {                         [4]=12 },
+}
+
+-- Hard caps on how many times a type can appear in one generated map.
+Map.MAX_PER_MAP = {
+    gamble = 1,
+}
+
 -- Select a random demon name from the pool, avoiding recent duplicates
 function Map.selectDemonName(usedNames, isBoss)
     local namePool = isBoss and DemonData.BOSS_DEMON_NAMES or DemonData.REGULAR_DEMON_NAMES
@@ -120,6 +151,9 @@ function Map.generateMap(screenWidth, screenHeight, currentNight, seed)
     table.insert(map.levels[numLevels], bossNode)
     table.insert(map.columns[numLevels], bossNode) -- Legacy
     
+    -- Selection context tracks per-map state for node-type weighting (e.g. cap counts)
+    local selectionContext = { usedCounts = {} }
+
     -- Generate intermediate levels (2 to numLevels-1) with sparse row placement
     for depth = 2, numLevels - 1 do
         -- Select which rows to populate at this level (sparse placement)
@@ -127,20 +161,23 @@ function Map.generateMap(screenWidth, screenHeight, currentNight, seed)
 
         -- Generate nodes for selected rows only
         for _, rowNumber in ipairs(selectedRows) do
-            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentNight)
+            local nodeType = Map.selectRandomNodeType(depth, numLevels, currentNight, selectionContext)
             local node = Map.createNode(depth, rowNumber, nodeType)
             map.nodes[node.id] = node
             table.insert(map.levels[depth], node)
             table.insert(map.columns[depth], node) -- Legacy
         end
     end
-    
+
     -- Generate DAG connections
     Map.generateDAGConnections(map, minConnections, maxConnections)
 
     -- Validate DAG structure and ensure all paths lead to boss
     Map.validateAndFixDAG(map, currentNight)
-    
+
+    -- Avoid two same-type non-combat nodes directly connected on a branch path
+    Map.deduplicateAdjacentNodeTypes(map, currentNight, selectionContext)
+
     -- Set initial available nodes
     Map.updateAvailableNodes(map)
     
@@ -238,34 +275,120 @@ function Map.assignDemonNames(map)
     end
 end
 
--- Select a random node type for regular nodes with balanced distribution
--- Combat nodes appear at levels 2, 5, 8, 11, etc. (every 3 levels) on all nights.
--- Non-combat nodes are weighted: 40% shop-group, 30% contracts, 30% artifacts.
-function Map.selectRandomNodeType(depth, numLevels, currentNight)
-    -- Deterministic combat spacing: depths where depth % 3 == 2 (2, 5, 8, 11…)
-    local isCombatLevel = (depth % 3 == 2)
+-- Pick a non-combat node type using Map.NODE_WEIGHTS, respecting per-map caps
+-- and an optional exclusion list. selectionContext.usedCounts is mutated to
+-- reflect the chosen type so caps (e.g. one gamble per map) hold.
+function Map.pickWeightedType(currentNight, selectionContext, excludeTypes)
+    local nightTier = math.max(1, math.min(currentNight or 1, 4))
+    selectionContext = selectionContext or { usedCounts = {} }
+    selectionContext.usedCounts = selectionContext.usedCounts or {}
 
-    if isCombatLevel then
-        return "combat"
+    local excluded = {}
+    if excludeTypes then
+        for _, t in ipairs(excludeTypes) do
+            excluded[t] = true
+        end
     end
 
-    -- Weighted non-combat selection
-    local roll = love.math.random()
-    if roll < 0.40 then
-        local shopGroup = {"trade", "pawn", "alchemy", "alchemy_subtract", "enhance", "flatten", "mitosis"}
-        return shopGroup[love.math.random(1, #shopGroup)]
-    elseif roll < 0.52 then
-        return "contracts"
-    elseif roll < 0.58 then
-        return "deal"
-    elseif roll < 0.64 then
-        return "deal-artifacts"
-    elseif roll < 0.74 then
-        return "restore"
-    elseif roll < 0.90 then
-        return "artifacts"
-    else
-        return "gamble"
+    local pool = {}
+    local totalWeight = 0
+    for nodeType, weights in pairs(Map.NODE_WEIGHTS) do
+        local w = weights[nightTier]
+        if w and not excluded[nodeType] then
+            local cap = Map.MAX_PER_MAP[nodeType]
+            local count = selectionContext.usedCounts[nodeType] or 0
+            if not cap or count < cap then
+                table.insert(pool, {type = nodeType, weight = w})
+                totalWeight = totalWeight + w
+            end
+        end
+    end
+
+    if totalWeight <= 0 then
+        return "trade" -- defensive fallback; night 1 always has 4 types
+    end
+
+    local roll = love.math.random() * totalWeight
+    local acc = 0
+    local picked = pool[#pool].type
+    for _, entry in ipairs(pool) do
+        acc = acc + entry.weight
+        if roll <= acc then
+            picked = entry.type
+            break
+        end
+    end
+
+    selectionContext.usedCounts[picked] = (selectionContext.usedCounts[picked] or 0) + 1
+    return picked
+end
+
+-- Select a random node type for regular nodes. Combat nodes appear at levels
+-- 2, 5, 8, 11, etc. (every 3 levels). Non-combat nodes use the night-tiered
+-- weighting in Map.NODE_WEIGHTS.
+function Map.selectRandomNodeType(depth, numLevels, currentNight, selectionContext)
+    -- Deterministic combat spacing: depths where depth % 3 == 2 (2, 5, 8, 11…)
+    if (depth % 3) == 2 then
+        return "combat"
+    end
+    return Map.pickWeightedType(currentNight, selectionContext, nil)
+end
+
+-- Reroll non-combat nodes whose type matches any directly-connected predecessor,
+-- so no two same-type non-combat nodes sit next to each other on a branch path.
+function Map.deduplicateAdjacentNodeTypes(map, currentNight, selectionContext)
+    if not map or not map.levels then return end
+    selectionContext = selectionContext or { usedCounts = {} }
+    selectionContext.usedCounts = selectionContext.usedCounts or {}
+
+    -- Build predecessor-type list keyed by target node id
+    local predTypesByNode = {}
+    for _, level in ipairs(map.levels) do
+        for _, node in ipairs(level) do
+            if node.connections then
+                for _, targetId in ipairs(node.connections) do
+                    predTypesByNode[targetId] = predTypesByNode[targetId] or {}
+                    table.insert(predTypesByNode[targetId], node.nodeType)
+                end
+            end
+        end
+    end
+
+    -- Walk levels in depth order so earlier rerolls inform later ones
+    for depth = 2, #map.levels do
+        for _, node in ipairs(map.levels[depth]) do
+            local t = node.nodeType
+            if t ~= "start" and t ~= "boss" and t ~= "combat" then
+                local preds = predTypesByNode[node.id] or {}
+                local conflict = false
+                for _, ptype in ipairs(preds) do
+                    if ptype == t then conflict = true; break end
+                end
+                if conflict then
+                    -- Release the old type from the cap counter before rerolling
+                    if selectionContext.usedCounts[t] and selectionContext.usedCounts[t] > 0 then
+                        selectionContext.usedCounts[t] = selectionContext.usedCounts[t] - 1
+                    end
+                    local newType = Map.pickWeightedType(currentNight, selectionContext, preds)
+                    node.nodeType = newType
+                    -- Keep successors' predecessor-type cache in sync so later
+                    -- depths see this node's new type when checking conflicts.
+                    if node.connections then
+                        for _, targetId in ipairs(node.connections) do
+                            local successorPreds = predTypesByNode[targetId]
+                            if successorPreds then
+                                for i, ptype in ipairs(successorPreds) do
+                                    if ptype == t then
+                                        successorPreds[i] = newType
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 end
 

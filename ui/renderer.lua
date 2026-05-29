@@ -5076,23 +5076,25 @@ function UI.Renderer.drawDealArtifactsArea()
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
 
+    local tiles = gameState.dealDemonTiles or {}
+    local nTiles = math.max(1, #tiles)
+
     local cardWidth   = UI.Layout.scale(180)
     local cardHeight  = UI.Layout.scale(140)
     local betweenGap  = UI.Layout.scale(50)
-    local tilesGroupW = 2 * tileW + tileGap
+    local tilesGroupW = nTiles * tileW + (nTiles - 1) * tileGap
     local totalGroupW = tilesGroupW + betweenGap + cardWidth
     local groupStartX = midX - totalGroupW / 2
 
-    local tile1X = groupStartX
-    local tile2X = groupStartX + tileW + tileGap
-
-    if gameState.dealDemonTiles and gameState.dealDemonTiles[1] then
-        UI.Renderer.drawDomino(gameState.dealDemonTiles[1], tile1X + tileW / 2, centerY,
-            gameState.screen.scale, "vertical", 1.0)
-    end
-    if gameState.dealDemonTiles and gameState.dealDemonTiles[2] then
-        UI.Renderer.drawDomino(gameState.dealDemonTiles[2], tile2X + tileW / 2, centerY,
-            gameState.screen.scale, "vertical", 1.0)
+    for i, tile in ipairs(tiles) do
+        local targetX = groupStartX + (i - 1) * (tileW + tileGap) + tileW / 2
+        if tile.targetX == nil then
+            tile.targetX = targetX
+            tile.startX  = -tileW
+            tile.visualX = tile.visualX or -tileW
+        end
+        local drawX = tile.sliding and tile.visualX or targetX
+        UI.Renderer.drawDomino(tile, drawX, centerY, gameState.screen.scale, "vertical", 1.0)
     end
 
     local arrowX = groupStartX + tilesGroupW + betweenGap / 2
@@ -5396,24 +5398,26 @@ function UI.Renderer.drawDealArea()
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
 
-    -- Center the whole group (2 tiles + gap between tiles/card + card) around midX
+    local tiles = gameState.dealDemonTiles or {}
+    local nTiles = math.max(1, #tiles)
+
+    -- Center the whole group (N tiles + gap between tiles/card + card) around midX
     local cardWidth      = UI.Layout.scale(180)
     local cardHeight     = UI.Layout.scale(140)
     local betweenGap     = UI.Layout.scale(50)   -- wide enough for ">" symbol
-    local tilesGroupW    = 2 * tileW + tileGap
+    local tilesGroupW    = nTiles * tileW + (nTiles - 1) * tileGap
     local totalGroupW    = tilesGroupW + betweenGap + cardWidth
     local groupStartX    = midX - totalGroupW / 2
 
-    local tile1X = groupStartX
-    local tile2X = groupStartX + tileW + tileGap
-
-    if gameState.dealDemonTiles[1] then
-        UI.Renderer.drawDomino(gameState.dealDemonTiles[1], tile1X + tileW / 2, centerY,
-            gameState.screen.scale, "vertical", 1.0)
-    end
-    if gameState.dealDemonTiles[2] then
-        UI.Renderer.drawDomino(gameState.dealDemonTiles[2], tile2X + tileW / 2, centerY,
-            gameState.screen.scale, "vertical", 1.0)
+    for i, tile in ipairs(tiles) do
+        local targetX = groupStartX + (i - 1) * (tileW + tileGap) + tileW / 2
+        if tile.targetX == nil then
+            tile.targetX = targetX
+            tile.startX  = -tileW
+            tile.visualX = tile.visualX or -tileW
+        end
+        local drawX = tile.sliding and tile.visualX or targetX
+        UI.Renderer.drawDomino(tile, drawX, centerY, gameState.screen.scale, "vertical", 1.0)
     end
 
     -- ">" symbol centered in the gap between tiles and card (same style as fuse +/=)
@@ -7974,19 +7978,33 @@ function UI.Renderer.drawCollectionMenu()
         local cellH    = cellW
         local iconSize = math.floor(cellW * 0.55)
         local time     = love.timer.getTime()
+        local scrollY  = gameState.collectionMenuScrollY or 0
+
+        -- Compute and store max scroll
+        local totalRows  = math.ceil(#Contracts.GROUPS / cols)
+        local totalGridH = totalRows * cellH
+        local visibleGridH = gridBottom - gridTop
+        gameState.collectionMenuMaxScroll = math.max(0, totalGridH - visibleGridH)
+
+        -- Scissor to grid area so scrolled icons don't bleed outside
+        local scissorY = math.floor(gridTop + slideY)
+        love.graphics.setScissor(mx, scissorY, mw, math.floor(visibleGridH))
 
         gameState.collectionMenuContractBounds = {}
         for idx, group in ipairs(Contracts.GROUPS) do
             local col = (idx - 1) % cols
             local row = math.floor((idx - 1) / cols)
             local cx  = mx + pad + col * cellW
-            local cy  = gridTop + row * cellH
+            local cy  = gridTop + row * cellH - scrollY
 
             gameState.collectionMenuContractBounds[idx] = {
                 x = cx + cellPad*0.5, y = cy + cellPad*0.5 + slideY,
                 width = cellW - cellPad, height = cellH - cellPad,
                 groupId = group.id
             }
+
+            -- Skip drawing cells fully outside the visible grid region
+            if cy + cellH <= gridTop or cy >= gridBottom then goto continue end
 
             if gameState.collectionMenuSelectedContractGroup == group.id then
                 love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.35)
@@ -8012,7 +8030,11 @@ function UI.Renderer.drawCollectionMenu()
                 love.graphics.setColor(1, 1, 1, 1)
                 love.graphics.draw(sprite, cx + cellW/2, cy + cellH/2 + bob, 0, scale, scale, sprW/2, sprH/2)
             end
+
+            ::continue::
         end
+
+        love.graphics.setScissor()
     end
 
     -- Detail strip
@@ -8188,13 +8210,16 @@ function UI.Renderer.drawTitleSettingsMenu()
         { key = "tutorial", onKey = "ui_tutorial_on", offKey = "ui_tutorial_off", state = gameState.tutorialEnabled },
     }
 
+    local pressedKey = gameState.titleSettingsPressedKey or ""
+    local SHADOW = {0, 0, 0, 1}
+
     gameState.titleSettingsToggleBounds = {}
     for i, t in ipairs(toggles) do
         local ty       = firstToggleY + (i - 1) * (toggleH + embossShadH + toggleGap)
         local label    = I18n.t(t.state and t.onKey or t.offKey)
         local faceCol  = t.state and UI.Colors.BACKGROUND_LIGHT or UI.Colors.BACKGROUND
-        local shadCol  = t.state and UI.Colors.OUTLINE           or {0.06, 0.04, 0.05, 1}
-        drawEmboss(label, toggleX, ty, toggleW, toggleH, toggleFont, faceCol, shadCol, false)
+        local isPressed = pressedKey == t.key
+        drawEmboss(label, toggleX, ty, toggleW, toggleH, toggleFont, faceCol, SHADOW, isPressed)
         gameState.titleSettingsToggleBounds[i] = {
             x = toggleX, y = ty + slideY, width = toggleW, height = toggleH + embossShadH, key = t.key
         }
@@ -8277,6 +8302,8 @@ function UI.Renderer.drawTitlePlayModal()
     local iconSize = math.floor(cellW * 0.55)
     local time     = love.timer.getTime()
 
+    local belialDiscovered = gameState.encounteredDemons and gameState.encounteredDemons["BELIAL"]
+
     -- Draw all 4 cell outlines; populate first 2 with icons
     gameState.titlePlayModalIconBounds = {}
     for col = 0, cols - 1 do
@@ -8296,7 +8323,8 @@ function UI.Renderer.drawTitlePlayModal()
         love.graphics.rectangle("line", cx + cellPad * 0.5, cy + cellPad * 0.5, cellW - cellPad, cellH - cellPad, UI.Layout.scale(3))
 
         if item then
-            local sprite = demonIconSprites and demonIconSprites[item.sprite]
+            local spriteKey = (item.key == "belial" and not belialDiscovered) and "UNKNOWN" or item.sprite
+            local sprite = demonIconSprites and demonIconSprites[spriteKey]
             if sprite then
                 local sprW, sprH = sprite:getWidth(), sprite:getHeight()
                 local scale      = math.min(iconSize / sprW, iconSize / sprH)
@@ -8337,59 +8365,65 @@ function UI.Renderer.drawTitlePlayModal()
             local nameH    = nameFont:getHeight()
             local labelY   = detailY + pad
 
-            love.graphics.setFont(nameFont)
-            love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
-            local displayLabel = (sel == "imployee") and I18n.t("ui_dinner") or item.sprite
-            love.graphics.print(displayLabel, indentX, labelY)
-
-            -- Subtitle: for dinner show best round, otherwise use localized subtitle
-            local subtitle
-            if sel == "imployee" then
-                local stats = Save.loadStats()
-                if stats and stats.bestRound and stats.bestRound > 0 then
-                    subtitle = I18n.t("ui_best_round") .. stats.bestRound
-                else
-                    subtitle = I18n.t("ui_dinner_subtitle")
-                end
-            elseif sel == "belial" then
-                subtitle = DemonData.getSubtitle("BELIAL")
+            if sel == "belial" and not belialDiscovered then
+                love.graphics.setFont(nameFont)
+                love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
+                love.graphics.print("???", indentX, labelY)
             else
-                subtitle = ""
-            end
-            local nameW    = nameFont:getWidth(displayLabel)
-            local subBaseY = labelY + math.floor((nameH - subFont:getHeight()) / 2)
-            love.graphics.setFont(subFont)
-            love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1)
-            love.graphics.print(subtitle, indentX + nameW + UI.Layout.scale(8), subBaseY)
+                love.graphics.setFont(nameFont)
+                love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
+                local displayLabel = (sel == "imployee") and I18n.t("ui_dinner") or item.sprite
+                love.graphics.print(displayLabel, indentX, labelY)
 
-            -- Action buttons
-            local totalBtnW = mw - pad * 3
-            local btnX      = indentX
-            local btnY      = labelY + nameH + btnGap
-            local hasSave   = Save.hasSavedGame()
+                -- Subtitle: for dinner show best round, otherwise use localized subtitle
+                local subtitle
+                if sel == "imployee" then
+                    local stats = Save.loadStats()
+                    if stats and stats.bestRound and stats.bestRound > 0 then
+                        subtitle = I18n.t("ui_best_round") .. stats.bestRound
+                    else
+                        subtitle = I18n.t("ui_dinner_subtitle")
+                    end
+                elseif sel == "belial" then
+                    subtitle = DemonData.getSubtitle("BELIAL")
+                else
+                    subtitle = ""
+                end
+                local nameW    = nameFont:getWidth(displayLabel)
+                local subBaseY = labelY + math.floor((nameH - subFont:getHeight()) / 2)
+                love.graphics.setFont(subFont)
+                love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1)
+                love.graphics.print(subtitle, indentX + nameW + UI.Layout.scale(8), subBaseY)
 
-            local pressedAction = gameState.titlePlayModalActionPressedAction
-            if sel == "imployee" then
-                local halfW   = math.floor((totalBtnW - btnGap) / 2)
-                local ctFace  = hasSave and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND
-                local ctShad  = hasSave and UI.Colors.FONT_RED  or {0.06, 0.04, 0.05, 1}
-                local ctAlpha = hasSave and 1 or 0.4
-                drawEmboss(I18n.t("ui_rsvp"), btnX, btnY, halfW, btnH, btnFont,
-                    UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE, pressedAction == "newgame")
-                gameState.titlePlayModalActionBounds[1] = {
-                    x = btnX, y = btnY + slideY, width = halfW, height = btnH + embossShadH, action = "newgame"
-                }
-                local ctX = btnX + halfW + btnGap
-                drawEmboss(I18n.t("ui_continue"), ctX, btnY, halfW, btnH, btnFont, ctFace, ctShad, pressedAction == "continue", ctAlpha)
-                gameState.titlePlayModalActionBounds[2] = {
-                    x = ctX, y = btnY + slideY, width = halfW, height = btnH + embossShadH, action = "continue"
-                }
-            elseif sel == "belial" then
-                drawEmboss(I18n.t("ui_all_in"), btnX, btnY, totalBtnW, btnH, btnFont,
-                    UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE, pressedAction == "belial")
-                gameState.titlePlayModalActionBounds[1] = {
-                    x = btnX, y = btnY + slideY, width = totalBtnW, height = btnH + embossShadH, action = "belial"
-                }
+                -- Action buttons
+                local totalBtnW = mw - pad * 3
+                local btnX      = indentX
+                local btnY      = labelY + nameH + btnGap
+                local hasSave   = Save.hasSavedGame()
+
+                local pressedAction = gameState.titlePlayModalActionPressedAction
+                if sel == "imployee" then
+                    local halfW   = math.floor((totalBtnW - btnGap) / 2)
+                    local ctFace  = hasSave and UI.Colors.FONT_PINK or UI.Colors.BACKGROUND
+                    local ctShad  = hasSave and UI.Colors.FONT_RED  or {0.06, 0.04, 0.05, 1}
+                    local ctAlpha = hasSave and 1 or 0.4
+                    drawEmboss(I18n.t("ui_rsvp"), btnX, btnY, halfW, btnH, btnFont,
+                        UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE, pressedAction == "newgame")
+                    gameState.titlePlayModalActionBounds[1] = {
+                        x = btnX, y = btnY + slideY, width = halfW, height = btnH + embossShadH, action = "newgame"
+                    }
+                    local ctX = btnX + halfW + btnGap
+                    drawEmboss(I18n.t("ui_continue"), ctX, btnY, halfW, btnH, btnFont, ctFace, ctShad, pressedAction == "continue", ctAlpha)
+                    gameState.titlePlayModalActionBounds[2] = {
+                        x = ctX, y = btnY + slideY, width = halfW, height = btnH + embossShadH, action = "continue"
+                    }
+                elseif sel == "belial" then
+                    drawEmboss(I18n.t("ui_all_in"), btnX, btnY, totalBtnW, btnH, btnFont,
+                        UI.Colors.BACKGROUND_LIGHT, UI.Colors.OUTLINE, pressedAction == "belial")
+                    gameState.titlePlayModalActionBounds[1] = {
+                        x = btnX, y = btnY + slideY, width = totalBtnW, height = btnH + embossShadH, action = "belial"
+                    }
+                end
             end
         end
     end
