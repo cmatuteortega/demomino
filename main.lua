@@ -62,6 +62,7 @@ function love.load()
         },
         debugFireHand = false,    -- set true to draw fire on every hand tile (for testing)
         debugBossOverride = nil,  -- set to a boss name to force all combat nodes to that boss; nil to disable
+        debugNodeTypeOverride = "deal-artifacts", -- set to a node type string (e.g. "deal") to force all non-combat/boss nodes to that type; nil to disable
         deck = {},
         hand = {},
         placedTiles = {},
@@ -1187,13 +1188,19 @@ function updateFormulaCountAnimation(dt)
         end
     end
 
-    -- Animate multiplier display value (counts up by whole numbers)
+    -- Animate multiplier display value smoothly
     if gameState.multiplierDisplayValue < gameState.multiplierTargetValue then
-        -- Count up (instant increment by 1 per tile)
-        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+        gameState.multiplierDisplayValue = gameState.multiplierDisplayValue + (gameState.multiplierCountSpeed or 0) * dt
+        if gameState.multiplierDisplayValue > gameState.multiplierTargetValue then
+            gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+            gameState.multiplierCountSpeed = 0
+        end
     elseif gameState.multiplierDisplayValue > gameState.multiplierTargetValue then
-        -- Count down if needed
-        gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+        gameState.multiplierDisplayValue = gameState.multiplierDisplayValue - (gameState.multiplierCountSpeed or 0) * dt
+        if gameState.multiplierDisplayValue < gameState.multiplierTargetValue then
+            gameState.multiplierDisplayValue = gameState.multiplierTargetValue
+            gameState.multiplierCountSpeed = 0
+        end
     end
 end
 
@@ -1579,6 +1586,7 @@ function startScoringSequence(tiles)
     -- Initialize multiplier display
     gameState.multiplierDisplayValue = 0
     gameState.multiplierTargetValue = 0
+    gameState.multiplierCountSpeed = 0
 
     -- Sort tiles from left to right for visual consistency
     table.sort(gameState.scoringSequence.tiles, function(a, b)
@@ -1599,48 +1607,10 @@ function updateScoringSequence(dt)
             seq.contractBonuses = {}
 
             if not gameState.samaelActive then
-                -- Add Greedy bonus if active
-                local greedyBonus = Contracts.calculateFinalBaseBonus(gameState.activeContracts)
-                if greedyBonus > 0 then
-                    table.insert(seq.contractBonuses, {
-                        name = "GREEDY",
-                        value = greedyBonus,
-                        multiplierBonus = 0,
-                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                    })
-                end
-
-                -- Add Low Stakes conditional base bonus if active
-                local lowStakesBonus = Contracts.calculateConditionalBaseBonus(seq.tiles, gameState.activeContracts)
-                if lowStakesBonus > 0 then
-                    table.insert(seq.contractBonuses, {
-                        name = "LOW STAKES",
-                        value = lowStakesBonus,
-                        multiplierBonus = 0,
-                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                    })
-                end
-
-                -- Add Perfect Loop multiplier bonus if active
-                local perfectLoopBonus = Contracts.calculateMultiplierBonus(seq.tiles, gameState.activeContracts)
-                if perfectLoopBonus > 0 then
-                    table.insert(seq.contractBonuses, {
-                        name = "PERFECT LOOP",
-                        value = 0,  -- Doesn't add to base
-                        multiplierBonus = perfectLoopBonus,
-                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                    })
-                end
-
-                -- Add Small Hand conditional multiplier bonus if active
-                local smallHandBonus = Contracts.calculateConditionalMultiplier(seq.tiles, gameState.activeContracts)
-                if smallHandBonus > 0 then
-                    table.insert(seq.contractBonuses, {
-                        name = "SMALL HAND",
-                        value = 0,  -- Doesn't add to base
-                        multiplierBonus = smallHandBonus,
-                        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}  -- Pink
-                    })
+                local pink = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1}
+                for _, b in ipairs(Contracts.gatherPostTileBonuses(seq.tiles, gameState.activeContracts)) do
+                    b.color = pink
+                    table.insert(seq.contractBonuses, b)
                 end
             end
 
@@ -1695,30 +1665,37 @@ function updateScoringSequence(dt)
 
                     seq.accumulatedValue = seq.accumulatedValue + addedValue
 
-                    -- Increment multiplier counter (1 for regular tile, +1 for relic) — skip if banned
+                    -- Increment multiplier counter — skip if banned
                     if not isBanned then
-                        local multiplierIncrement = 1
-                        if tile.tileType == "relic" then
-                            multiplierIncrement = multiplierIncrement + 1
-                        end
+                        local multiplierIncrement
+                        if tile.baalMult ~= nil then
+                            -- BAAL round: each tile has its own randomized mult (may be 0 for demon tiles)
+                            multiplierIncrement = tile.baalMult
+                        else
+                            multiplierIncrement = 1
+                            if tile.tileType == "relic" then
+                                multiplierIncrement = multiplierIncrement + 1
+                            end
 
-                        -- Dark Exchange: demon tiles give 0 sum + extra mult
-                        if not gameState.samaelActive then
-                            for _, c in ipairs(gameState.activeContracts) do
-                                if c.effectType == "demon_override" and tile.tileType == "demon" then
-                                    -- Undo this tile's sum contribution already added above
-                                    local demonSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
-                                    if Domino.isDouble(tile) then demonSum = demonSum + 10 end
-                                    seq.accumulatedValue = seq.accumulatedValue - demonSum
-                                    gameState.formulaTargetValue = seq.accumulatedValue
-                                    -- Extra mult
-                                    multiplierIncrement = multiplierIncrement + c.effectValue
+                            -- Dark Exchange: demon tiles give 0 sum + extra mult
+                            if not gameState.samaelActive then
+                                for _, c in ipairs(gameState.activeContracts) do
+                                    if c.effectType == "demon_override" and tile.tileType == "demon" then
+                                        -- Undo this tile's sum contribution already added above
+                                        local demonSum = Domino.getValue(tile) + (tile.enhanceBonus or 0)
+                                        if Domino.isDouble(tile) then demonSum = demonSum + 10 end
+                                        seq.accumulatedValue = seq.accumulatedValue - demonSum
+                                        gameState.formulaTargetValue = seq.accumulatedValue
+                                        -- Extra mult
+                                        multiplierIncrement = multiplierIncrement + c.effectValue
+                                    end
                                 end
                             end
                         end
 
                         seq.accumulatedMultiplier = seq.accumulatedMultiplier + multiplierIncrement
                         gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                        gameState.multiplierCountSpeed = math.max(4, math.abs(multiplierIncrement) * 4)
                     end
 
                     -- Set formula target and trigger counting animation
@@ -1749,6 +1726,7 @@ function updateScoringSequence(dt)
                                     seq.accumulatedMultiplier = seq.accumulatedMultiplier + echoMult
                                     gameState.formulaTargetValue = seq.accumulatedValue
                                     gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                                    gameState.multiplierCountSpeed = math.max(4, echoMult * 4)
                                     -- Each echo punch fires after the previous one finishes: 0.4s per hit
                                     local punchDelay = 0.4 * echoHitIndex
                                     local delay = {t = 0}
@@ -1798,6 +1776,7 @@ function updateScoringSequence(dt)
                     if bonus.multiplierBonus and bonus.multiplierBonus > 0 then
                         seq.accumulatedMultiplier = seq.accumulatedMultiplier + bonus.multiplierBonus
                         gameState.multiplierTargetValue = seq.accumulatedMultiplier
+                        gameState.multiplierCountSpeed = math.max(4, bonus.multiplierBonus * 4)
                     end
 
                     -- Set color for this bonus
@@ -1807,7 +1786,7 @@ function updateScoringSequence(dt)
                 else
                     -- Wait for counter to reach target before moving to next bonus
                     local baseReached = (bonus.value == 0 or gameState.formulaDisplayValue >= seq.accumulatedValue - 1)
-                    local multReached = (bonus.multiplierBonus == 0 or gameState.multiplierDisplayValue >= seq.accumulatedMultiplier - 0.5)
+                    local multReached = (bonus.multiplierBonus == 0 or gameState.multiplierDisplayValue >= seq.accumulatedMultiplier - 0.05)
 
                     if baseReached and multReached then
                         seq.contractBonusIndex = seq.contractBonusIndex + 1

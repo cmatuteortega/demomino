@@ -1,12 +1,15 @@
 Domino = {}
+Domino._nextInstanceId = 0
 
 function Domino.new(left, right, leftScore, rightScore)
+    Domino._nextInstanceId = Domino._nextInstanceId + 1
     return {
         left = left,
         right = right,
         leftScore = leftScore,  -- Optional: override scoring value for this side
         rightScore = rightScore,  -- Optional: override scoring value for this side
         id = left .. "-" .. right,
+        instanceId = Domino._nextInstanceId,
         x = 0,
         y = 0,
         rotation = 0,
@@ -195,8 +198,8 @@ function Domino.shuffleDeck(deck)
 end
 
 function Domino.getValue(domino)
-    local leftVal = domino.leftScore or Domino.getNumericValue(domino.left)
-    local rightVal = domino.rightScore or Domino.getNumericValue(domino.right)
+    local leftVal = (type(domino.leftScore) == "number" and domino.leftScore) or Domino.getNumericValue(domino.left)
+    local rightVal = (type(domino.rightScore) == "number" and domino.rightScore) or Domino.getNumericValue(domino.right)
     return leftVal + rightVal + (domino.enhanceBonus or 0)
 end
 
@@ -260,6 +263,7 @@ function Domino.clone(domino)
         leftScore = domino.leftScore,  -- Preserve score overrides
         rightScore = domino.rightScore,  -- Preserve score overrides
         id = domino.id,
+        instanceId = domino.instanceId,
         x = domino.x,
         y = domino.y,
         rotation = domino.rotation,

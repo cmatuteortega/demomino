@@ -861,6 +861,63 @@ function Contracts.calculatePackratMult(tiles, activeContracts)
     return bonus
 end
 
+-- Returns post-tile bonus entries for all active contracts.
+-- Skips effectTypes already animated per-tile (lucky pip, echo, wild card, demon override, etc.).
+-- Each entry: {name, value (sum), multiplierBonus (mult)} — caller adds color.
+-- To add a new contract: define it in Contracts.definitions and add one elseif here.
+function Contracts.gatherPostTileBonuses(tiles, activeContracts)
+    local skipTypes = {
+        tile_pip_bonus          = true,
+        special_tile_sum_bonus  = true,
+        echo_pip_bonus          = true,
+        tile_type_mult_override = true,
+        demon_override          = true,
+        coin_reward_per_pip     = true,
+        all_doubles_final_mult  = true,
+    }
+
+    local entries = {}
+    for _, contract in ipairs(activeContracts) do
+        if not skipTypes[contract.effectType] then
+            local sv, mv = 0, 0
+            local et = contract.effectType
+            local w  = {contract}
+
+            if     et == "final_base_bonus"             then sv = Contracts.calculateFinalBaseBonus(w)
+            elseif et == "conditional_base_bonus"       then sv = Contracts.calculateConditionalBaseBonus(tiles, w)
+            elseif et == "multiplier_bonus"             then mv = Contracts.calculateMultiplierBonus(tiles, w)
+            elseif et == "conditional_multiplier_bonus" then mv = Contracts.calculateConditionalMultiplier(tiles, w)
+            elseif et == "flat_mult_bonus"              then mv = Contracts.calculateFlatMultBonus(w)
+            elseif et == "tile_type_mult_bonus"         then mv = Contracts.calculateTileTypeMultBonus(tiles, w)
+            elseif et == "hand_relic_mult_bonus"        then mv = Contracts.calculateHandRelicMult(w)
+            elseif et == "chain_length_mult"            then mv = Contracts.calculateLongHaulMult(tiles, w)
+            elseif et == "all_in_mult"                  then mv = Contracts.calculateAllInMult(tiles, w)
+            elseif et == "zero_hero_base"               then sv = Contracts.calculateZeroHeroBase(tiles, w)
+            elseif et == "bookends_base"                then sv = Contracts.calculateBookendsBase(tiles, w)
+            elseif et == "dead_end_mult"                then mv = Contracts.calculateDeadEndMult(tiles, w)
+            elseif et == "double_down_base"             then sv = Contracts.calculateDoubleDownBase(tiles, w)
+            elseif et == "no_doubles_mult"              then mv = Contracts.calculateNoDoublesMult(tiles, w)
+            elseif et == "all_even_pips" then
+                local b = Contracts.calculateAllEvenPipsBonus(tiles, w)
+                sv, mv = b.sumBonus, b.multBonus
+            elseif et == "all_odd_pips" then
+                local b = Contracts.calculateAllOddPipsBonus(tiles, w)
+                sv, mv = b.sumBonus, b.multBonus
+            elseif et == "tide_pool_base"               then sv = Contracts.calculateTidePoolBase(tiles, w)
+            elseif et == "miser_mult"                   then mv = Contracts.calculateMiserMult(w)
+            elseif et == "grudge_mult"                  then mv = Contracts.calculateGrudgeMult(w)
+            elseif et == "relic_pact_base"              then sv = Contracts.calculateRelicPactBase(tiles, w)
+            elseif et == "packrat_mult"                 then mv = Contracts.calculatePackratMult(tiles, w)
+            end
+
+            if sv ~= 0 or mv ~= 0 then
+                table.insert(entries, {name = contract.name, value = sv, multiplierBonus = mv})
+            end
+        end
+    end
+    return entries
+end
+
 -- Get contract display name with formatting
 function Contracts.getDisplayName(contract)
     return contract.name

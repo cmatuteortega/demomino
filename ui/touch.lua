@@ -80,6 +80,12 @@ local function clearMenuInputState()
     touchState.isDraggingMap              = false
     touchState.pressedToolIndex           = nil
     touchState.pressedToolId              = nil
+    if gameState.tooltip then
+        gameState.tooltip.visible = false
+        gameState.tooltip.fadeIn  = false
+        gameState.tooltip.fadeOut = false
+        gameState.tooltip.opacity = 0.0
+    end
 end
 
 local function isInHandArea(x, y)
@@ -538,6 +544,20 @@ function Touch.pressed(x, y, istouch, touchId)
                 return
             end
         end
+        if gameState.toolSpriteBounds then
+            for i = #gameState.toolSpriteBounds, 1, -1 do
+                local spriteBound = gameState.toolSpriteBounds[i]
+                if isPointInRect(x, y, spriteBound) then
+                    touchState.pressedToolIndex = spriteBound.toolIndex
+                    touchState.pressedToolId    = spriteBound.toolId
+                    if not gameState.toolStackExplosion.isExploded and not gameState.toolStackExplosion.isCollapsing then
+                        gameState.toolStackExplosion.isExploded = true
+                        gameState.toolStackExplosion.explosionProgress = 0
+                    end
+                    return
+                end
+            end
+        end
         return
     end
 
@@ -559,6 +579,20 @@ function Touch.pressed(x, y, istouch, touchId)
                 UI.Audio.playButtonTap()
                 touchState.dealAcceptButtonPressed = true
                 return
+            end
+        end
+        if gameState.toolSpriteBounds then
+            for i = #gameState.toolSpriteBounds, 1, -1 do
+                local spriteBound = gameState.toolSpriteBounds[i]
+                if isPointInRect(x, y, spriteBound) then
+                    touchState.pressedToolIndex = spriteBound.toolIndex
+                    touchState.pressedToolId    = spriteBound.toolId
+                    if not gameState.toolStackExplosion.isExploded and not gameState.toolStackExplosion.isCollapsing then
+                        gameState.toolStackExplosion.isExploded = true
+                        gameState.toolStackExplosion.explosionProgress = 0
+                    end
+                    return
+                end
             end
         end
         return
@@ -2698,6 +2732,57 @@ function Touch.released(x, y, istouch, touchId)
             touchState.touchId   = nil
             return
         end
+        if touchState.pressedToolIndex and not Touch.isDragging() then
+            local toolId = touchState.pressedToolId
+            local bound  = nil
+            if toolId and gameState.toolSpriteBounds then
+                for _, b in ipairs(gameState.toolSpriteBounds) do
+                    if b.toolIndex == touchState.pressedToolIndex then bound = b; break end
+                end
+            end
+            touchState.pressedToolIndex = nil
+            touchState.pressedToolId    = nil
+            if bound and isPointInRect(x, y, bound) then
+                local tipX = bound.x + bound.width  / 2
+                local tipY = bound.y + bound.height / 2
+                Touch.showTooltip("tool", {id = toolId}, tipX, tipY, {
+                    toolContext    = "stack",
+                    spriteHalfH    = bound.height / 2,
+                    toolSpriteLeft = bound.x,
+                })
+                local def = Tools.getDefinition(toolId)
+                if def then
+                    UI.Animation.createFloatingText(
+                        I18n.str(def, "name"),
+                        tipX, tipY - bound.height / 2,
+                        { color = UI.Colors.FONT_WHITE, fontSize = "large",
+                          duration = 1.2, riseDistance = UI.Layout.scale(25),
+                          startScale = 0.8, endScale = 1.0, easing = "easeOutQuart" }
+                    )
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+        end
+        do
+            local sampleSprite = dominoSprites and dominoSprites["00"]
+            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+            local ss       = math.max(minScale * 2.0, 1.0)
+            local tileW    = sampleSprite and (sampleSprite.sprite:getWidth()  * ss) or UI.Layout.scale(50)
+            local tileH    = sampleSprite and (sampleSprite.sprite:getHeight() * ss) or UI.Layout.scale(100)
+            local boardArea = UI.Layout.getBoardArea()
+            local centerY  = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
+            for _, tile in ipairs(gameState.dealDemonTiles or {}) do
+                local drawX = tile.sliding and tile.visualX or tile.targetX
+                if drawX and math.abs(x - drawX) <= tileW / 2 and math.abs(y - centerY) <= tileH / 2 then
+                    Touch.showTooltip("tile", tile, drawX, centerY, { spriteHalfH = tileH / 2 })
+                    touchState.isPressed = false
+                    touchState.touchId   = nil
+                    return
+                end
+            end
+        end
         touchState.isPressed = false
         touchState.touchId   = nil
         return
@@ -2738,6 +2823,57 @@ function Touch.released(x, y, istouch, touchId)
             touchState.isPressed = false
             touchState.touchId   = nil
             return
+        end
+        if touchState.pressedToolIndex and not Touch.isDragging() then
+            local toolId = touchState.pressedToolId
+            local bound  = nil
+            if toolId and gameState.toolSpriteBounds then
+                for _, b in ipairs(gameState.toolSpriteBounds) do
+                    if b.toolIndex == touchState.pressedToolIndex then bound = b; break end
+                end
+            end
+            touchState.pressedToolIndex = nil
+            touchState.pressedToolId    = nil
+            if bound and isPointInRect(x, y, bound) then
+                local tipX = bound.x + bound.width  / 2
+                local tipY = bound.y + bound.height / 2
+                Touch.showTooltip("tool", {id = toolId}, tipX, tipY, {
+                    toolContext    = "stack",
+                    spriteHalfH    = bound.height / 2,
+                    toolSpriteLeft = bound.x,
+                })
+                local def = Tools.getDefinition(toolId)
+                if def then
+                    UI.Animation.createFloatingText(
+                        I18n.str(def, "name"),
+                        tipX, tipY - bound.height / 2,
+                        { color = UI.Colors.FONT_WHITE, fontSize = "large",
+                          duration = 1.2, riseDistance = UI.Layout.scale(25),
+                          startScale = 0.8, endScale = 1.0, easing = "easeOutQuart" }
+                    )
+                end
+                touchState.isPressed = false
+                touchState.touchId   = nil
+                return
+            end
+        end
+        do
+            local sampleSprite = dominoSprites and dominoSprites["00"]
+            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+            local ss       = math.max(minScale * 2.0, 1.0)
+            local tileW    = sampleSprite and (sampleSprite.sprite:getWidth()  * ss) or UI.Layout.scale(50)
+            local tileH    = sampleSprite and (sampleSprite.sprite:getHeight() * ss) or UI.Layout.scale(100)
+            local boardArea = UI.Layout.getBoardArea()
+            local centerY  = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
+            for _, tile in ipairs(gameState.dealDemonTiles or {}) do
+                local drawX = tile.sliding and tile.visualX or tile.targetX
+                if drawX and math.abs(x - drawX) <= tileW / 2 and math.abs(y - centerY) <= tileH / 2 then
+                    Touch.showTooltip("tile", tile, drawX, centerY, { spriteHalfH = tileH / 2 })
+                    touchState.isPressed = false
+                    touchState.touchId   = nil
+                    return
+                end
+            end
         end
         touchState.isPressed = false
         touchState.touchId   = nil
@@ -2954,28 +3090,45 @@ function Touch.released(x, y, istouch, touchId)
         end
 
         if releasedOnSameTool then
-            -- Select the tool (on release, not press)
-            Touch.selectToolSprite(touchState.pressedToolIndex, touchState.pressedToolId)
-            -- Show tooltip for the tapped tool (requires a hold)
-            if true then
-                local toolId = touchState.pressedToolId
+            local toolId = touchState.pressedToolId
+            local bound  = nil
+            if toolId and gameState.toolSpriteBounds then
+                for _, b in ipairs(gameState.toolSpriteBounds) do
+                    if b.toolIndex == touchState.pressedToolIndex then bound = b; break end
+                end
+            end
+            local tipX = bound and (bound.x + bound.width  / 2) or x
+            local tipY = bound and (bound.y + bound.height / 2) or y
+
+            if gameState.gamePhase == "deal_artifacts_menu" then
+                -- Tooltip-only: no selection, no drag prep
                 if toolId then
-                    local bound = nil
-                    for _, b in ipairs(gameState.toolSpriteBounds) do
-                        if b.toolIndex == touchState.pressedToolIndex then
-                            bound = b
-                            break
-                        end
+                    Touch.showTooltip("tool", {id = toolId}, tipX, tipY, {
+                        toolContext    = "stack",
+                        spriteHalfH    = bound and bound.height / 2 or 0,
+                        toolSpriteLeft = bound and bound.x or 0,
+                    })
+                    local def = Tools.getDefinition(toolId)
+                    if def then
+                        UI.Animation.createFloatingText(
+                            I18n.str(def, "name"),
+                            tipX, tipY - (bound and bound.height / 2 or UI.Layout.scale(30)),
+                            { color = UI.Colors.FONT_WHITE, fontSize = "large",
+                              duration = 1.2, riseDistance = UI.Layout.scale(25),
+                              startScale = 0.8, endScale = 1.0, easing = "easeOutQuart" }
+                        )
                     end
+                end
+            else
+                -- Normal flow: select tool + tooltip
+                Touch.selectToolSprite(touchState.pressedToolIndex, toolId)
+                if toolId then
                     if bound then
-                        Touch.showTooltip("tool", {id = toolId},
-                            bound.x + bound.width / 2,
-                            bound.y + bound.height / 2,
-                            {
-                                toolContext    = "stack",
-                                spriteHalfH    = bound.height / 2,
-                                toolSpriteLeft = bound.x,
-                            })
+                        Touch.showTooltip("tool", {id = toolId}, tipX, tipY, {
+                            toolContext    = "stack",
+                            spriteHalfH    = bound.height / 2,
+                            toolSpriteLeft = bound.x,
+                        })
                     else
                         Touch.showTooltip("tool", {id = toolId}, x, y, {toolContext = "stack"})
                     end
@@ -3881,7 +4034,7 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
 
     -- Check if this tile is already placed on the board
     for _, placedTile in ipairs(gameState.placedTiles) do
-        if placedTile.id == tile.id then
+        if placedTile.instanceId == tile.instanceId then
             return false  -- Prevent duplicate placement
         end
     end
@@ -3974,7 +4127,7 @@ function Touch.placeTileOnBoard(tile, handIndex, dragX, dragY)
 
         -- Find the placed tile and animate it to its final board position
         for _, placedTile in ipairs(gameState.placedTiles) do
-            if placedTile.id == clonedTile.id then
+            if placedTile.instanceId == clonedTile.instanceId then
                 -- Start animation from current drag position to final board position
                 placedTile.visualX = tile.dragX or tile.visualX
                 placedTile.visualY = tile.dragY or tile.visualY
@@ -4540,6 +4693,9 @@ end
 -- Route to the node's screen — called after any interstitials (e.g. demon_discovery) are done
 function Touch.routeToNode(node)
     local nodeType = node.nodeType
+    if gameState.debugNodeTypeOverride and nodeType ~= "combat" and nodeType ~= "boss" and nodeType ~= "start" then
+        nodeType = gameState.debugNodeTypeOverride
+    end
     if nodeType == "combat" or nodeType == "boss" then
         -- Mark if this is the boss node (map completion)
         gameState.isBossRound = Map.isCompleted(gameState.currentMap)

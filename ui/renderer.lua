@@ -1283,8 +1283,9 @@ function UI.Renderer.drawToolStack()
         return
     end
 
-    -- Allow interaction in playing phase and artifacts menu
-    local isInteractive = (gameState.gamePhase == "playing" or gameState.gamePhase == "artifacts_menu")
+    -- Allow interaction in playing phase, artifacts menu, and deal-artifacts (tooltip-only)
+    local isInteractive = (gameState.gamePhase == "playing" or gameState.gamePhase == "artifacts_menu"
+                           or gameState.gamePhase == "deal_artifacts_menu" or gameState.gamePhase == "deal_menu")
 
     if isInteractive then
         -- Reset tool sprite bounds for click detection
@@ -1860,7 +1861,8 @@ function UI.Renderer.drawScore(score)
 
             -- Line 2: Multiplier display in pink (×N) - only if multiplier > 0
             if gameState.multiplierDisplayValue and gameState.multiplierDisplayValue > 0 then
-                local multiplierText = "×" .. math.floor(gameState.multiplierDisplayValue)
+                local mv = gameState.multiplierDisplayValue
+                local multiplierText = mv == math.floor(mv) and ("×" .. math.floor(mv)) or string.format("×%.1f", mv)
                 local multiplierColor = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], formulaOpacity}
 
                 -- Right-indent the multiplier text
@@ -1900,7 +1902,8 @@ function UI.Renderer.drawScore(score)
 
             -- Line 2: Multiplier display in pink (×N) with fusion animation
             if gameState.multiplierDisplayValue and gameState.multiplierDisplayValue > 0 then
-                local multiplierText = "×" .. math.floor(gameState.multiplierDisplayValue)
+                local mv = gameState.multiplierDisplayValue
+                local multiplierText = mv == math.floor(mv) and ("×" .. math.floor(mv)) or string.format("×%.1f", mv)
 
                 -- Get fusion animation progress from formulaAnimation
                 local fusionProgress = gameState.formulaAnimation.fusionProgress or 0
@@ -4951,24 +4954,6 @@ function UI.Renderer.drawDealMenu()
         end
     end
 
-    -- Active contracts at bottom
-    local activeY    = screenHeight - UI.Layout.scale(120)
-    local activeText = I18n.t("ui_active") .. " (" .. #gameState.activeContracts .. "/2)"
-    UI.Fonts.drawText(activeText, centerX, activeY, "large", UI.Colors.FONT_WHITE, "center")
-
-    if #gameState.activeContracts > 0 then
-        local aCardW   = UI.Layout.scale(150)
-        local aCardH   = UI.Layout.scale(80)
-        local aSpacing = UI.Layout.scale(20)
-        local aTotalW  = (#gameState.activeContracts * aCardW) + aSpacing
-        local aStartX  = centerX - aTotalW / 2
-        local aCardY   = activeY + UI.Layout.scale(35)
-        for i, contract in ipairs(gameState.activeContracts) do
-            local aCardX = aStartX + (i - 1) * (aCardW + aSpacing)
-            UI.Renderer.drawActiveContractCard(contract, aCardX, aCardY, aCardW, aCardH)
-        end
-    end
-
     UI.Renderer.drawDealArea()
     UI.Renderer.drawDealAcceptButton()
     UI.Renderer.drawDealNextButton()
@@ -5067,7 +5052,7 @@ function UI.Renderer.drawDealArtifactsArea()
     if gameState.dealAccepted then return end
     local boardArea = UI.Layout.getBoardArea()
     local midX      = boardArea.x + boardArea.width / 2
-    local centerY   = boardArea.y + boardArea.height / 2
+    local centerY   = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
 
     local sampleSprite = dominoSprites and dominoSprites["00"]
     local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
@@ -5079,15 +5064,15 @@ function UI.Renderer.drawDealArtifactsArea()
     local tiles = gameState.dealDemonTiles or {}
     local nTiles = math.max(1, #tiles)
 
+    -- ">" anchored at midX; tiles flush-left of it, reward flush-right, equal gap both sides
     local cardWidth   = UI.Layout.scale(180)
     local cardHeight  = UI.Layout.scale(140)
-    local betweenGap  = UI.Layout.scale(50)
+    local sideGap     = UI.Layout.scale(50)
     local tilesGroupW = nTiles * tileW + (nTiles - 1) * tileGap
-    local totalGroupW = tilesGroupW + betweenGap + cardWidth
-    local groupStartX = midX - totalGroupW / 2
+    local tilesStartX = midX - sideGap - tilesGroupW
 
     for i, tile in ipairs(tiles) do
-        local targetX = groupStartX + (i - 1) * (tileW + tileGap) + tileW / 2
+        local targetX = tilesStartX + (i - 1) * (tileW + tileGap) + tileW / 2
         if tile.targetX == nil then
             tile.targetX = targetX
             tile.startX  = -tileW
@@ -5097,10 +5082,9 @@ function UI.Renderer.drawDealArtifactsArea()
         UI.Renderer.drawDomino(tile, drawX, centerY, gameState.screen.scale, "vertical", 1.0)
     end
 
-    local arrowX = groupStartX + tilesGroupW + betweenGap / 2
-    UI.Fonts.drawText(">", arrowX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+    UI.Fonts.drawText(">", midX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
 
-    local cardX    = groupStartX + tilesGroupW + betweenGap
+    local cardX    = midX + sideGap
     local cardY    = centerY - cardHeight / 2
     local artifact = gameState.offeredDealArtifact
     local toolsFull = #(gameState.ownedTools or {}) >= 3
@@ -5388,7 +5372,7 @@ function UI.Renderer.drawDealArea()
     if gameState.dealAccepted then return end
     local boardArea  = UI.Layout.getBoardArea()
     local midX       = boardArea.x + boardArea.width / 2
-    local centerY    = boardArea.y + boardArea.height / 2
+    local centerY    = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
 
     -- Tile size calculation
     local sampleSprite = dominoSprites and dominoSprites["00"]
@@ -5401,16 +5385,15 @@ function UI.Renderer.drawDealArea()
     local tiles = gameState.dealDemonTiles or {}
     local nTiles = math.max(1, #tiles)
 
-    -- Center the whole group (N tiles + gap between tiles/card + card) around midX
-    local cardWidth      = UI.Layout.scale(180)
-    local cardHeight     = UI.Layout.scale(140)
-    local betweenGap     = UI.Layout.scale(50)   -- wide enough for ">" symbol
-    local tilesGroupW    = nTiles * tileW + (nTiles - 1) * tileGap
-    local totalGroupW    = tilesGroupW + betweenGap + cardWidth
-    local groupStartX    = midX - totalGroupW / 2
+    -- ">" anchored at midX; tiles flush-left of it, reward flush-right, equal gap both sides
+    local cardWidth   = UI.Layout.scale(180)
+    local cardHeight  = UI.Layout.scale(140)
+    local sideGap     = UI.Layout.scale(50)
+    local tilesGroupW = nTiles * tileW + (nTiles - 1) * tileGap
+    local tilesStartX = midX - sideGap - tilesGroupW
 
     for i, tile in ipairs(tiles) do
-        local targetX = groupStartX + (i - 1) * (tileW + tileGap) + tileW / 2
+        local targetX = tilesStartX + (i - 1) * (tileW + tileGap) + tileW / 2
         if tile.targetX == nil then
             tile.targetX = targetX
             tile.startX  = -tileW
@@ -5420,33 +5403,33 @@ function UI.Renderer.drawDealArea()
         UI.Renderer.drawDomino(tile, drawX, centerY, gameState.screen.scale, "vertical", 1.0)
     end
 
-    -- ">" symbol centered in the gap between tiles and card (same style as fuse +/=)
-    local arrowX = groupStartX + tilesGroupW + betweenGap / 2
-    UI.Fonts.drawText(">", arrowX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
+    UI.Fonts.drawText(">", midX, centerY, "title", UI.Colors.FONT_WHITE, "center", true)
 
-    -- Contract card immediately after tiles group
-    local cardX = groupStartX + tilesGroupW + betweenGap
-    local cardY        = centerY - cardHeight / 2
-    local contract     = gameState.offeredDealContract
+    local cardX      = midX + sideGap
+    local cardY      = centerY - cardHeight / 2
+    local contract   = gameState.offeredDealContract
 
-    love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT)
-    love.graphics.rectangle("fill", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
     if contract then
-        love.graphics.setColor(UI.Colors.FONT_PINK)
+        local groupId = Contracts.getGroupIdForContract(contract.id)
+        local sprite  = contractSprites and contractSprites.groups and contractSprites.groups[groupId]
+        if sprite then
+            local demonFont = UI.Fonts.get("demonName")
+            local iScale    = (demonFont:getHeight() / sprite:getHeight()) * 1.3
+            local bob       = math.sin(love.timer.getTime() * 2.5) * UI.Layout.scale(3)
+            local shOff     = UI.Layout.scale(4)
+            love.graphics.setColor(0, 0, 0, 0.5)
+            love.graphics.draw(sprite, cardX + shOff, centerY + bob + shOff, 0,
+                iScale, iScale, 0, sprite:getHeight() / 2)
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(sprite, cardX, centerY + bob, 0,
+                iScale, iScale, 0, sprite:getHeight() / 2)
+        end
     else
+        love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT)
+        love.graphics.rectangle("fill", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
         love.graphics.setColor(UI.Colors.FONT_RED)
-    end
-    love.graphics.rectangle("line", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
-    love.graphics.setColor(1, 1, 1, 1)
-
-    if contract then
-        UI.Fonts.drawText(I18n.str(contract, "name"), cardX + cardWidth / 2, cardY + UI.Layout.scale(15),
-            "large", UI.Colors.FONT_WHITE, "center")
-        UI.Fonts.drawText(I18n.str(contract, "description"), cardX + cardWidth / 2, cardY + UI.Layout.scale(50),
-            "medium", {0.8, 0.8, 0.8, 1}, "center")
-        UI.Fonts.drawText(I18n.t("ui_free_demon"), cardX + cardWidth / 2, cardY + cardHeight - UI.Layout.scale(28),
-            "medium", UI.Colors.FONT_PINK, "center")
-    else
+        love.graphics.rectangle("line", cardX, cardY, cardWidth, cardHeight, UI.Layout.scale(5))
+        love.graphics.setColor(1, 1, 1, 1)
         UI.Fonts.drawText(I18n.t("ui_contract_full"), cardX + cardWidth / 2, cardY + UI.Layout.scale(25),
             "large", UI.Colors.FONT_RED, "center")
         UI.Fonts.drawText(I18n.t("ui_instead"), cardX + cardWidth / 2, cardY + UI.Layout.scale(60),
@@ -8046,7 +8029,7 @@ function UI.Renderer.drawCollectionMenu()
         local dn           = gameState.collectionMenuSelectedDemon
         local isDiscovered = gameState.encounteredDemons and gameState.encounteredDemons[dn]
         local sub          = DemonData.getSubtitle(dn)
-        local desc         = isDiscovered and DemonData.getDescription(dn) or ""
+        local desc         = isDiscovered and BossBehaviors.getDescription(dn):gsub("\n", " ") or ""
         local nameFont     = isDiscovered and UI.Fonts.get("larger")  or UI.Fonts.getGlyph("large")
         local subFont      = isDiscovered and UI.Fonts.get("large")   or UI.Fonts.getGlyph("medium")
         local descFont     = UI.Fonts.get("medium")
