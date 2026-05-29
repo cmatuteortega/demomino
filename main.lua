@@ -62,7 +62,7 @@ function love.load()
         },
         debugFireHand = false,    -- set true to draw fire on every hand tile (for testing)
         debugBossOverride = nil,  -- set to a boss name to force all combat nodes to that boss; nil to disable
-        debugNodeTypeOverride = "deal-artifacts", -- set to a node type string (e.g. "deal") to force all non-combat/boss nodes to that type; nil to disable
+        debugNodeTypeOverride = nil, -- set to a node type string (e.g. "deal") to force all non-combat/boss nodes to that type; nil to disable
         deck = {},
         hand = {},
         placedTiles = {},
