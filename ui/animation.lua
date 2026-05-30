@@ -1116,7 +1116,7 @@ function UI.Animation.updateCupAnimations(dt)
                 local speedMultipliers = {2, 1, 1}  -- 45° die at 3x speed, others at normal speed
 
                 -- Base throw speed (pixels per second)
-                local baseSpeed = 400
+                local baseSpeed = 650
 
                 -- Throw all tools at once from behind cup position
                 for toolIndex, tool in ipairs(cup.tools) do

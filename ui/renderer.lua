@@ -3800,9 +3800,7 @@ function UI.Renderer.drawContractCandles(handArea)
             local baseY = holderY + offset.y * holderScale
             local topY = baseY - ch
 
-            local shopContract = gameState.offeredContracts and gameState.offeredContracts[i]
-            local tint = shopContract and Contracts.getTintForContract(shopContract.id) or {1, 1, 1}
-            love.graphics.setColor(tint[1], tint[2], tint[3], 1)
+            love.graphics.setColor(1, 1, 1, 1)
             love.graphics.draw(candleSprite, cx - cw / 2, topY, 0, holderScale, holderScale)
 
             -- Animated flame on top of the candle
@@ -5410,8 +5408,7 @@ function UI.Renderer.drawDealArea()
     local contract   = gameState.offeredDealContract
 
     if contract then
-        local groupId = Contracts.getGroupIdForContract(contract.id)
-        local sprite  = contractSprites and contractSprites.groups and contractSprites.groups[groupId]
+        local sprite  = contractSprites and contractSprites.contracts and contractSprites.contracts[contract.id]
         if sprite then
             local demonFont = UI.Fonts.get("demonName")
             local iScale    = (demonFont:getHeight() / sprite:getHeight()) * 1.3
@@ -7232,8 +7229,7 @@ function UI.Renderer.drawCombatCandles()
         local flameH = sh * candleScale * 1.25
         local totalH = sh * candleScale + flameH
 
-        local tint = Contracts.getTintForContract(contract.id)
-        love.graphics.setColor(tint[1], tint[2], tint[3], 1)
+        love.graphics.setColor(1, 1, 1, 1)
         love.graphics.draw(candleSprite, cx, handAreaY, 0, candleScale, candleScale, sw / 2, sh / 2)
 
         table.insert(gameState.combatCandleBounds, {
@@ -7344,7 +7340,12 @@ function UI.Renderer.drawTooltip()
         for line in (typeDesc .. "\n"):gmatch("([^\n]*)\n") do
             if line ~= "" then table.insert(descLines, line) end
         end
-        local pipStr    = tostring(tile.left) .. " - " .. tostring(tile.right)
+        local function pipLabel(v)
+            if v == "odd"  then return I18n.t("pip_odd")  end
+            if v == "even" then return I18n.t("pip_even") end
+            return tostring(v)
+        end
+        local pipStr    = pipLabel(tile.left) .. " - " .. pipLabel(tile.right)
         local inCombat = gameState.gamePhase == "playing" or gameState.gamePhase == "won"
         local bannedNumber = inCombat and Challenges and Challenges.getBannedNumber(gameState) or nil
         local isBanned = bannedNumber ~= nil and (tile.left == bannedNumber or tile.right == bannedNumber)
@@ -7963,8 +7964,10 @@ function UI.Renderer.drawCollectionMenu()
         local time     = love.timer.getTime()
         local scrollY  = gameState.collectionMenuScrollY or 0
 
+        local order = Contracts.DISPLAY_ORDER
+
         -- Compute and store max scroll
-        local totalRows  = math.ceil(#Contracts.GROUPS / cols)
+        local totalRows  = math.ceil(#order / cols)
         local totalGridH = totalRows * cellH
         local visibleGridH = gridBottom - gridTop
         gameState.collectionMenuMaxScroll = math.max(0, totalGridH - visibleGridH)
@@ -7974,7 +7977,7 @@ function UI.Renderer.drawCollectionMenu()
         love.graphics.setScissor(mx, scissorY, mw, math.floor(visibleGridH))
 
         gameState.collectionMenuContractBounds = {}
-        for idx, group in ipairs(Contracts.GROUPS) do
+        for idx, contractId in ipairs(order) do
             local col = (idx - 1) % cols
             local row = math.floor((idx - 1) / cols)
             local cx  = mx + pad + col * cellW
@@ -7983,13 +7986,13 @@ function UI.Renderer.drawCollectionMenu()
             gameState.collectionMenuContractBounds[idx] = {
                 x = cx + cellPad*0.5, y = cy + cellPad*0.5 + slideY,
                 width = cellW - cellPad, height = cellH - cellPad,
-                groupId = group.id
+                contractId = contractId
             }
 
             -- Skip drawing cells fully outside the visible grid region
             if cy + cellH <= gridTop or cy >= gridBottom then goto continue end
 
-            if gameState.collectionMenuSelectedContractGroup == group.id then
+            if gameState.collectionMenuSelectedContract == contractId then
                 love.graphics.setColor(UI.Colors.BACKGROUND_LIGHT[1], UI.Colors.BACKGROUND_LIGHT[2], UI.Colors.BACKGROUND_LIGHT[3], 0.35)
                 love.graphics.rectangle("fill", cx + cellPad*0.5, cy + cellPad*0.5,
                     cellW - cellPad, cellH - cellPad, UI.Layout.scale(3))
@@ -8000,11 +8003,10 @@ function UI.Renderer.drawCollectionMenu()
             love.graphics.rectangle("line", cx + cellPad*0.5, cy + cellPad*0.5,
                 cellW - cellPad, cellH - cellPad, UI.Layout.scale(3))
 
-            local isDiscovered = gameState.discoveredContractGroups and gameState.discoveredContractGroups[group.id]
-            local sprite = contractSprites and contractSprites.groups and (
-                isDiscovered
-                    and (contractSprites.groups[group.id] or contractSprites.groups["UNKNOWN"])
-                    or   contractSprites.groups["UNKNOWN"]
+            local isDiscovered = gameState.discoveredContracts and gameState.discoveredContracts[contractId]
+            local sprite = contractSprites and (
+                (isDiscovered and contractSprites.contracts and contractSprites.contracts[contractId])
+                or contractSprites.unknown
             )
             if sprite then
                 local sprW, sprH = sprite:getWidth(), sprite:getHeight()
@@ -8059,14 +8061,11 @@ function UI.Renderer.drawCollectionMenu()
             love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
             love.graphics.printf(desc, indentX, textY + nameH + UI.Layout.scale(3), mw - pad * 3, "left")
         end
-    elseif gameState.collectionMenuTab == 2 and gameState.collectionMenuSelectedContractGroup then
-        local gid = gameState.collectionMenuSelectedContractGroup
-        local isDiscovered = gameState.discoveredContractGroups and gameState.discoveredContractGroups[gid]
-        local groupData = nil
-        for _, g in ipairs(Contracts.GROUPS) do
-            if g.id == gid then groupData = g; break end
-        end
-        if groupData then
+    elseif gameState.collectionMenuTab == 2 and gameState.collectionMenuSelectedContract then
+        local cid = gameState.collectionMenuSelectedContract
+        local isDiscovered = gameState.discoveredContracts and gameState.discoveredContracts[cid]
+        local contractData = Contracts.getById(cid)
+        if contractData then
             if not isDiscovered then
                 local nameFont = UI.Fonts.get("larger")
                 local indentX  = mx + pad * 2
@@ -8075,11 +8074,9 @@ function UI.Renderer.drawCollectionMenu()
                 love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
                 love.graphics.print("???", indentX, textY)
             else
-                local gname    = I18n.str(groupData, "name")
-                local sub      = I18n.str(groupData, "subtitle")
-                local desc2    = I18n.str(groupData, "description")
+                local cname    = I18n.str(contractData, "name")
+                local desc2    = I18n.str(contractData, "description")
                 local nameFont = UI.Fonts.get("larger")
-                local subFont  = UI.Fonts.get("large")
                 local descFont = UI.Fonts.get("medium")
                 local nameH    = nameFont:getHeight()
                 local descH    = desc2 ~= "" and (descFont:getHeight() + UI.Layout.scale(3)) or 0
@@ -8089,15 +8086,7 @@ function UI.Renderer.drawCollectionMenu()
 
                 love.graphics.setFont(nameFont)
                 love.graphics.setColor(UI.Colors.FONT_WHITE[1], UI.Colors.FONT_WHITE[2], UI.Colors.FONT_WHITE[3], 1)
-                love.graphics.print(gname, indentX, textY)
-
-                if sub ~= "" then
-                    local nameW    = nameFont:getWidth(gname)
-                    local subBaseY = textY + math.floor((nameH - subFont:getHeight()) / 2)
-                    love.graphics.setFont(subFont)
-                    love.graphics.setColor(UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], 1)
-                    love.graphics.print(sub, indentX + nameW + UI.Layout.scale(8), subBaseY)
-                end
+                love.graphics.print(cname, indentX, textY)
 
                 if desc2 ~= "" then
                     love.graphics.setFont(descFont)

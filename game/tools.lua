@@ -19,23 +19,23 @@ local toolDefinitions = {
         color = {0.3, 0.7, 0.9, 1}  -- Blue
     },
     demonReloader = {
-        id = "demonReloader", tier = 3,
+        id = "demonReloader", tier = 1,
         name = "DEMON RELOADER",      name_es = "RECARGADOR DEMONIO",
         description = "Reload the current\ndemon tile",
         description_es = "Recarga la ficha\ndemonio actual",
-        cost = 2,
+        cost = 1,
         color = {0.9, 0.3, 0.3, 1}  -- Red
     },
     transformer = {
-        id = "transformer", tier = 2,
+        id = "transformer", tier = 1,
         name = "TRANSFORMER",         name_es = "TRANSFORMADOR",
         description = "Transform a tile\nto 6-6 for this round",
         description_es = "Transforma una ficha\na 6-6 esta ronda",
-        cost = 2,
+        cost = 1,
         color = {0.9, 0.7, 0.2, 1}  -- Gold
     },
     extraHand = {
-        id = "extraHand", tier = 3,
+        id = "extraHand", tier = 2,
         name = "EXTRA HAND",          name_es = "MANO EXTRA",
         description = "Gain +1 play\nfor this round",
         description_es = "Gana +1 jugada\npara esta ronda",
@@ -51,27 +51,27 @@ local toolDefinitions = {
         color = {0.7, 0.4, 0.9, 1}  -- Purple
     },
     knife = {
-        id = "knife", tier = 4,
+        id = "knife", tier = 3,
         name = "KNIFE",               name_es = "CUCHILLO",
         description = "Cut target score\nin half (rounded up)",
         description_es = "Reduce el puntaje objetivo\na la mitad (redondeado arriba)",
-        cost = 2,
+        cost = 4,
         color = {0.9, 0.9, 0.9, 1}  -- Silver/White
     },
     relicTransmuter = {
-        id = "relicTransmuter", tier = 4,
+        id = "relicTransmuter", tier = 3,
         name = "RELIC TRANSMUTER",    name_es = "TRANSMUTADOR RELIQUIA",
         description = "Turn a tile into\nRelic permanently",
         description_es = "Convierte una ficha en\nReliquia permanentemente",
-        cost = 2,
+        cost = 4,
         color = {0.125, 0.145, 0.263, 1}  -- Relic Blue
     },
     tenderTransmuter = {
-        id = "tenderTransmuter", tier = 4,
+        id = "tenderTransmuter", tier = 3,
         name = "TENDER TRANSMUTER",   name_es = "TRANSMUTADOR TIERNO",
         description = "Turn a tile into\nTender permanently",
         description_es = "Convierte una ficha en\nTierno permanentemente",
-        cost = 2,
+        cost = 4,
         color = {0.941, 0.576, 0.608, 1}  -- Tender Pink
     }
 }

@@ -1,5 +1,5 @@
 -- Game Configuration
-TARGET_SCORE = 1  -- Target score for all rounds (change this to adjust difficulty)
+TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -300,7 +300,7 @@ function love.load()
         collectionMenuAnim = { y = 0 },
         collectionMenuTab = 1,
         collectionMenuSelectedDemon = nil,
-        collectionMenuSelectedContractGroup = nil,
+        collectionMenuSelectedContract = nil,
         collectionMenuScrollY = 0,
         collectionMenuMaxScroll = 0,
         collectionMenuExitButtonPressed = false,
@@ -308,7 +308,7 @@ function love.load()
         collectionMenuDemonBounds = {},
         collectionMenuContractBounds = {},
         collectionMenuExitBounds = nil,
-        discoveredContractGroups = {},
+        discoveredContracts = {},
         titleSettingsMenuOpen         = false,
         titleSettingsMenuAnim         = { y = 0 },
         titleSettingsToggleBounds     = {},
@@ -590,7 +590,7 @@ function love.load()
     -- Load persistent encounter history (survives save resets)
     local stats = Save.loadStats()
     gameState.encounteredDemons = stats.encounteredDemons or {}
-    gameState.discoveredContractGroups = stats.discoveredContractGroups or {}
+    gameState.discoveredContracts = stats.discoveredContracts or {}
 
     -- Start at title screen instead of initializing game directly
     gameState.gamePhase = "title_screen"
@@ -1871,12 +1871,21 @@ function animateTileScoring(tile, valueInfo)
     end
 
     UI.Animation.animateTo(tile, {scoreScale = 1.15}, 0.15, "easeOutBack", function()
-        UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack", function()
-            -- If this was the final tile, mark that it's done animating
-            if isFinalTile then
-                seq.finalTileAnimating = false
-            end
-        end)
+        if tile.tileType == "tender" then
+            UI.Audio.playCrack()
+            UI.Animation.animateTo(tile, {scoreScale = 0}, 0.25, "easeInBack", function()
+                if isFinalTile then
+                    seq.finalTileAnimating = false
+                end
+            end)
+        else
+            UI.Animation.animateTo(tile, {scoreScale = 1.0}, 0.25, "easeOutBack", function()
+                -- If this was the final tile, mark that it's done animating
+                if isFinalTile then
+                    seq.finalTileAnimating = false
+                end
+            end)
+        end
     end)
 
     -- Add shake effect
@@ -3265,6 +3274,7 @@ function love.update(dt)
     updateToolIdleAnimations(dt)
     updateCandleLightAnimation(dt)
     UI.Audio.updateMapTextures(dt)
+    UI.Audio.updateCrack(dt)
 
     if gameState.gamePhase == "title_screen" then
         UI.TitleScreen.updateTitleTileAnimations(dt)
@@ -4317,15 +4327,19 @@ function loadContractSprites()
             contractSprites.candles[i] = sprite
         end
     end
-    local groupIds = {"GREED","LUST","ENVY","DECEIT","VAINGLORY","GLUTTONY","PRIDE","WRATH","SLOTH","CRUELTY","UNKNOWN"}
-    contractSprites.groups = {}
-    for _, gid in ipairs(groupIds) do
-        local filename = "sprites/contracts/" .. gid .. ".png"
+    contractSprites.contracts = {}
+    for id, _ in pairs(Contracts.definitions) do
+        local filename = "sprites/contracts/" .. Contracts.spriteKey(id) .. ".png"
         if love.filesystem.getInfo(filename) then
             local spr = love.graphics.newImage(filename)
             spr:setFilter("nearest", "nearest")
-            contractSprites.groups[gid] = spr
+            contractSprites.contracts[id] = spr
         end
+    end
+    if love.filesystem.getInfo("sprites/contracts/UNKNOWN.png") then
+        local spr = love.graphics.newImage("sprites/contracts/UNKNOWN.png")
+        spr:setFilter("nearest", "nearest")
+        contractSprites.unknown = spr
     end
 end
 

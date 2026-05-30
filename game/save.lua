@@ -420,7 +420,7 @@ end
 -- Load persistent statistics (separate from save game)
 function Save.loadStats()
     if not love.filesystem.getInfo(STATS_FILE) then
-        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContracts = {}}
     end
 
     local success, contents = pcall(function()
@@ -428,7 +428,7 @@ function Save.loadStats()
     end)
 
     if not success or not contents then
-        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContracts = {}}
     end
 
     local loadSuccess, stats = pcall(function()
@@ -436,14 +436,14 @@ function Save.loadStats()
     end)
 
     if not loadSuccess or not stats then
-        return {bestRound = 1, encounteredDemons = {}, discoveredContractGroups = {}}
+        return {bestRound = 1, encounteredDemons = {}, discoveredContracts = {}}
     end
 
     if not stats.encounteredDemons then
         stats.encounteredDemons = {}
     end
-    if not stats.discoveredContractGroups then
-        stats.discoveredContractGroups = {}
+    if not stats.discoveredContracts then
+        stats.discoveredContracts = {}
     end
 
     return stats
@@ -464,13 +464,13 @@ function Save.recordEncounteredDemon(demonName)
     return stats.encounteredDemons
 end
 
-function Save.recordDiscoveredContractGroup(groupId)
-    if not groupId or groupId == "" then return {} end
+function Save.recordDiscoveredContract(contractId)
+    if not contractId or contractId == "" then return {} end
     local stats = Save.loadStats()
-    if not stats.discoveredContractGroups then stats.discoveredContractGroups = {} end
-    stats.discoveredContractGroups[groupId] = true
+    if not stats.discoveredContracts then stats.discoveredContracts = {} end
+    stats.discoveredContracts[contractId] = true
     Save.saveStats(stats)
-    return stats.discoveredContractGroups
+    return stats.discoveredContracts
 end
 
 -- Save persistent statistics

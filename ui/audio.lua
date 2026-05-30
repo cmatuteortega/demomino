@@ -21,6 +21,9 @@ local diceSettleSounds = {}
 local typewriterSounds = {}
 local typewriterMaxDuration = 0  -- Longest typewriter sound duration in seconds
 local dismissDialogueSound = nil
+local crackSound = nil
+local crackSource = nil
+local crackTimer = 0
 
 -- Map ambiance system
 local mapDinnerAmbiance = nil
@@ -225,9 +228,18 @@ function UI.Audio.load()
         dismissDialogueSound = love.audio.newSource(dismissDialoguePath, "static")
         dismissDialogueSound:setVolume(sfxVolume)
     end
+
+    local crackPath = "sounds/fx/crack.mp3"
+    if love.filesystem.getInfo(crackPath) then
+        crackSound = love.audio.newSource(crackPath, "static")
+        crackSound:setVolume(sfxVolume)
+    end
 end
 
 function UI.Audio.playMusic()
+    if gameState and not gameState.musicEnabled then
+        return
+    end
     if music and not music:isPlaying() then
         music:play()
     end
@@ -646,6 +658,25 @@ function UI.Audio.playDismissDialogue()
     if dismissDialogueSound then
         dismissDialogueSound:stop()
         dismissDialogueSound:play()
+    end
+end
+
+function UI.Audio.playCrack()
+    if not gameState or not gameState.sfxEnabled then return end
+    if not crackSound then return end
+    if crackSource and crackSource:isPlaying() then crackSource:stop() end
+    crackSource = crackSound:clone()
+    crackSource:play()
+    crackTimer = 1.0
+end
+
+function UI.Audio.updateCrack(dt)
+    if crackTimer > 0 then
+        crackTimer = crackTimer - dt
+        if crackTimer <= 0 and crackSource then
+            crackSource:stop()
+            crackSource = nil
+        end
     end
 end
 

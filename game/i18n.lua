@@ -125,6 +125,9 @@ local strings = {
         ui_again           = "AGAIN",
         ui_push_further    = "PUSH FURTHER?",
         ui_demon_skip      = "DEMON: SKIP",
+        -- Tile pip labels (odd/even)
+        pip_odd            = "odd",
+        pip_even           = "even",
         -- Tile type descriptions (tooltip)
         tile_bone_desc     = "",
         tile_tender_desc   = "Breaks on use",
@@ -281,6 +284,9 @@ local strings = {
         ui_again           = "DE NUEVO",
         ui_push_further    = "¿FORZAR?",
         ui_demon_skip      = "DEMONIO: OMITIR",
+        -- Tile pip labels (odd/even)
+        pip_odd            = "impar",
+        pip_even           = "par",
         -- Tile type descriptions (tooltip)
         tile_bone_desc     = "",
         tile_tender_desc   = "Se rompe al usar",

@@ -745,11 +745,11 @@ function Touch.pressed(x, y, istouch, touchId)
                 UI.Audio.playButtonTap()
                 gameState.collectionMenuTab = i
                 gameState.collectionMenuSelectedDemon = nil
-                gameState.collectionMenuSelectedContractGroup = nil
+                gameState.collectionMenuSelectedContract = nil
                 gameState.collectionMenuScrollY = 0
                 touchState.collectionMenuExitPressed = false
                 touchState.collectionGridPressedDemon = nil
-                touchState.collectionGridPressedContractGroup = nil
+                touchState.collectionGridPressedContract = nil
                 return
             end
         end
@@ -763,7 +763,7 @@ function Touch.pressed(x, y, istouch, touchId)
         end
         -- Grid area: record press start for tap-vs-drag distinction
         touchState.collectionGridPressedDemon = nil
-        touchState.collectionGridPressedContractGroup = nil
+        touchState.collectionGridPressedContract = nil
         touchState.collectionGridDragStartY = y
         touchState.collectionGridScrollStart = gameState.collectionMenuScrollY or 0
         touchState.collectionGridIsDragging = false
@@ -777,7 +777,7 @@ function Touch.pressed(x, y, istouch, touchId)
         elseif gameState.collectionMenuTab == 2 then
             for _, cell in ipairs(gameState.collectionMenuContractBounds or {}) do
                 if isPointInRect(x, y, cell) then
-                    touchState.collectionGridPressedContractGroup = cell.groupId
+                    touchState.collectionGridPressedContract = cell.contractId
                     break
                 end
             end
@@ -1650,13 +1650,13 @@ function Touch.released(x, y, istouch, touchId)
                     UI.Audio.playButtonTap()
                     gameState.collectionMenuSelectedDemon = touchState.collectionGridPressedDemon
                 end
-                if touchState.collectionGridPressedContractGroup then
+                if touchState.collectionGridPressedContract then
                     UI.Audio.playButtonTap()
-                    gameState.collectionMenuSelectedContractGroup = touchState.collectionGridPressedContractGroup
+                    gameState.collectionMenuSelectedContract = touchState.collectionGridPressedContract
                 end
             end
             touchState.collectionGridPressedDemon = nil
-            touchState.collectionGridPressedContractGroup = nil
+            touchState.collectionGridPressedContract = nil
             touchState.collectionGridDragStartY = nil
             touchState.collectionGridScrollStart = nil
             touchState.collectionGridIsDragging = false
@@ -1905,8 +1905,13 @@ function Touch.released(x, y, istouch, touchId)
         return
     end
 
-    -- Show owned contract tooltip on candle tap (all screens where candles are visible)
-    if not Touch.isDragging() and gameState.combatCandleBounds then
+    -- Show owned contract tooltip on candle tap (only on phases where candles are drawn)
+    local candlePhases = {
+        playing = true, won = true,
+        artifacts_menu = true, contracts_menu = true,
+        deal_menu = true, deal_artifacts_menu = true, restore_menu = true
+    }
+    if candlePhases[gameState.gamePhase] and not Touch.isDragging() and gameState.combatCandleBounds then
         for _, bound in ipairs(gameState.combatCandleBounds) do
             if x >= bound.x and x <= bound.x + bound.w and
                y >= bound.y and y <= bound.y + bound.h then
@@ -4996,7 +5001,7 @@ function Touch.routeToNode(node)
     elseif nodeType == "deal" then
         -- Random contract offer (excluding already-owned)
         gameState.offeredDealContract = Contracts.getRandomForDeal(gameState.activeContracts)
-        local tier = (gameState.offeredDealContract and gameState.offeredDealContract.tier) or 4
+        local tier = (gameState.offeredDealContract and gameState.offeredDealContract.tier) or 3
         gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
         Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
         gameState.dealAccepted = false
@@ -5015,7 +5020,7 @@ function Touch.routeToNode(node)
     elseif nodeType == "deal-artifacts" then
         local toolOffers = Tools.generateRandomToolOffers(1)
         gameState.offeredDealArtifact = Tools.getDefinition(toolOffers[1])
-        local tier = (gameState.offeredDealArtifact and gameState.offeredDealArtifact.tier) or 4
+        local tier = (gameState.offeredDealArtifact and gameState.offeredDealArtifact.tier) or 3
         gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
         Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
         gameState.dealAccepted = false
@@ -6721,10 +6726,9 @@ function Touch.purchaseContract(contract)
         expiresAtRound = gameState.currentRound + 3,
     })
 
-    -- Record contract group discovery (first equip only)
-    local groupId = Contracts.getGroupIdForContract(contract.id)
-    if groupId and not (gameState.discoveredContractGroups and gameState.discoveredContractGroups[groupId]) then
-        gameState.discoveredContractGroups = Save.recordDiscoveredContractGroup(groupId)
+    -- Record contract discovery (first equip only)
+    if not (gameState.discoveredContracts and gameState.discoveredContracts[contract.id]) then
+        gameState.discoveredContracts = Save.recordDiscoveredContract(contract.id)
     end
 
     -- Trigger purchase dialogue
@@ -7348,7 +7352,8 @@ function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
         end
     end
 
-    local sellValue = 1
+    local toolDef = Tools.getDefinition(toolId)
+    local sellValue = ({ [1] = 0, [2] = 1, [3] = 2 })[(toolDef and toolDef.tier) or 1] or 0
 
     -- Pass the settled die physics object directly to cup animation
     -- The die will be kept in the physics array and rendered until cup hides it
@@ -7840,10 +7845,9 @@ function Touch.acceptDeal()
             conditionValue = contract.conditionValue,
             expiresAtRound = gameState.currentRound + 3,
         })
-        -- Record contract group discovery (first equip only)
-        local groupId = Contracts.getGroupIdForContract(contract.id)
-        if groupId and not (gameState.discoveredContractGroups and gameState.discoveredContractGroups[groupId]) then
-            gameState.discoveredContractGroups = Save.recordDiscoveredContractGroup(groupId)
+        -- Record contract discovery (first equip only)
+        if not (gameState.discoveredContracts and gameState.discoveredContracts[contract.id]) then
+            gameState.discoveredContracts = Save.recordDiscoveredContract(contract.id)
         end
         UI.Animation.createFloatingText("CONTRACT SEALED!", screenCX, screenCY - UI.Layout.scale(60), {
             color = UI.Colors.FONT_PINK, fontSize = "large",
