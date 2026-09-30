@@ -123,6 +123,28 @@ jobs:
           grep -n '^app\.' gradle.properties
           # DEMOMINO launcher icon (replaces the LÖVE heart)
           cp -rv ../game/android/res/. app/src/main/res/
+          # Landscape only. The manifest's sensorLandscape is not enough: at window
+          # creation SDL's setOrientationBis() re-requests an orientation, and with
+          # t.window.resizable = true (conf.lua, for desktop) and no orientation hint
+          # it picks FULL_USER, which lets the game rotate to portrait. Always pass
+          # a landscape-only hint, so SDL requests USER_LANDSCAPE (either way up,
+          # respects the system rotation lock).
+          java=app/src/main/java/org/love2d/android/GameActivity.java
+          python3 - "$java" <<'PY'
+          import sys
+          path = sys.argv[1]
+          src = open(path).read().rstrip()
+          assert src.endswith("}") and "setOrientationBis" not in src, "unexpected GameActivity.java"
+          src = src[:-1] + """
+              @Override
+              public void setOrientationBis(int w, int h, boolean resizable, String hint) {
+                  super.setOrientationBis(w, h, resizable, "LandscapeLeft LandscapeRight");
+              }
+          }
+          """
+          open(path, "w").write(src)
+          PY
+          grep -n -A3 'public void setOrientationBis' "$java"
 
       # Same contents as build-android.sh: game only, no tests/prototypes/tooling.
       - name: Package game.love
