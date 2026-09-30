@@ -26,7 +26,10 @@ zip -9 -r "$ASSETS/game.love" . \
   --exclude "server/*" \
   --exclude "deploy/*" \
   --exclude "tests/*" \
+  --exclude "fire-trial/*" \
+  --exclude "android/*" \
   --exclude ".git/*" \
+  --exclude ".github/*" \
   --exclude "*.sh" \
   --exclude "*.love" \
   --exclude "build-android.sh"

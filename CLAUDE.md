@@ -71,6 +71,8 @@ love .
 Requires Love2D/LÖVE framework installed. Game supports desktop and mobile platforms.
 
 ### Building for Distribution
+- **CI (GitHub Actions)**: `.github/workflows/android.yml` builds a signed APK named **DEMOMINO** (`com.cmatute.demomino`, `sensorLandscape`) on every push; `v*` tags also publish a GitHub Release with the APK. Signing uses the `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` repo secrets (throwaway key if missing). Pushes touching only docs, `tests/`, `fire-trial/` or `*.sh` skip the build.
+- **Launcher icon**: `android/res/` (demon tile with big eyes chained between regular 6|1 / 1|6 tiles on the maroon `#3E2D35` background), copied over love-android's `res/` by CI. Regenerate with `python3 android/make_icons.py` (needs Pillow).
 - **.love file**: The `dominatrix.love` file is the packaged game
 - **Mobile builds**: Use Love2D's mobile build tools for Android/iOS deployment
   - **IMPORTANT**: Configure app to **FORCE LANDSCAPE ORIENTATION** (game is designed for horizontal play only)
