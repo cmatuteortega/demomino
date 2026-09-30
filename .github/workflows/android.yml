@@ -20,7 +20,7 @@
 # Optional repo variables (Settings → Secrets and variables → Actions → Variables):
 #   ANDROID_APP_ID            application id (default com.cmatute.demomino)
 #
-# Launcher icon: android/res/ (demon tile chained between regular tiles on the
+# Launcher icon: android/res/ (2|5 demon tile chained between regular tiles on the
 # game's maroon background #3E2D35), copied over love-android's res/.
 # Regenerate with: python3 android/make_icons.py
 

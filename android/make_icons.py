@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Android launcher icon from the game sprites.
 
-A horizontal demon tile (one big eye per half) in the middle of a domino chain,
+A horizontal 2|5 demon tile (pips drawn as eyes) in the middle of a domino chain,
 with regular horizontal tiles connecting on both sides and running off the
 icon edges, on the game's maroon background.
 
@@ -34,26 +34,37 @@ def sprite(*path):
     return Image.open(os.path.join(SPRITES, *path)).convert("RGBA")
 
 
-def demon_tile():
-    """Demon tile with one big eye (the title screen's) per half, centred on
-    each half's face like drawDemonDomino places pips: 1/4 and 3/4 of the
-    width, 2px above the tile centre."""
+# Eye offsets per pip count, from drawEyePips (spacing 13px at sprite scale).
+EYE_SPACING = 13
+EYE_LAYOUTS = {
+    2: [(-1, -1), (1, 1)],
+    5: [(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)],
+}
+
+
+def demon_tile(left_val, right_val):
+    """Demon tile with its pips drawn as eyes, placed like drawDemonDomino:
+    half centres at 1/4 and 3/4 of the width, 2px above the tile centre."""
     tile = sprite("demon_tiles", "tilted_demon_tile.png")
-    eye = sprite("demon_tiles", "big_eye_animation", "base.png")
-    for cx in (TILE_W // 4, TILE_W * 3 // 4):
-        tile.alpha_composite(eye, (cx - eye.width // 2, TILE_H // 2 - 2 - eye.height // 2))
+    eye = sprite("demon_tiles", "eye_animation", "base.png")
+    cy = TILE_H / 2 - 2
+    for cx, val in ((TILE_W / 4, left_val), (TILE_W * 3 / 4, right_val)):
+        for dx, dy in EYE_LAYOUTS[val]:
+            x = cx + dx * EYE_SPACING / 2 - eye.width / 2
+            y = cy + dy * EYE_SPACING / 2 - eye.height / 2
+            tile.alpha_composite(eye, (round(x), round(y)))
     return tile
 
 
 def chain():
-    """[6|1][demon 1|1][1|6] at native sprite resolution."""
-    right = sprite("titled_tiles", "16t.png")
-    left = right.transpose(Image.FLIP_LEFT_RIGHT)   # 6|1
+    """[1|2][demon 2|5][5|6] at native sprite resolution."""
+    left = sprite("titled_tiles", "12t.png")
+    right = sprite("titled_tiles", "56t.png")
     step = TILE_W - OVERLAP
     img = Image.new("RGBA", (TILE_W + 2 * step, TILE_H), (0, 0, 0, 0))
     img.alpha_composite(left, (0, 0))
     img.alpha_composite(right, (2 * step, 0))
-    img.alpha_composite(demon_tile(), (step, 0))     # on top of the shared outlines
+    img.alpha_composite(demon_tile(2, 5), (step, 0))  # on top of the shared outlines
     return img
 
 
