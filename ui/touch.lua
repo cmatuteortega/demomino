@@ -5291,9 +5291,6 @@ function Touch.positionTileInEnhanceSlot(tile)
     tile.visualY = centerY
 end
 
-local ENHANCE_VALUES = {3, 5, 8, 10, 15}
-
-
 function Touch.confirmEnhance()
     local tile = gameState.enhanceSlotTile
     if not tile then return end
@@ -5301,26 +5298,21 @@ function Touch.confirmEnhance()
     local cost = gameState.enhanceCurrentCost or 1
     if gameState.coins < cost then return end
 
-    -- Save original values before any modification (tile is a clone from createDeckFromCollection)
-    local origLeft  = tile.left
-    local origRight = tile.right
-    local origType  = tile.tileType or "normal"
-
     -- Deduct coins (updateCoins expects absolute new value)
     updateCoins(gameState.coins - cost)
     gameState.enhanceCurrentCost = cost + 1
 
     UI.Animation.playTilePunchOut(tile)
 
+    local outcome, bonus = Workbench.enhance(gameState.tileCollection, tile)
+
+    local function enhanceDialogue(category)
+        local msg = Dialogue.getRandomPhrase("enhance_menu", category)
+        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+    end
+
     -- Overload: tile at max gets destroyed
-    if (tile.enhanceCount or 0) >= 5 then
-        for i = #gameState.tileCollection, 1, -1 do
-            local ct = gameState.tileCollection[i]
-            if ct.left == origLeft and ct.right == origRight and (ct.tileType or "normal") == origType then
-                table.remove(gameState.tileCollection, i)
-                break
-            end
-        end
+    if outcome == "overloaded" then
         gameState.enhanceSlotTile = nil
         UI.Animation.createFloatingText("OVERLOADED!", gameState.screen.width / 2,
             gameState.screen.height / 2 - UI.Layout.scale(80), {
@@ -5328,76 +5320,30 @@ function Touch.confirmEnhance()
             duration = 1.5, riseDistance = 40,
             startScale = 0.8, endScale = 1.2, easing = "easeOutBack"
         })
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "break_event")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+        enhanceDialogue("break_event")
         return
     end
 
-    -- Normal enhancement
-    local upgradeIndex = (tile.enhanceCount or 0) + 1
-    local bonus = ENHANCE_VALUES[upgradeIndex]
-    tile.enhanceBonus = (tile.enhanceBonus or 0) + bonus
-    tile.enhanceCount = upgradeIndex
-
-    local roll       = love.math.random()
     local popupText  = "+" .. bonus
     local popupColor = {0.3, 0.9, 0.4, 1}
-    local tileDestroyed = false
 
-    if roll < 0.05 then
-        tile.tileType = "tender"
+    if outcome == "tender" then
         popupText = "TENDER!\n+" .. bonus
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "tender")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
-
-    elseif roll < 0.10 then
-        tile.tileType = "relic"
+        enhanceDialogue("tender")
+    elseif outcome == "relic" then
         popupText = "RELIC!\n+" .. bonus
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "relic")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+        enhanceDialogue("relic")
         returnSlotTileToHand(tile, "enhanceHand", "enhanceSlotTile")
-
-    elseif roll < 0.15 then
+    elseif outcome == "shattered" then
         popupText  = "SHATTERED!"
         popupColor = {0.9, 0.2, 0.2, 1}
-        tileDestroyed = true
-        for i = #gameState.tileCollection, 1, -1 do
-            local ct = gameState.tileCollection[i]
-            if ct.left == origLeft and ct.right == origRight and (ct.tileType or "normal") == origType then
-                table.remove(gameState.tileCollection, i)
-                break
-            end
-        end
         gameState.enhanceSlotTile = nil
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "break_event")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
-
-    elseif roll < 0.25 then
-        if type(tile.left)  == "number" then tile.left  = tile.left  + 1 end
-        if type(tile.right) == "number" then tile.right = tile.right + 1 end
-        tile.id = tostring(tile.left) .. "-" .. tostring(tile.right)
+        enhanceDialogue("break_event")
+    elseif outcome == "stronger" then
         popupText = "STRONGER!\n+" .. bonus
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "pip")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
-
+        enhanceDialogue("pip")
     else
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "enhance")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
-    end
-
-    -- Sync changes back to tileCollection (value-based match on original values)
-    if not tileDestroyed then
-        for i, ct in ipairs(gameState.tileCollection) do
-            if ct.left == origLeft and ct.right == origRight and (ct.tileType or "normal") == origType then
-                ct.left         = tile.left
-                ct.right        = tile.right
-                ct.id           = tile.id
-                ct.tileType     = tile.tileType
-                ct.enhanceBonus = tile.enhanceBonus
-                ct.enhanceCount = tile.enhanceCount
-                break
-            end
-        end
+        enhanceDialogue("enhance")
     end
 
     UI.Animation.createFloatingText(popupText,
@@ -5409,9 +5355,8 @@ function Touch.confirmEnhance()
     })
 
     -- Show "maxed" dialogue when tile hits 5 (warn player next press destroys it)
-    if gameState.enhanceSlotTile and tile.enhanceCount >= 5 then
-        local msg = Dialogue.getRandomPhrase("enhance_menu", "maxed")
-        if msg then Dialogue.show(msg, {category="enhance_event", skipDelay=true, autoDissmissTime=5.0}) end
+    if gameState.enhanceSlotTile and tile.enhanceCount >= Workbench.MAX_ENHANCE then
+        enhanceDialogue("maxed")
     end
 end
 
@@ -5475,7 +5420,7 @@ function Touch.confirmFusion()
         return
     end
 
-    if gameState.coins < 1 then
+    if gameState.coins < Workbench.FUSION_COST then
         -- Show error message
         local centerX = gameState.screen.width / 2
         local centerY = gameState.screen.height / 2
@@ -5501,46 +5446,12 @@ function Touch.confirmFusion()
         return
     end
 
-    -- Perform fusion or subtraction
-    local fusedTile
-    if gameState.currentTilesNodeType == "alchemy_subtract" then
-        fusedTile = Domino.subtractTiles(tile1, tile2)
-    else
-        fusedTile = Domino.fuseTiles(tile1, tile2)
-    end
-
-    -- Store tile values before removing (we'll need these to find them in collection)
-    local tile1Left, tile1Right = tile1.left, tile1.right
-    local tile2Left, tile2Right = tile2.left, tile2.right
+    -- Consume both tiles from the collection and add the result
+    local fusedTile = Workbench.fuse(gameState.tileCollection, tile1, tile2,
+        gameState.currentTilesNodeType == "alchemy_subtract")
 
     -- Clear fusion slots (tiles are consumed in fusion)
     gameState.fusionSlotTiles = {}
-
-    -- Remove original tiles from collection (important: must remove before adding fused tile)
-    local tile1Removed = false
-    local tile2Removed = false
-
-    for i = #gameState.tileCollection, 1, -1 do
-        local collectionTile = gameState.tileCollection[i]
-
-        -- Check if this matches tile1 and we haven't removed it yet
-        if not tile1Removed and collectionTile.left == tile1Left and collectionTile.right == tile1Right then
-            table.remove(gameState.tileCollection, i)
-            tile1Removed = true
-        -- Check if this matches tile2 and we haven't removed it yet
-        elseif not tile2Removed and collectionTile.left == tile2Left and collectionTile.right == tile2Right then
-            table.remove(gameState.tileCollection, i)
-            tile2Removed = true
-        end
-
-        -- Stop if both tiles removed
-        if tile1Removed and tile2Removed then
-            break
-        end
-    end
-
-    -- Add fused tile to collection
-    table.insert(gameState.tileCollection, fusedTile)
 
     -- Put the fused tile back into the fusion hand for visual feedback
     table.insert(gameState.fusionHand, fusedTile)
@@ -5549,22 +5460,10 @@ function Touch.confirmFusion()
     Hand.updatePositions(gameState.fusionHand)
 
     -- Deduct coin
-    updateCoins(gameState.coins - 1, {hasBonus = false})
+    updateCoins(gameState.coins - Workbench.FUSION_COST, {hasBonus = false})
 
-    -- Refresh deck from collection
-    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
-    Domino.shuffleDeck(gameState.deck)
-
-    -- Remove tiles currently in fusion hand from deck (so they can't be drawn during reroll)
-    for i = #gameState.deck, 1, -1 do
-        local deckTile = gameState.deck[i]
-        for _, handTile in ipairs(gameState.fusionHand) do
-            if deckTile.left == handTile.left and deckTile.right == handTile.right then
-                table.remove(gameState.deck, i)
-                break
-            end
-        end
-    end
+    -- Refresh deck from collection, minus the tiles in the fusion hand (so rerolls can't draw them)
+    gameState.deck = Workbench.deckWithoutHand(gameState.tileCollection, gameState.fusionHand, false)
 
     -- Show success animation
     local centerX = gameState.screen.width / 2
@@ -5655,9 +5554,7 @@ function Touch.initializePawnHand()
 end
 
 function Touch.getPawnTilePrice(tile)
-    if tile.tileType == "relic" then return 3
-    elseif tile.tileType == "tender" then return 1
-    else return 2 end
+    return Workbench.pawnPrice(tile)
 end
 
 function Touch.placePawnTileToSlot(tile, tileIndex, dragX, dragY)
@@ -5726,19 +5623,14 @@ function Touch.sellPawnTile()
     local tile = gameState.pawnPlacedTile
     if not tile then return end
 
-    local price = Touch.getPawnTilePrice(tile)
+    local price = Workbench.pawnPrice(tile)
     updateCoins(gameState.coins + price, {hasBonus = false})
     UI.Audio.playPlayButton()
 
     UI.Animation.playTilePunchOut(tile)
 
     -- Remove one matching tile from tileCollection
-    for i, t in ipairs(gameState.tileCollection) do
-        if t.left == tile.left and t.right == tile.right and t.tileType == tile.tileType then
-            table.remove(gameState.tileCollection, i)
-            break
-        end
-    end
+    Workbench.sell(gameState.tileCollection, tile)
 
     -- Animate tile out and clear slot
     UI.Animation.animateTo(tile, {dragScale = 1.5, dragOpacity = 0}, 0.4, "easeOutQuart", function()
@@ -5803,7 +5695,7 @@ function Touch.confirmFlatten()
     local tile = gameState.flattenSlotTile
     if not tile then return end
 
-    local cost = 1
+    local cost = Workbench.FLATTEN_COST
     if gameState.coins < cost then
         UI.Animation.createFloatingText("NOT ENOUGH COINS!",
             gameState.screen.width / 2,
@@ -5819,49 +5711,16 @@ function Touch.confirmFlatten()
         return
     end
 
-    -- Save original values before modifying (tile is a clone from createDeckFromCollection)
-    local origLeft  = tile.left
-    local origRight = tile.right
-    local origType  = tile.tileType or "normal"
-
     updateCoins(gameState.coins - cost, {hasBonus = false})
     UI.Audio.playPlayButton()
 
     UI.Animation.playTilePunchOut(tile)
 
-    local is66       = love.math.random() < 0.10
-    local isRelic = love.math.random() < 0.05
-
-    tile.left  = is66 and 6 or 1
-    tile.right = is66 and 6 or 1
-    tile.tileType   = isRelic and "relic" or "normal"
-    tile.id         = tostring(tile.left) .. tostring(tile.right)
-    tile.enhanceBonus = nil
-    tile.enhanceCount = nil
-
-    -- Remove original tile from collection (value-based match, same as fusion)
-    for i = #gameState.tileCollection, 1, -1 do
-        local ct = gameState.tileCollection[i]
-        if ct.left == origLeft and ct.right == origRight and (ct.tileType or "normal") == origType then
-            table.remove(gameState.tileCollection, i)
-            break
-        end
-    end
-    table.insert(gameState.tileCollection, tile)
+    -- Rewrite the tile and swap it into the collection in place of the original
+    local is66, isRelic = Workbench.flatten(gameState.tileCollection, tile)
 
     -- Refresh deck from updated collection (same as fusion)
-    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
-    Domino.shuffleDeck(gameState.deck)
-    for i = #gameState.deck, 1, -1 do
-        local deckTile = gameState.deck[i]
-        for _, handTile in ipairs(gameState.flattenHand) do
-            if deckTile.left == handTile.left and deckTile.right == handTile.right
-               and (deckTile.tileType or "normal") == (handTile.tileType or "normal") then
-                table.remove(gameState.deck, i)
-                break
-            end
-        end
-    end
+    gameState.deck = Workbench.deckWithoutHand(gameState.tileCollection, gameState.flattenHand, true)
 
     -- Pick dialogue
     local category = isRelic and "relic" or (is66 and "lucky" or "flatten")
@@ -5932,7 +5791,7 @@ function Touch.confirmMitosis()
     local tile = gameState.mitosisSlotTile
     if not tile then return end
 
-    local cost = 2
+    local cost = Workbench.MITOSIS_COST
     if gameState.coins < cost then
         UI.Animation.createFloatingText("NOT ENOUGH COINS!",
             gameState.screen.width / 2,
@@ -5948,23 +5807,10 @@ function Touch.confirmMitosis()
     UI.Audio.playButtonRelease()
 
     -- Clone the tile and add to collection (original stays)
-    local clone = Domino.clone(tile)
-    table.insert(gameState.tileCollection, clone)
+    Workbench.duplicate(gameState.tileCollection, tile)
 
-    -- Refresh deck
-    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
-    Domino.shuffleDeck(gameState.deck)
-    -- Remove tiles currently in hand from the deck pool to avoid duplicates
-    for i = #gameState.deck, 1, -1 do
-        local deckTile = gameState.deck[i]
-        for _, handTile in ipairs(gameState.mitosisHand) do
-            if deckTile.left == handTile.left and deckTile.right == handTile.right
-               and (deckTile.tileType or "normal") == (handTile.tileType or "normal") then
-                table.remove(gameState.deck, i)
-                break
-            end
-        end
-    end
+    -- Refresh deck, minus tiles currently in hand to avoid duplicates
+    gameState.deck = Workbench.deckWithoutHand(gameState.tileCollection, gameState.mitosisHand, true)
 
     -- Return the slot tile to hand with visual feedback
     tile.placed = false
