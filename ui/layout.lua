@@ -121,6 +121,12 @@ function UI.Layout.getBoardArea()
     }
 end
 
+-- Scale applied to domino/tool sprites in game screens (hand, board, shops)
+function UI.Layout.getTileSpriteScale()
+    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
+    return math.max(minScale * 2.0, 1.0)
+end
+
 function UI.Layout.scale(value)
     return value * gameState.screen.scale
 end

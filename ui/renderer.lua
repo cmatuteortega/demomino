@@ -466,8 +466,7 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     end
 
     -- Calculate sprite scaling based on screen size (same as regular tiles)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply dynamic scaling for board tiles
     if dynamicScale < 1.0 then
@@ -574,8 +573,7 @@ function UI.Renderer.drawDemonDominoShadow(domino, x, y, scale, orientation, dyn
     end
 
     -- Calculate sprite scaling based on screen size (same as regular tiles)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply dynamic scaling for board tiles
     if dynamicScale < 1.0 then
@@ -725,8 +723,7 @@ function UI.Renderer.drawDominoShadow(domino, x, y, scale, orientation, dynamicS
         local sprite = spriteData.sprite
         if sprite and sprite.getWidth and sprite.getHeight then
             -- Calculate scaling (same as full draw)
-            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-            local spriteScale = math.max(minScale * 2.0, 1.0)
+            local spriteScale = UI.Layout.getTileSpriteScale()
 
             if dynamicScale < 1.0 then
                 spriteScale = spriteScale * dynamicScale
@@ -2068,8 +2065,7 @@ function UI.Renderer.drawCoinSprites()
     local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
 
     if coinSprite then
-        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-        local spriteScale = math.max(minScale * 2.0, 1.0)
+        local spriteScale = UI.Layout.getTileSpriteScale()
 
         -- Position coin stack 20px left of layout position
         local coinStartX = stackX - UI.Layout.scale(20)
@@ -4008,8 +4004,7 @@ function UI.Renderer.drawToolSprite(tool)
     end
 
     -- Calculate sprite scaling (same as combat tools)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply drag scaling and selection scaling
     spriteScale = spriteScale * (tool.dragScale or 1.0) * (tool.selectScale or 1.0)
@@ -5053,8 +5048,7 @@ function UI.Renderer.drawDealArtifactsArea()
     local centerY   = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
 
     local sampleSprite = dominoSprites and dominoSprites["00"]
-    local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale  = math.max(minScale * 2.0, 1.0)
+    local spriteScale  = UI.Layout.getTileSpriteScale()
     local tileW = sampleSprite and (sampleSprite.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
@@ -5224,8 +5218,7 @@ function UI.Renderer.drawCasinoDealerTiles()
     local casino = gameState.casino
     if not casino or not casino.dealerTiles then return end
 
-    local minScale   = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     for _, tile in ipairs(casino.dealerTiles) do
         UI.Renderer.drawDomino(tile, tile.visualX, tile.visualY, gameState.screen.scale, "vertical", 1.0)
@@ -5374,8 +5367,7 @@ function UI.Renderer.drawDealArea()
 
     -- Tile size calculation
     local sampleSprite = dominoSprites and dominoSprites["00"]
-    local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale  = math.max(minScale * 2.0, 1.0)
+    local spriteScale  = UI.Layout.getTileSpriteScale()
     local tileW = sampleSprite and (sampleSprite.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
@@ -6718,8 +6710,7 @@ function UI.Renderer.drawFusionArea()
     local centerY = boardArea.y + boardArea.height / 2
 
     -- Sprite dimensions: tilted sprite is 64×32 px, vertical is 32×64 px.
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleTilted = dominoTiltedSprites and dominoTiltedSprites["00"]
     local tileDispW = sampleTilted and (sampleTilted.sprite:getWidth()  * spriteScale) or UI.Layout.scale(100)
@@ -6989,8 +6980,7 @@ function UI.Renderer.drawMitosisArea()
     local boardArea = UI.Layout.getBoardArea()
     local centerY = boardArea.y + boardArea.height / 2
 
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleVert = dominoSprites and dominoSprites["00"]
     local verticalWidth  = sampleVert and (sampleVert.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
@@ -7381,8 +7371,7 @@ function UI.Renderer.drawTooltip()
         if tt.spriteHalfH and tt.spriteHalfH > 0 then
             tileHalfH = tt.spriteHalfH
         else
-            local minSc = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-            local spSc  = math.max(minSc * 2.0, 1.0)
+            local spSc  = UI.Layout.getTileSpriteScale()
             local isBoardTile = false
             if gameState.placedTiles then
                 for _, t in ipairs(gameState.placedTiles) do

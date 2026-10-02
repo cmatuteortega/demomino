@@ -1271,8 +1271,7 @@ function updateCoins(newCoins, bonusInfo)
 
         -- Get base position from layout (separate text and stack positions)
         local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
-        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-        local spriteScale = math.max(minScale * 2.0, 1.0)
+        local spriteScale = UI.Layout.getTileSpriteScale()
 
         -- Create falling coin objects for each new coin
         local oldCoins = previousTarget
@@ -2559,8 +2558,7 @@ function initializeCasino()
 end
 
 local function casinoGetTileSize()
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
     local sampleSprite = dominoSprites and dominoSprites["00"]
     local tileW = sampleSprite and (sampleSprite.sprite:getWidth() * spriteScale) or UI.Layout.scale(50)
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)

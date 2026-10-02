@@ -2540,8 +2540,7 @@ releasePhaseHandlers["deal_menu"] = function(x, y, istouch, touchId)
     end
     do
         local sampleSprite = dominoSprites and dominoSprites["00"]
-        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-        local ss       = math.max(minScale * 2.0, 1.0)
+        local ss       = UI.Layout.getTileSpriteScale()
         local tileW    = sampleSprite and (sampleSprite.sprite:getWidth()  * ss) or UI.Layout.scale(50)
         local tileH    = sampleSprite and (sampleSprite.sprite:getHeight() * ss) or UI.Layout.scale(100)
         local boardArea = UI.Layout.getBoardArea()
@@ -2634,8 +2633,7 @@ releasePhaseHandlers["deal_artifacts_menu"] = function(x, y, istouch, touchId)
     end
     do
         local sampleSprite = dominoSprites and dominoSprites["00"]
-        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-        local ss       = math.max(minScale * 2.0, 1.0)
+        local ss       = UI.Layout.getTileSpriteScale()
         local tileW    = sampleSprite and (sampleSprite.sprite:getWidth()  * ss) or UI.Layout.scale(50)
         local tileH    = sampleSprite and (sampleSprite.sprite:getHeight() * ss) or UI.Layout.scale(100)
         local boardArea = UI.Layout.getBoardArea()
@@ -2843,8 +2841,7 @@ releaseDropHandlers["fusionHand"] = {requires = "draggedTile", handle = function
             }, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
                 spriteHalfH = ((tile.orientation == "horizontal") and 32 or 64) * _ss / 2
             })
@@ -2889,8 +2886,7 @@ releaseDropHandlers["enhanceHand"] = {requires = "draggedTile", handle = functio
             UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
                 spriteHalfH = 64 * _ss / 2
             })
@@ -2912,8 +2908,7 @@ releaseDropHandlers["pawnHand"] = {requires = "draggedTile", handle = function(x
             UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
                 spriteHalfH = ((tile.orientation == "horizontal") and 32 or 64) * _ss / 2
             })
@@ -2946,8 +2941,7 @@ releaseDropHandlers["mitosisHand"] = {requires = "draggedTile", handle = functio
         UI.Animation.animateTo(tile, {selectScale = 1.15}, 0.1, "easeOutBack", function()
             UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
         end)
-        local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-        local _ss = math.max(_ms * 2.0, 1.0)
+        local _ss = UI.Layout.getTileSpriteScale()
         Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {spriteHalfH = 64 * _ss / 2})
         Touch.resetTileDragState(tile)
     end
@@ -2983,8 +2977,7 @@ releaseDropHandlers["flattenHand"] = {requires = "draggedTile", handle = functio
             UI.Animation.animateTo(tile, {selectScale = 1.0}, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
                 spriteHalfH = 64 * _ss / 2
             })
@@ -3015,8 +3008,7 @@ releaseDropHandlers["shopHand"] = {requires = "draggedTile", handle = function(x
             }, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", tile, tile.visualX, tile.visualY, {
                 spriteHalfH = ((tile.orientation == "horizontal") and 32 or 64) * _ss / 2
             })
@@ -3053,8 +3045,7 @@ releaseDropHandlers["artifactsShopHand"] = {requires = "draggedTool", handle = f
             }, 0.15, "easeOutBack")
         end)
         if true then
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tool", {id = tool.toolId}, tool.visualX, tool.visualY, {
                 toolContext = "shop",
                 spriteHalfH = 16 * _ss,
@@ -3088,8 +3079,7 @@ releaseDropHandlers["board"] = {requires = "draggedTile", handle = function(x, y
         -- Show tooltip on long press
         if true then
             local bt = touchState.draggedTile
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", bt, bt.x, bt.y, {
                 spriteHalfH = ((bt.orientation == "horizontal") and 32 or 64) * _ss / 2
             })
@@ -3314,8 +3304,7 @@ releaseDropHandlers["hand"] = {requires = "draggedTile", handle = function(x, y,
             Touch.resetTileDragState(tappedHandTile)
             if true then
                 local tht = tappedHandTile
-                local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-                local _ss = math.max(_ms * 2.0, 1.0)
+                local _ss = UI.Layout.getTileSpriteScale()
                 Touch.showTooltip("tile", tht, tht.visualX, tht.visualY, {
                     spriteHalfH = ((tht.orientation == "horizontal") and 32 or 64) * _ss / 2
                 })
@@ -3360,8 +3349,7 @@ function Touch.released(x, y, istouch, touchId)
     if touchState.pressedAnchorTile and not Touch.isDragging() then
         if true then
             local bt = touchState.pressedAnchorTile
-            local _ms = math.min(gameState.screen.width/800, gameState.screen.height/600)
-            local _ss = math.max(_ms * 2.0, 1.0)
+            local _ss = UI.Layout.getTileSpriteScale()
             Touch.showTooltip("tile", bt, bt.x, bt.y, {
                 spriteHalfH = ((bt.orientation == "horizontal") and 32 or 64) * _ss / 2
             })
@@ -5219,8 +5207,7 @@ function Touch.positionTileInFusionSlot(tile, slotIndex)
     local boardArea = UI.Layout.getBoardArea()
     local centerY = boardArea.y + boardArea.height / 2
 
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleTilted = dominoTiltedSprites and dominoTiltedSprites["00"]
     local tileDispW = sampleTilted and (sampleTilted.sprite:getWidth()  * spriteScale) or UI.Layout.scale(100)
@@ -5917,8 +5904,7 @@ function Touch.positionTileInMitosisSlot(tile)
     local boardArea = UI.Layout.getBoardArea()
     local centerY = boardArea.y + boardArea.height / 2
 
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleVert = dominoSprites and dominoSprites["00"]
     local verticalWidth = sampleVert and (sampleVert.sprite:getWidth() * spriteScale) or UI.Layout.scale(50)
@@ -7602,8 +7588,7 @@ function isToolContainsPoint(tool, x, y)
     end
 
     -- Calculate sprite bounds (same as rendering)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
     spriteScale = spriteScale * (tool.dragScale or 1.0) * (tool.selectScale or 1.0)
 
     local width = sprite:getWidth() * spriteScale
