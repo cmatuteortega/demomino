@@ -4426,7 +4426,7 @@ function Touch.playPlacedTiles()
 end
 
 function Touch.checkGameEnd()
-    if gameState.score >= gameState.targetScore then
+    if Run.isRoundWon(gameState) then
         -- Player won this round, show victory screen with continue button
         -- Don't increment round counter yet - wait for player to click continue
 
@@ -4434,13 +4434,10 @@ function Touch.checkGameEnd()
         triggerVictoryPhrase()
 
         -- Award coins based on various factors
-        local handsLeft = gameState.maxHandsPerRound - gameState.handsPlayed
-        local discardsLeft = 2 - gameState.discardsUsed
-        local winCoins = 1  -- Always award 1 coin for winning
-        local handsCoins = handsLeft * 2
-        local discardsCoins = discardsLeft * 1
-        local interestCoins = math.floor(gameState.startRoundCoins / 5)
-        local totalCoins = winCoins + handsCoins + discardsCoins + interestCoins
+        local reward = Run.roundReward(gameState)
+        local winCoins, handsCoins = reward.win, reward.hands
+        local discardsCoins, interestCoins = reward.discards, reward.interest
+        local totalCoins = reward.total
 
         if totalCoins > 0 then
             -- Clear existing breakdown and queue
@@ -4501,37 +4498,15 @@ function Touch.checkGameEnd()
         -- Animate hand tiles discarding before showing victory screen
         Hand.animateAllHandDiscard(gameState.hand, function()
             BossBehaviors.onCombatEnd(gameState)
-            gameState.gamePhase = "won"
-
-            -- If this was a boss round, generate a completely new map or end the run
-            if gameState.isBossRound then
-                gameState.currentDay = gameState.currentDay + 1  -- Increment day when completing map
-                gameState.isBossRound = false
-
-                if gameState.currentDay > 5 then
-                    -- Player has beaten all 5 nights — show run complete screen
-                    gameState.gamePhase = "run_complete"
-                    gameState.currentMap = nil
-                else
-                    gameState.showNightIntroOnAdvance = true
-                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
-                end
-            else
-                -- Regular combat node completion - return to existing map
-                -- Generate a new map if one doesn't exist (shouldn't happen)
-                if not gameState.currentMap then
-                    gameState.currentMap = Map.generateMap(gameState.screen.width, gameState.screen.height, gameState.currentDay)
-                end
-            end
+            -- After a boss: next night's map, or the run-complete screen after night 5
+            Run.finishWonRound(gameState)
         end)
-    elseif gameState.handsPlayed >= gameState.maxHandsPerRound then
+    elseif Run.isRoundLost(gameState) then
         -- Animate hand tiles discarding before showing loss screen
         Hand.animateAllHandDiscard(gameState.hand, function()
             BossBehaviors.onCombatEnd(gameState)
-            gameState.gamePhase = "lost"
-
-            -- Reset tools on loss (consumables don't persist through failure)
-            gameState.ownedTools = {}
+            -- Loss screen; tools don't persist through failure
+            Run.finishLostRound(gameState)
 
             -- Stop any score countdown sound that might still be playing
             UI.Audio.stopScoreAnimating()
@@ -4771,378 +4746,295 @@ function Touch.enterSelectedNode()
     end
 end
 
+-- Fresh PLAY / DISCARD / SORT button animation state (reset on every node visit
+-- so the buttons are visible again)
+local function freshShopButtonAnimations()
+    return {
+        playButton    = {scale = 1.0, pressed = false, yOffset = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0},
+        sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
+    }
+end
+
+local function pinkButtonAnimation()
+    return {
+        color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
+    }
+end
+
+local function showNodeGreeting(screen, key, autoDismissTime)
+    local text = Dialogue.getRandomPhrase(screen, key)
+    if text then
+        Dialogue.show(text, {
+            category = "greeting",
+            skipDelay = true,
+            requiresAction = false,
+            autoDissmissTime = autoDismissTime
+        })
+    end
+end
+
+-- Hand-shaped sprite objects for a list of offered tool ids (artifacts shop)
+local function buildToolOfferSprites(toolIds, hiddenForIntro)
+    local sprites = {}
+    for i, toolId in ipairs(toolIds) do
+        local spriteType = getToolSpriteType(toolId)
+        local toolDef = Tools.getDefinition(toolId)
+
+        -- Calculate initial position at hand
+        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolIds)
+
+        table.insert(sprites, {
+            toolId = toolId,
+            spriteType = spriteType,
+            basePrice = toolDef.cost,
+            shopPurchased = false,
+            isDragging = false,
+            isAnimating = false,
+            selectScale = 1.0,
+            selectOffset = 0,
+            idleFloatOffset = 0,
+            idleRotation = 0,
+            idleShadowOffset = 0,
+            idlePhase = (i - 1) * 0.8,  -- Phase offset for variety
+            dragScale = 1.0,
+            dragOpacity = 1.0,
+            id = toolId .. "_" .. i,  -- Unique ID
+            x = targetX,
+            y = targetY,
+            visualX = targetX,
+            visualY = targetY,
+            hiddenForIntro = hiddenForIntro  -- Hidden until cup animation throws them
+        })
+    end
+    return sprites
+end
+
+-- Tile shop entry (trade node and the legacy "tiles" node)
+local function enterTileShop()
+    gameState.currentTilesNodeType = "trade"
+
+    -- Generate shop tile offers when entering tiles menu (new system with variants)
+    gameState.offeredTiles = Domino.generateShopTileOffers(3)
+    gameState.shopPlacedTiles = {}  -- Board for placing tiles (max 1)
+    gameState.shopRerollCost = 1  -- Reroll always costs 1$
+
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    gameState.gamePhase = "tiles_menu"
+end
+
+-- Alchemy entry: fusion (addition) or subtraction
+local function enterAlchemy(nodeType)
+    gameState.currentTilesNodeType = nodeType
+    Touch.initializeFusionHand()
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    -- Animate tiles drawing in from right (like combat screen)
+    Hand.animateTilesDraw(gameState.fusionHand, 0)
+    gameState.gamePhase = "tiles_menu"
+end
+
+-- Deal entry shared by the contract deal and the artifact deal
+local function enterDeal(offer, phase)
+    local tier = (offer and offer.tier) or 3
+    gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
+    Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
+    gameState.dealAccepted = false
+    gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
+    gameState.gamePhase = phase
+    Dialogue.clear()
+    showNodeGreeting(phase, "greetings", 8.0)
+end
+
+-- Per node type: set up the node's screen. Unknown types go back to the map.
+local nodeEntryHandlers = {}
+
+function nodeEntryHandlers.combat(node)
+    -- Mark if this is the boss node (map completion)
+    gameState.isBossRound = Map.isCompleted(gameState.currentMap)
+
+    -- Store the demon name for this combat encounter
+    gameState.currentDemonName = node.demonName
+
+    -- Clear any existing dialogue from previous screen BEFORE initializing combat
+    -- (initializeCombatRound shows tutorial message, so clear must happen first)
+    Dialogue.clear()
+
+    -- Reset combat state for fresh round (score=0, new deck/hand, reset counters)
+    -- This will show tutorial message for round 1 if enabled
+    initializeCombatRound()
+
+    -- Reset dialogue idle timer (witty remark will trigger after 5 seconds)
+    if gameState.dialogueAnimation then
+        gameState.dialogueAnimation.idleTimer = 0
+    end
+
+    -- All combat nodes (including boss) start combat round
+    gameState.gamePhase = "playing"
+end
+nodeEntryHandlers.boss = nodeEntryHandlers.combat
+
+function nodeEntryHandlers.trade()
+    enterTileShop()
+
+    -- Clear any existing dialogue from previous screen
+    Dialogue.clear()
+
+    -- Animate tiles drawing in from right
+    if gameState.offeredTiles then
+        Hand.animateTilesDraw(gameState.offeredTiles, 0)
+    end
+
+    showNodeGreeting("tiles_menu", "greetings", 10.0)
+end
+
+-- Legacy "tiles" node type - default to trade for backward compatibility
+function nodeEntryHandlers.tiles()
+    enterTileShop()
+    if gameState.offeredTiles then
+        Hand.animateTilesDraw(gameState.offeredTiles, 0)
+    end
+end
+
+function nodeEntryHandlers.alchemy()          enterAlchemy("alchemy") end
+function nodeEntryHandlers.alchemy_subtract() enterAlchemy("alchemy_subtract") end
+
+-- PAWN node - sell tiles for coins
+function nodeEntryHandlers.pawn()
+    gameState.currentTilesNodeType = "pawn"
+    gameState.pawnPlacedTile = nil
+
+    Touch.initializePawnHand()
+    Hand.animateTilesDraw(gameState.pawnHand, 0)
+
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    gameState.shopNextButtonAnimation = pinkButtonAnimation()
+
+    Dialogue.clear()
+    gameState.gamePhase = "tiles_menu"
+    showNodeGreeting("tiles_menu", "pawn_greetings", 10.0)
+end
+
+-- ENHANCE node - tile enhancement interface
+function nodeEntryHandlers.enhance()
+    gameState.currentTilesNodeType = "enhance"
+    Touch.initializeEnhanceHand()
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    gameState.enhanceNextButtonAnimation = pinkButtonAnimation()
+    Hand.animateTilesDraw(gameState.enhanceHand, 0)
+    Dialogue.clear()
+    gameState.gamePhase = "tiles_menu"
+end
+
+-- FLATTEN node - tile flattening interface (Pazuzu)
+function nodeEntryHandlers.flatten()
+    gameState.currentTilesNodeType = "flatten"
+    Touch.initializeFlattenHand()
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    gameState.flattenNextButtonAnimation = pinkButtonAnimation()
+    Hand.animateTilesDraw(gameState.flattenHand, 0)
+    Dialogue.clear()
+    gameState.gamePhase = "tiles_menu"
+    showNodeGreeting("flatten_menu", "greetings", 10.0)
+end
+
+-- MITOSIS node - duplicate a tile (LILITH)
+function nodeEntryHandlers.mitosis()
+    gameState.currentTilesNodeType = "mitosis"
+    Touch.initializeMitosisHand()
+    gameState.buttonAnimations = freshShopButtonAnimations()
+    gameState.fusionNextButtonAnimation = pinkButtonAnimation()
+    Hand.animateTilesDraw(gameState.mitosisHand, 0)
+    Dialogue.clear()
+    gameState.gamePhase = "tiles_menu"
+end
+
+function nodeEntryHandlers.artifacts()
+    -- Generate 3 random tool offers when entering artifacts menu (as sprite objects)
+    gameState.offeredTools = buildToolOfferSprites(Tools.generateRandomToolOffers(3), true)
+
+    -- Initialize shop state (similar to tile shop)
+    gameState.artifactsShopPlacedTools = {}  -- Board for placing tools (max 1)
+    gameState.shopRerollCost = 1  -- Cost to reroll tool offers
+
+    -- Initialize button animations
+    gameState.buttonAnimations = {
+        playButton = {scale = 1.0, pressed = false, yOffset = 0},
+        discardButton = {scale = 1.0, pressed = false, yOffset = 0}
+    }
+
+    -- Block interactions during intro animation
+    gameState.artifactsShopIntroPlaying = true
+
+    -- Start cup intro animation (cup throws tools onto board, then to hand)
+    if gameState.offeredTools then
+        UI.Animation.animateCupIntroArtifactShop(gameState.offeredTools, function()
+            -- Animation complete, enable interactions
+            gameState.artifactsShopIntroPlaying = false
+        end)
+    end
+
+    gameState.gamePhase = "artifacts_menu"
+end
+
+function nodeEntryHandlers.contracts()
+    -- Generate contracts for shop if not already generated
+    if #gameState.offeredContracts == 0 then
+        gameState.offeredContracts = Contracts.generateShopContracts()
+    end
+    -- Reset selection + per-candle purchased flags
+    gameState.contractsSelectedIndex = 1
+    gameState.contractsPurchased = {false, false, false}
+    gameState.contractsNextButtonAnimation = pinkButtonAnimation()
+    gameState.gamePhase = "contracts_menu"
+    Dialogue.clear()
+    showNodeGreeting("contracts_menu", "greetings", 10.0)
+end
+
+function nodeEntryHandlers.deal()
+    -- Random contract offer (excluding already-owned)
+    gameState.offeredDealContract = Contracts.getRandomForDeal(gameState.activeContracts)
+    enterDeal(gameState.offeredDealContract, "deal_menu")
+end
+
+nodeEntryHandlers["deal-artifacts"] = function()
+    local toolOffers = Tools.generateRandomToolOffers(1)
+    gameState.offeredDealArtifact = Tools.getDefinition(toolOffers[1])
+    enterDeal(gameState.offeredDealArtifact, "deal_artifacts_menu")
+end
+
+-- RESTORE node - renew an active contract's uses
+function nodeEntryHandlers.restore()
+    gameState.restoreSelectedIndex = 1
+    gameState.restoreNextButtonAnimation = pinkButtonAnimation()
+    gameState.gamePhase = "restore_menu"
+    Dialogue.clear()
+    showNodeGreeting("contracts_menu", "greetings", 10.0)
+end
+
+-- GAMBLE node - casino blackjack screen
+function nodeEntryHandlers.gamble(node)
+    gameState.currentDemonName = node.demonName  -- "BELIAL"
+    Dialogue.clear()
+    initializeCasino()
+    gameState.gamePhase = "casino"
+end
+
+-- Unknown node type: back to the map
+local function enterUnknownNode()
+    -- Clear any thrown tool sprites
+    UI.Animation.clearAllDiePhysics()
+    Dialogue.clear()
+    gameState.gamePhase = "map"
+end
+
 -- Route to the node's screen — called after any interstitials (e.g. demon_discovery) are done
 function Touch.routeToNode(node)
     local nodeType = node.nodeType
     if gameState.debugNodeTypeOverride and nodeType ~= "combat" and nodeType ~= "boss" and nodeType ~= "start" then
         nodeType = gameState.debugNodeTypeOverride
     end
-    if nodeType == "combat" or nodeType == "boss" then
-        -- Mark if this is the boss node (map completion)
-        gameState.isBossRound = Map.isCompleted(gameState.currentMap)
-
-        -- Store the demon name for this combat encounter
-        gameState.currentDemonName = node.demonName
-
-        -- Clear any existing dialogue from previous screen BEFORE initializing combat
-        -- (initializeCombatRound shows tutorial message, so clear must happen first)
-        Dialogue.clear()
-
-        -- Reset combat state for fresh round (score=0, new deck/hand, reset counters)
-        -- This will show tutorial message for round 1 if enabled
-        initializeCombatRound()
-
-        -- Reset dialogue idle timer (witty remark will trigger after 5 seconds)
-        if gameState.dialogueAnimation then
-            gameState.dialogueAnimation.idleTimer = 0
-        end
-
-        -- All combat nodes (including boss) start combat round
-        gameState.gamePhase = "playing"
-    elseif nodeType == "trade" then
-        -- TRADE node - shop interface
-        gameState.currentTilesNodeType = "trade"
-
-        -- Generate shop tile offers when entering tiles menu (new system with variants)
-        gameState.offeredTiles = Domino.generateShopTileOffers(3)
-        -- Initialize shop state
-        gameState.shopPlacedTiles = {}  -- Board for placing tiles (max 1)
-        gameState.shopRerollCost = 1  -- Reroll always costs 1$
-
-        -- Always reset button animations when entering shop (ensures visibility on every visit)
-        gameState.buttonAnimations = {
-            playButton = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-
-        gameState.gamePhase = "tiles_menu"
-
-        -- Clear any existing dialogue from previous screen
-        Dialogue.clear()
-
-        -- Animate tiles drawing in from right
-        if gameState.offeredTiles then
-            Hand.animateTilesDraw(gameState.offeredTiles, 0)
-        end
-
-        -- Trigger welcome greeting dialogue
-        local greetingText = Dialogue.getRandomPhrase("tiles_menu", "greetings")
-        if greetingText then
-            Dialogue.show(greetingText, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 10.0
-            })
-        end
-    elseif nodeType == "alchemy" then
-        -- ALCHEMY node - fusion interface (addition)
-        gameState.currentTilesNodeType = "alchemy"
-
-        -- Initialize fusion hand using the existing function
-        Touch.initializeFusionHand()
-
-        -- Always reset button animations when entering fusion (ensures visibility on every visit)
-        gameState.buttonAnimations = {
-            playButton = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-
-        -- Animate tiles drawing in from right (like combat screen)
-        Hand.animateTilesDraw(gameState.fusionHand, 0)
-
-        gameState.gamePhase = "tiles_menu"
-    elseif nodeType == "alchemy_subtract" then
-        -- ALCHEMY SUBTRACT node - fusion interface (subtraction)
-        gameState.currentTilesNodeType = "alchemy_subtract"
-
-        Touch.initializeFusionHand()
-
-        gameState.buttonAnimations = {
-            playButton = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-
-        Hand.animateTilesDraw(gameState.fusionHand, 0)
-
-        gameState.gamePhase = "tiles_menu"
-    elseif nodeType == "pawn" then
-        -- PAWN node - sell tiles for coins
-        gameState.currentTilesNodeType = "pawn"
-        gameState.pawnPlacedTile = nil
-
-        Touch.initializePawnHand()
-        Hand.animateTilesDraw(gameState.pawnHand, 0)
-
-        gameState.buttonAnimations = {
-            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-        gameState.shopNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-
-        Dialogue.clear()
-        gameState.gamePhase = "tiles_menu"
-
-        local greetingText = Dialogue.getRandomPhrase("tiles_menu", "pawn_greetings")
-        if greetingText then
-            Dialogue.show(greetingText, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 10.0
-            })
-        end
-
-    elseif nodeType == "enhance" then
-        -- ENHANCE node - tile enhancement interface
-        gameState.currentTilesNodeType = "enhance"
-
-        Touch.initializeEnhanceHand()
-
-        gameState.buttonAnimations = {
-            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-        gameState.enhanceNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-
-        -- Animate tiles drawing in from right
-        Hand.animateTilesDraw(gameState.enhanceHand, 0)
-
-        -- Clear any existing dialogue
-        Dialogue.clear()
-
-        gameState.gamePhase = "tiles_menu"
-
-    elseif nodeType == "flatten" then
-        -- FLATTEN node - tile flattening interface (Pazuzu)
-        gameState.currentTilesNodeType = "flatten"
-
-        Touch.initializeFlattenHand()
-
-        gameState.buttonAnimations = {
-            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-        gameState.flattenNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-
-        -- Animate tiles drawing in from right
-        Hand.animateTilesDraw(gameState.flattenHand, 0)
-
-        -- Clear any existing dialogue
-        Dialogue.clear()
-
-        gameState.gamePhase = "tiles_menu"
-
-        -- Show greeting
-        local greetText = Dialogue.getRandomPhrase("flatten_menu", "greetings")
-        if greetText then
-            Dialogue.show(greetText, {category = "greeting", skipDelay = true, requiresAction = false, autoDissmissTime = 10.0})
-        end
-
-    elseif nodeType == "mitosis" then
-        -- MITOSIS node - duplicate a tile (LILITH)
-        gameState.currentTilesNodeType = "mitosis"
-
-        Touch.initializeMitosisHand()
-
-        gameState.buttonAnimations = {
-            playButton    = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton    = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-        gameState.fusionNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-
-        Hand.animateTilesDraw(gameState.mitosisHand, 0)
-        Dialogue.clear()
-        gameState.gamePhase = "tiles_menu"
-
-    elseif nodeType == "tiles" then
-        -- Legacy "tiles" node type - default to trade for backward compatibility
-        gameState.currentTilesNodeType = "trade"
-
-        gameState.offeredTiles = Domino.generateShopTileOffers(3)
-        gameState.shopPlacedTiles = {}
-        gameState.shopRerollCost = 1
-
-        gameState.buttonAnimations = {
-            playButton = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0},
-            sortButton = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-
-        gameState.gamePhase = "tiles_menu"
-
-        if gameState.offeredTiles then
-            Hand.animateTilesDraw(gameState.offeredTiles, 0)
-        end
-    elseif nodeType == "artifacts" then
-        -- Generate 3 random tool offers when entering artifacts menu (as sprite objects)
-        local toolIds = Tools.generateRandomToolOffers(3)
-        gameState.offeredTools = {}
-
-        -- Convert tool IDs to sprite objects (similar to tile shop hand)
-        for i, toolId in ipairs(toolIds) do
-            local spriteType = getToolSpriteType(toolId)
-            local toolDef = Tools.getDefinition(toolId)
-
-            -- Calculate initial position at hand
-            local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolIds)
-
-            local toolSprite = {
-                toolId = toolId,
-                spriteType = spriteType,
-                basePrice = toolDef.cost,
-                shopPurchased = false,
-                isDragging = false,
-                isAnimating = false,
-                selectScale = 1.0,
-                selectOffset = 0,
-                idleFloatOffset = 0,
-                idleRotation = 0,
-                idleShadowOffset = 0,
-                idlePhase = (i - 1) * 0.8,  -- Phase offset for variety
-                dragScale = 1.0,
-                dragOpacity = 1.0,
-                id = toolId .. "_" .. i,  -- Unique ID
-                x = targetX,
-                y = targetY,
-                visualX = targetX,
-                visualY = targetY,
-                hiddenForIntro = true  -- Hidden until cup animation throws them
-            }
-
-            table.insert(gameState.offeredTools, toolSprite)
-        end
-
-        -- Initialize shop state (similar to tile shop)
-        gameState.artifactsShopPlacedTools = {}  -- Board for placing tools (max 1)
-        gameState.shopRerollCost = 1  -- Cost to reroll tool offers
-
-        -- Initialize button animations
-        gameState.buttonAnimations = {
-            playButton = {scale = 1.0, pressed = false, yOffset = 0},
-            discardButton = {scale = 1.0, pressed = false, yOffset = 0}
-        }
-
-        -- Block interactions during intro animation
-        gameState.artifactsShopIntroPlaying = true
-
-        -- Start cup intro animation (cup throws tools onto board, then to hand)
-        if gameState.offeredTools then
-            UI.Animation.animateCupIntroArtifactShop(gameState.offeredTools, function()
-                -- Animation complete, enable interactions
-                gameState.artifactsShopIntroPlaying = false
-            end)
-        end
-
-        gameState.gamePhase = "artifacts_menu"
-    elseif nodeType == "contracts" then
-        -- Generate contracts for shop if not already generated
-        if #gameState.offeredContracts == 0 then
-            gameState.offeredContracts = Contracts.generateShopContracts()
-        end
-        -- Reset selection + per-candle purchased flags
-        gameState.contractsSelectedIndex = 1
-        gameState.contractsPurchased = {false, false, false}
-        -- Reset button animation
-        gameState.contractsNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-        -- Greeting dialogue
-        gameState.gamePhase = "contracts_menu"
-        Dialogue.clear()
-        local greetText = Dialogue.getRandomPhrase("contracts_menu", "greetings")
-        if greetText then
-            Dialogue.show(greetText, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 10.0
-            })
-        end
-    elseif nodeType == "deal" then
-        -- Random contract offer (excluding already-owned)
-        gameState.offeredDealContract = Contracts.getRandomForDeal(gameState.activeContracts)
-        local tier = (gameState.offeredDealContract and gameState.offeredDealContract.tier) or 3
-        gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
-        Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
-        gameState.dealAccepted = false
-        gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
-        gameState.gamePhase = "deal_menu"
-        Dialogue.clear()
-        local greet = Dialogue.getRandomPhrase("deal_menu", "greetings")
-        if greet then
-            Dialogue.show(greet, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 8.0
-            })
-        end
-    elseif nodeType == "deal-artifacts" then
-        local toolOffers = Tools.generateRandomToolOffers(1)
-        gameState.offeredDealArtifact = Tools.getDefinition(toolOffers[1])
-        local tier = (gameState.offeredDealArtifact and gameState.offeredDealArtifact.tier) or 3
-        gameState.dealDemonTiles = Drawbacks.generateForTier(tier)
-        Touch.initDealDrawbackSlide(gameState.dealDemonTiles)
-        gameState.dealAccepted = false
-        gameState.dealNextButtonAnimation = { color = {1, 1, 1, 1} }
-        gameState.gamePhase = "deal_artifacts_menu"
-        Dialogue.clear()
-        local greet = Dialogue.getRandomPhrase("deal_artifacts_menu", "greetings")
-        if greet then
-            Dialogue.show(greet, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 8.0
-            })
-        end
-    elseif nodeType == "restore" then
-        -- RESTORE node - renew an active contract's uses
-        gameState.restoreSelectedIndex = 1
-        gameState.restoreNextButtonAnimation = {
-            color = {UI.Colors.FONT_PINK[1], UI.Colors.FONT_PINK[2], UI.Colors.FONT_PINK[3], UI.Colors.FONT_PINK[4]}
-        }
-        gameState.gamePhase = "restore_menu"
-        Dialogue.clear()
-        local greet = Dialogue.getRandomPhrase("contracts_menu", "greetings")
-        if greet then
-            Dialogue.show(greet, {
-                category = "greeting",
-                skipDelay = true,
-                requiresAction = false,
-                autoDissmissTime = 10.0
-            })
-        end
-    elseif nodeType == "gamble" then
-        -- GAMBLE node - casino blackjack screen
-        gameState.currentDemonName = node.demonName  -- "BELIAL"
-        Dialogue.clear()
-        initializeCasino()
-        gameState.gamePhase = "casino"
-    else
-        -- Unknown node type, return to map
-        -- Clear any thrown tool sprites
-        UI.Animation.clearAllDiePhysics()
-        -- Clear dialogue
-        Dialogue.clear()
-        gameState.gamePhase = "map"
-    end
+    local enter = nodeEntryHandlers[nodeType] or enterUnknownNode
+    enter(node, nodeType)
 
     -- Clear selected node
     gameState.selectedNode = nil
@@ -7019,40 +6911,7 @@ function Touch.rerollArtifactsShopTools()
     end
 
     -- Generate 3 new tool offers
-    local toolIds = Tools.generateRandomToolOffers(3)
-    gameState.offeredTools = {}
-
-    for i, toolId in ipairs(toolIds) do
-        local spriteType = getToolSpriteType(toolId)
-        local toolDef = Tools.getDefinition(toolId)
-
-        -- Calculate initial position at hand
-        local targetX, targetY = UI.Layout.getHandPosition(i - 1, #toolIds)
-
-        local toolSprite = {
-            toolId = toolId,
-            spriteType = spriteType,
-            basePrice = toolDef.cost,
-            shopPurchased = false,
-            isDragging = false,
-            isAnimating = false,
-            selectScale = 1.0,
-            selectOffset = 0,
-            idleFloatOffset = 0,
-            idleRotation = 0,
-            idleShadowOffset = 0,
-            idlePhase = (i - 1) * 0.8,
-            dragScale = 1.0,
-            dragOpacity = 1.0,
-            id = toolId .. "_" .. i,
-            x = targetX,
-            y = targetY,
-            visualX = targetX,
-            visualY = targetY
-        }
-
-        table.insert(gameState.offeredTools, toolSprite)
-    end
+    gameState.offeredTools = buildToolOfferSprites(Tools.generateRandomToolOffers(3))
 
     -- Animate new tools drawing from right
     animateToolSpritesDraw(gameState.offeredTools, 0)
