@@ -140,6 +140,11 @@ end
 -- Eye blink state management
 local eyeBlinkStates = {}
 
+-- Blink state belongs to one tile instance: two copies of the same demon tile blink independently
+local function blinkKey(tile)
+    return tile.instanceId or tile.id
+end
+
 local function initializeEyeBlinks(tileId, pipCount)
     -- Safety check: ensure tileId is valid
     if not tileId then
@@ -190,7 +195,7 @@ function UI.Renderer.updateEyeBlinks(dt)
     end
 
     for _, tile in ipairs(demonTiles) do
-        local tileId = tile.id
+        local tileId = blinkKey(tile)
         -- Use Domino.getValue to handle special tiles (odd, even, x, etc.)
         local pipCount = Domino.getValue(tile)
 
@@ -269,12 +274,12 @@ function UI.Renderer.updateEyeBlinks(dt)
     local activeTileIds = {}
     for _, tile in ipairs(gameState.placedTiles) do
         if tile.isAnchor or tile.tileType == "demon" then
-            activeTileIds[tile.id] = true
+            activeTileIds[blinkKey(tile)] = true
         end
     end
     for _, tile in ipairs(gameState.hand or {}) do
         if tile.tileType == "demon" then
-            activeTileIds[tile.id] = true
+            activeTileIds[blinkKey(tile)] = true
         end
     end
 
@@ -498,7 +503,7 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     -- Clamp to 0-9; odd/even strings and values >=10 render 0 eyes (blank side)
     local leftVal  = type(domino.left)  == "number" and math.min(domino.left,  9) or 0
     local rightVal = type(domino.right) == "number" and math.min(domino.right, 9) or 0
-    local tileId = domino.id
+    local tileId = blinkKey(domino)
 
     -- Defensive: ensure blink states exist before drawing (update loop may not have run yet)
     initializeEyeBlinks(tileId, leftVal + rightVal)
