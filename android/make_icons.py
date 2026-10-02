@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate the Android launcher icon from the game sprites.
 
-A horizontal 2|5 demon tile (pips drawn as eyes) in the middle of a domino chain,
-with regular horizontal tiles connecting on both sides and running off the
-icon edges, on the game's maroon background.
+A vertical 5|5 demon double (pips drawn as eyes) in the middle of a domino
+chain, with regular horizontal 2|5 / 5|6 tiles connecting on both sides and
+running off the icon edges, on the game's maroon background.
 
 Outputs into android/res/, which CI copies over love-android's app/src/main/res/:
   drawable-<dpi>/love.png            legacy square icon (pre Android 8)
@@ -25,7 +25,7 @@ DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
 # Adaptive canvas is 108dp; launchers show roughly the central 72dp (18..90).
 CANVAS_DP, VISIBLE_DP = 108, 72
-PX_DP = 0.9          # size of one sprite pixel in dp (demon tile ~58dp wide)
+PX_DP = 0.9          # size of one sprite pixel in dp (demon tile ~58dp tall)
 TILE_W, TILE_H = 64, 32
 OVERLAP = 2          # neighbouring tiles share their 2px outline, like a chain
 
@@ -42,13 +42,14 @@ EYE_LAYOUTS = {
 }
 
 
-def demon_tile(left_val, right_val):
-    """Demon tile with its pips drawn as eyes, placed like drawDemonDomino:
-    half centres at 1/4 and 3/4 of the width, 2px above the tile centre."""
-    tile = sprite("demon_tiles", "tilted_demon_tile.png")
+def demon_tile(top_val, bottom_val):
+    """Vertical demon tile with its pips drawn as eyes, placed like
+    drawDemonDomino: half centres at 1/4 and 3/4 of the height, nudged up 1px
+    (top) and 5px (bottom) to sit on the tile face."""
+    tile = sprite("demon_tiles", "vertical_demon_tile.png")
     eye = sprite("demon_tiles", "eye_animation", "base.png")
-    cy = TILE_H / 2 - 2
-    for cx, val in ((TILE_W / 4, left_val), (TILE_W * 3 / 4, right_val)):
+    cx = TILE_H / 2
+    for cy, val in ((TILE_W / 4 - 1, top_val), (TILE_W * 3 / 4 - 5, bottom_val)):
         for dx, dy in EYE_LAYOUTS[val]:
             x = cx + dx * EYE_SPACING / 2 - eye.width / 2
             y = cy + dy * EYE_SPACING / 2 - eye.height / 2
@@ -57,14 +58,16 @@ def demon_tile(left_val, right_val):
 
 
 def chain():
-    """[1|2][demon 2|5][5|6] at native sprite resolution."""
-    left = sprite("titled_tiles", "12t.png")
+    """[2|5][demon 5/5 vertical][5|6] at native sprite resolution."""
+    left = sprite("titled_tiles", "25t.png")
     right = sprite("titled_tiles", "56t.png")
-    step = TILE_W - OVERLAP
-    img = Image.new("RGBA", (TILE_W + 2 * step, TILE_H), (0, 0, 0, 0))
-    img.alpha_composite(left, (0, 0))
-    img.alpha_composite(right, (2 * step, 0))
-    img.alpha_composite(demon_tile(2, 5), (step, 0))  # on top of the shared outlines
+    width = 2 * TILE_W + TILE_H - 2 * OVERLAP
+    img = Image.new("RGBA", (width, TILE_W), (0, 0, 0, 0))
+    y = (TILE_W - TILE_H) // 2
+    img.alpha_composite(left, (0, y))
+    img.alpha_composite(right, (width - TILE_W, y))
+    # on top of the shared outlines
+    img.alpha_composite(demon_tile(5, 5), (TILE_W - OVERLAP, 0))
     return img
 
 
