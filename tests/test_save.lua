@@ -20,6 +20,10 @@ T.ok("non-finite numbers are rejected, not written as unloadable text",
      not pcall(Save.serialize, {v = math.huge}))
 T.eq("numeric and boolean keys", roundtrip({[2] = "x", [true] = "y"})[true], "y")
 
+T.ok("a save can't call functions", not pcall(Save.deserialize, "return {x = os.time()}"))
+T.ok("a save can't read globals", Save.deserialize("return {x = love}").x == nil)
+T.ok("bytecode is rejected", not pcall(Save.deserialize, string.dump(function() return {} end)))
+
 T.section("Save.tileToData / tileFromData")
 local t = Domino.new(3, 5, 4, nil)
 t.tileType = "relic"

@@ -429,8 +429,25 @@ function Save.serializeTable(t)
 end
 
 -- Deserialize (convert string back to Lua table)
-function Save.deserialize(str)
+-- Compile a save/settings file as data: text only (no LuaJIT bytecode) and run
+-- with an empty environment, so a tampered file can't call any functions.
+local function loadDataChunk(str)
+    if type(str) ~= "string" then
+        return nil, "not a string"
+    end
+    if str:byte(1) == 27 then
+        return nil, "binary chunks are not allowed"
+    end
     local func, err = loadstring(str)
+    if not func then
+        return nil, err
+    end
+    setfenv(func, {})
+    return func
+end
+
+function Save.deserialize(str)
+    local func, err = loadDataChunk(str)
     if not func then
         error("Failed to deserialize: " .. tostring(err))
     end
@@ -561,7 +578,7 @@ function Save.loadSettings()
         return defaultSettings
     end
 
-    local loadFunc, err = loadstring(serializedSettings)
+    local loadFunc, err = loadDataChunk(serializedSettings)
     if not loadFunc then
         print("Error loading settings: " .. tostring(err))
         return defaultSettings
