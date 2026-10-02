@@ -16,7 +16,8 @@ any Lua error or crash, so it doubles as a smoke test (CI runs it).
 ## How it stays deterministic
 
 - `love.timer.getTime`, `os.time` and `os.clock` are frozen to a virtual clock
-  advanced 1/60 s per frame; `math.random` and `love.math` are seeded.
+  advanced 1/60 s per frame; `math.random` and `love.math` are seeded, and the
+  cosmetic generator (`RNG.cosmetic`, game/rng.lua) seeds from the frozen `os.time`.
 - The fuzzer uses its own LCG so it never consumes the game's random stream.
 - `conf.lua` here wraps the game's `conf.lua` to match the installed LÖVE
   version; otherwise LÖVE shows a blocking "made for 12.0" dialog.

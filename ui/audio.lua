@@ -258,7 +258,7 @@ function UI.Audio.playTilePlaced()
 
     if #placeTileSounds > 0 then
         -- Pick a random sound variant for variety
-        local randomIndex = love.math.random(1, #placeTileSounds)
+        local randomIndex = RNG.cosmetic(1, #placeTileSounds)
         local sound = placeTileSounds[randomIndex]
 
         -- Clone the sound so multiple can play simultaneously
@@ -359,7 +359,7 @@ function UI.Audio.playChipLoop()
     end
 
     -- Pick a random chip loop sound
-    local randomIndex = love.math.random(1, #chipLoopSounds)
+    local randomIndex = RNG.cosmetic(1, #chipLoopSounds)
     local sound = chipLoopSounds[randomIndex]
 
     -- Clone and play
@@ -487,7 +487,7 @@ function UI.Audio.playCupSliding()
 
     if #cupSlidingSounds > 0 then
         -- Pick a random sliding sound variant
-        local randomIndex = love.math.random(1, #cupSlidingSounds)
+        local randomIndex = RNG.cosmetic(1, #cupSlidingSounds)
         local sound = cupSlidingSounds[randomIndex]
         local soundSource = sound:clone()
         soundSource:play()
@@ -538,7 +538,7 @@ function UI.Audio.startMapAmbiance()
     -- Initialize texture playback timing
     mapAmbianceState.isPlaying = true
     mapAmbianceState.nextTextureTime = love.timer.getTime() +
-        love.math.random() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
+        RNG.cosmetic() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
         mapAmbianceState.textureMinDelay
 end
 
@@ -608,7 +608,7 @@ function UI.Audio.updateMapTextures(dt)
     if currentTime >= mapAmbianceState.nextTextureTime then
         -- Pick a random texture sound
         local textureNames = {"cracker", "crunch", "crunch_2", "growl", "laugh"}
-        local randomTexture = textureNames[love.math.random(1, #textureNames)]
+        local randomTexture = textureNames[RNG.cosmetic(1, #textureNames)]
         local textureSound = mapTextureSounds[randomTexture]
 
         if textureSound then
@@ -617,7 +617,7 @@ function UI.Audio.updateMapTextures(dt)
         end
 
         -- Schedule next texture
-        local delay = love.math.random() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
+        local delay = RNG.cosmetic() * (mapAmbianceState.textureMaxDelay - mapAmbianceState.textureMinDelay) +
                       mapAmbianceState.textureMinDelay
         mapAmbianceState.nextTextureTime = currentTime + delay
     end
@@ -636,7 +636,7 @@ function UI.Audio.playTypewriter(volumeMultiplier)
 
     if #typewriterSounds > 0 then
         -- Pick a random typewriter sound variant
-        local randomIndex = love.math.random(1, #typewriterSounds)
+        local randomIndex = RNG.cosmetic(1, #typewriterSounds)
         local sound = typewriterSounds[randomIndex]
 
         -- Clone the sound so multiple can play simultaneously

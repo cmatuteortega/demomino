@@ -380,7 +380,7 @@ local function snapshotState()
     return snap
 end
 local function resetLikeNewGame()
-    love.math.setRandomSeed(SEED); math.randomseed(SEED)
+    love.math.setRandomSeed(SEED); math.randomseed(SEED); RNG.seedCosmetic(SEED)
     UI.TitleScreen.startNewGame()
 end
 local function runResetLeak(runScenarios)

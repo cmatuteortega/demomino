@@ -43,6 +43,8 @@ UI = {
     Fonts = {get = function() return {getWidth = function() return 0 end, getHeight = function() return 12 end} end},
 }
 
+dofile("game/rng.lua")  -- falls back to love.math.random here (no newRandomGenerator)
+
 function T.load(path) dofile(path) end
 
 function T.section(name) io.write(name .. "\n") end

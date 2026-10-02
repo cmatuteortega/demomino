@@ -353,7 +353,7 @@ function updateCasino(dt)
                             gameState.dialogueContent.casino_menu[casino.result] or {}
             local resultText
             if #phrases > 0 then
-                resultText = phrases[love.math.random(#phrases)]
+                resultText = phrases[RNG.cosmetic(#phrases)]
             else
                 resultText = casino.result == "win" and "YOU WIN!" or
                              casino.result == "push" and "PUSH." or "YOU LOSE."

@@ -19,6 +19,7 @@ function love.load()
     
     love.graphics.setDefaultFilter("nearest", "nearest")
     
+    require("game.rng")
     require("game.i18n")
     require("game.domino")
     require("game.hand")
@@ -770,7 +771,7 @@ function initializeGame(isNewRound)
     gameState.scoreCountdownSpeed = 0
     gameState.scoreIdleAnimation = {
         floatOffset = 0,
-        phase = love.math.random() * 2 * math.pi  -- Random phase for variety
+        phase = RNG.cosmetic() * 2 * math.pi  -- Random phase for variety
     }
 
     -- Position tiles will be handled in first draw call
@@ -831,7 +832,7 @@ function initializeCombatRound()
     gameState.scoreCountdownSpeed = 0
     gameState.scoreIdleAnimation = {
         floatOffset = 0,
-        phase = love.math.random() * 2 * math.pi  -- Random phase for variety
+        phase = RNG.cosmetic() * 2 * math.pi  -- Random phase for variety
     }
 
     -- Reset victory phrase from previous round

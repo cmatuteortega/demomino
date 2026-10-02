@@ -560,7 +560,7 @@ function UI.Animation.createDiePhysics(options)
     local boardArea = UI.Layout.getBoardArea()
 
     -- Calculate target rotation (110-140 degrees left/counter-clockwise from start)
-    local targetRotationDegrees = love.math.random(110, 140)
+    local targetRotationDegrees = RNG.cosmetic(110, 140)
     local targetRotation = -math.rad(targetRotationDegrees)  -- Negative for counter-clockwise
 
     local dieAnim = {
@@ -1132,8 +1132,8 @@ function UI.Animation.updateCupAnimations(dt)
                     local velocityY = math.sin(angleRadians) * baseSpeed * speedMultiplier
 
                     -- Add slight random variation (±15%) to make it feel natural
-                    velocityX = velocityX * love.math.random(85, 115) / 100
-                    velocityY = velocityY * love.math.random(85, 115) / 100
+                    velocityX = velocityX * RNG.cosmetic(85, 115) / 100
+                    velocityY = velocityY * RNG.cosmetic(85, 115) / 100
 
                     -- Create physics animation for tool
                     UI.Animation.createDiePhysics({

@@ -108,15 +108,15 @@ local function stepTileFire(domino, emitting)
             local xOff, decay
             if y > bodyThreshold then
                 -- Body: near-vertical columns, minimal decay; fast burn-off when source is gone
-                xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
-                decay = emitting ~= false and (love.math.random() < 0.60 and 1 or 0)
-                                          or love.math.random(8, 12)
+                xOff  = RNG.cosmetic() < 0.10 and RNG.cosmetic(-1, 1) or 0
+                decay = emitting ~= false and (RNG.cosmetic() < 0.60 and 1 or 0)
+                                          or RNG.cosmetic(8, 12)
             else
                 -- Tips: center-inward scatter, faster decay so flames die naturally
                 local inward = x < mid and 1 or -1
-                xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
-                decay = emitting ~= false and love.math.random(2, 3)
-                                          or love.math.random(15, 20)
+                xOff  = RNG.cosmetic() < 0.35 and inward or RNG.cosmetic(-1, 1)
+                decay = emitting ~= false and RNG.cosmetic(2, 3)
+                                          or RNG.cosmetic(15, 20)
             end
             local tx = math.max(1, math.min(TILE_FIRE_W, x + xOff))
             grid[y - 1][tx] = math.max(0, heat - decay)
@@ -208,14 +208,14 @@ local function stepTileFireTilted(domino, emitting)
             local heat = grid[y][x]
             local xOff, decay
             if y > bodyThreshold then
-                xOff  = love.math.random() < 0.10 and love.math.random(-1, 1) or 0
-                decay = emitting ~= false and (love.math.random() < 0.60 and 1 or 0)
-                                          or love.math.random(8, 12)
+                xOff  = RNG.cosmetic() < 0.10 and RNG.cosmetic(-1, 1) or 0
+                decay = emitting ~= false and (RNG.cosmetic() < 0.60 and 1 or 0)
+                                          or RNG.cosmetic(8, 12)
             else
                 local inward = x < mid and 1 or -1
-                xOff  = love.math.random() < 0.35 and inward or love.math.random(-1, 1)
-                decay = emitting ~= false and love.math.random(2, 3)
-                                          or love.math.random(15, 20)
+                xOff  = RNG.cosmetic() < 0.35 and inward or RNG.cosmetic(-1, 1)
+                decay = emitting ~= false and RNG.cosmetic(2, 3)
+                                          or RNG.cosmetic(15, 20)
             end
             local tx = math.max(1, math.min(TILE_FIRE_TILTED_W, x + xOff))
             grid[y - 1][tx] = math.max(0, heat - decay)

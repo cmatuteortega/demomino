@@ -80,8 +80,8 @@ function UI.TitleScreen.initializeTitleTiles()
             tile.eyeBlinkState = {
                 currentFrame = 1,  -- 1 = base, 2-4 = blink frames
                 frameTimer = 0,
-                blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
-                blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+                blinkTimer = RNG.cosmetic() * 3 + 2,  -- Random initial delay 2-5s
+                blinkInterval = RNG.cosmetic() * 3 + 2,  -- 2-5 seconds between blinks
                 isBlinking = false,
                 blinkPhase = 0  -- 0-3 for animation sequence
             }
@@ -175,7 +175,7 @@ function UI.TitleScreen.updateTitleTileAnimations(dt)
                     eyeState.blinkPhase = 1
                     eyeState.frameTimer = 0
                     eyeState.currentFrame = 2  -- First blink frame
-                    eyeState.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                    eyeState.blinkInterval = RNG.cosmetic() * 3 + 2  -- New random interval
                 end
             end
         end

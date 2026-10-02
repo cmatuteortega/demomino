@@ -159,8 +159,8 @@ local function initializeEyeBlinks(tileId, pipCount)
         eyeBlinkStates[tileId].pips[i] = {
             currentFrame = 1,  -- 1 = base, 2-4 = blink frames
             frameTimer = 0,
-            blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
-            blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+            blinkTimer = RNG.cosmetic() * 3 + 2,  -- Random initial delay 2-5s
+            blinkInterval = RNG.cosmetic() * 3 + 2,  -- 2-5 seconds between blinks
             isBlinking = false,
             blinkPhase = 0  -- 0-5 for animation sequence
         }
@@ -205,10 +205,10 @@ function UI.Renderer.updateEyeBlinks(dt)
         local currentTime = love.timer.getTime()
 
         -- Check for special blink patterns every 8-15 seconds
-        if currentTime - blinkState.lastBlinkPattern > love.math.random() * 7 + 8 then
+        if currentTime - blinkState.lastBlinkPattern > RNG.cosmetic() * 7 + 8 then
             blinkState.lastBlinkPattern = currentTime
 
-            local patternRoll = love.math.random()
+            local patternRoll = RNG.cosmetic()
 
             if patternRoll < 0.2 then
                 -- Wave pattern: cascade blinks with 100ms delay
@@ -259,7 +259,7 @@ function UI.Renderer.updateEyeBlinks(dt)
                     pip.blinkPhase = 1
                     pip.frameTimer = 0
                     pip.currentFrame = 2  -- First blink frame
-                    pip.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                    pip.blinkInterval = RNG.cosmetic() * 3 + 2  -- New random interval
                 end
             end
         end
@@ -442,8 +442,8 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
 
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -549,8 +549,8 @@ function UI.Renderer.drawDemonDominoShadow(domino, x, y, scale, orientation, dyn
 
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -684,8 +684,8 @@ function UI.Renderer.drawDominoShadow(domino, x, y, scale, orientation, dynamicS
     end
 
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -805,8 +805,8 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
     
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end

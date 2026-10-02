@@ -177,7 +177,7 @@ function updateCoins(newCoins, bonusInfo)
             local targetY = stackY - ((coinInStack - 1) * 4 * spriteScale)
 
             -- Random horizontal starting offset for variety
-            local randomXOffset = (love.math.random() - 0.5) * UI.Layout.scale(100)
+            local randomXOffset = (RNG.cosmetic() - 0.5) * UI.Layout.scale(100)
 
             table.insert(gameState.coinsAnimation.fallingCoins, {
                 index = coinIndex,
@@ -193,7 +193,7 @@ function updateCoins(newCoins, bonusInfo)
                 settleElapsed = 0,
                 settleDuration = 0.25,
                 phase = "waiting",  -- "waiting", "falling", "settling", "settled"
-                xFlip = love.math.random() > 0.5,
+                xFlip = RNG.cosmetic() > 0.5,
                 stackIndex = stackIndex,
                 coinInStack = coinInStack
             })
@@ -213,7 +213,7 @@ function updateCoins(newCoins, bonusInfo)
         -- Regenerate flips
         gameState.coinsAnimation.coinFlips = {}
         for i = 1, newCoins do
-            gameState.coinsAnimation.coinFlips[i] = love.math.random() > 0.5
+            gameState.coinsAnimation.coinFlips[i] = RNG.cosmetic() > 0.5
         end
     end
 end
@@ -431,7 +431,7 @@ function updateToolIdleAnimations(dt)
         -- Initialize idle animation state for this tool if needed
         if not explosion.idleAnimations[i] then
             explosion.idleAnimations[i] = {
-                phase = math.random() * math.pi * 2,  -- Random start phase for variety
+                phase = RNG.cosmetic() * math.pi * 2,  -- Random start phase for variety
                 floatOffset = 0,
                 tiltAngle = 0
             }

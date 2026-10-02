@@ -66,7 +66,7 @@ function getRandomDialoguePhrase(category)
         return nil  -- No phrases in this category
     end
 
-    local randomIndex = love.math.random(1, #phrases)
+    local randomIndex = RNG.cosmetic(1, #phrases)
     return phrases[randomIndex]
 end
 
@@ -140,7 +140,7 @@ function triggerVictoryPhrase()
     local phrases = I18n.getVictoryPhrases()
 
     -- Select random phrase
-    gameState.victoryPhrase = phrases[love.math.random(1, #phrases)]
+    gameState.victoryPhrase = phrases[RNG.cosmetic(1, #phrases)]
 
     -- Reset animation state
     gameState.victoryPhraseAnimation = {
@@ -213,7 +213,7 @@ function updateFusionDialogue(dt)
         -- BONUS: Show random idle messages after idle time
         if fusionState.idleTimer >= fusionState.idleTriggerTime then
             local idleMessages = {"Welcome to sin", "Make a choice", "Lust is a must"}
-            local msg = idleMessages[love.math.random(1, #idleMessages)]
+            local msg = idleMessages[RNG.cosmetic(1, #idleMessages)]
             Dialogue.show(msg, {
                 category = "fusion_idle",
                 skipDelay = true,
@@ -339,7 +339,7 @@ function updateTutorialDialogue(dt)
                 I18n.t("tutorial_idle_1"),
                 I18n.t("tutorial_idle_2"),
             }
-            local msg = messages[love.math.random(1, 2)]
+            local msg = messages[RNG.cosmetic(1, 2)]
             showTutorialMessage(msg, true)  -- requires action (play/discard button)
             tutState.idleMessageShown = true
             tutState.message4Shown = true
