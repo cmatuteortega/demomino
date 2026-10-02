@@ -47,7 +47,9 @@ code). Several seeds of both modes give much better coverage than one.
 
 | Variable | Effect |
 | --- | --- |
-| `GOLDEN_COVERAGE=1` | write `<out>.cov`: functions that ran, by definition line |
+| `GOLDEN_COVERAGE=1` | write `<out>.cov`: functions that ran, by definition line. Turns the JIT off, which perturbs some float results, so never diff a coverage trace against a normal one |
+| `GOLDEN_SCENARIOS` | comma list limiting scenario mode, e.g. `gamble,deal` |
+| `GOLDEN_PIXELS=1` | draw at the end of each step and append `px:<md5>` of the rendered frame, to check renderer refactors |
 | `GOLDEN_DRAW_ALL=1` | draw every frame instead of only before input (slow) |
 | `GOLDEN_SCENARIO_STEPS` | fuzz steps per scenario (default 110; combat ×3) |
 | `GOLDEN_TIMEOUT` | seconds before the run is killed (default 900) |

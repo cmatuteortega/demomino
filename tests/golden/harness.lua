@@ -15,6 +15,45 @@ os.clock = function() return clock end
 math.randomseed(SEED)
 love.math.setRandomSeed(SEED)
 
+-- Audio on the virtual clock. Real sources finish in wall-clock time, and the
+-- game draws from love.math.random when some finish (e.g. picking the next
+-- chip-loop clip), which made runs depend on machine load. Fake sources play
+-- for their decoded duration measured in virtual time; nothing is audible.
+do
+    local Fake = {}
+    Fake.__index = function(_, k) return Fake[k] or function() end end
+    local durations = {}
+    local function durationOf(src)
+        if type(src) ~= "string" then return 1 end
+        if durations[src] == nil then
+            local ok, d = pcall(function() return love.sound.newDecoder(src):getDuration() end)
+            durations[src] = (ok and d and d > 0) and d or 1
+        end
+        return durations[src]
+    end
+    function Fake:play() self.startedAt = clock; self.playing = true; return true end
+    function Fake:stop() self.playing = false end
+    function Fake:pause() self.playing = false end
+    function Fake:isPlaying()
+        if not self.playing then return false end
+        if self.looping then return true end
+        if clock - self.startedAt >= self.duration then self.playing = false end
+        return self.playing
+    end
+    function Fake:clone() return setmetatable({duration = self.duration, volume = self.volume, looping = self.looping}, Fake) end
+    function Fake:setVolume(v) self.volume = v end
+    function Fake:getVolume() return self.volume end
+    function Fake:setLooping(l) self.looping = l end
+    function Fake:isLooping() return self.looping end
+    function Fake:getDuration() return self.duration end
+    love.audio.newSource = function(src)
+        return setmetatable({duration = durationOf(src), volume = 1, looping = false}, Fake)
+    end
+    love.audio.play = function(src) if getmetatable(src) == Fake then src:play() end end
+    love.audio.pause = function() return {} end
+    love.audio.stop = function() end
+end
+
 -- Independent fuzzer RNG (LCG) so the game's random stream is untouched
 local rs = SEED * 7919 + 13
 local function rnd(n)
@@ -259,6 +298,14 @@ local SCENARIOS = {
     "mitosis", "deal", "alchemy", "flatten", "gamble", "restore",
 }
 local SCENARIO_STEPS = tonumber(os.getenv("GOLDEN_SCENARIO_STEPS") or "110")
+-- GOLDEN_SCENARIOS=casino,deal limits the run to those scenarios
+if os.getenv("GOLDEN_SCENARIOS") then
+    local only = {}
+    for k in os.getenv("GOLDEN_SCENARIOS"):gmatch("[^,]+") do only[k] = true end
+    local filtered = {}
+    for _, k in ipairs(SCENARIOS) do if only[k] then filtered[#filtered + 1] = k end end
+    SCENARIOS = filtered
+end
 
 local function enterScenario(kind)
     local easy = kind == "combat_easy"
@@ -298,6 +345,8 @@ end
 -- the map's per-pixel fog loop far too slow.
 local coverage = os.getenv("GOLDEN_COVERAGE") == "1" and {} or nil
 local function startCoverage()
+    -- Calls made from JIT-compiled traces skip debug hooks; interpret everything
+    if jit then jit.off() end
     debug.sethook(function()
         local info = debug.getinfo(2, "S")
         local src = info.source
