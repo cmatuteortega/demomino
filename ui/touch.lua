@@ -147,11 +147,15 @@ end
 -- from a fresh shuffle of the collection, with a drop slot in the board band.
 -- ─────────────────────────────────────────────────────────────
 
+-- Workbench hands are always this size (independent of the combat
+-- gameState.handSizeTarget, which bosses can lower)
+local WORKBENCH_HAND_SIZE = 7
+
 -- Rebuild the deck from the collection and draw a fresh workbench hand
 local function drawWorkbenchHand()
     gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
     Domino.shuffleDeck(gameState.deck)
-    return Hand.drawTiles(gameState.deck, 7)
+    return Hand.drawTiles(gameState.deck, WORKBENCH_HAND_SIZE)
 end
 
 -- Workbench drop zone: the full-width board band
@@ -190,7 +194,7 @@ end
 -- dialogueKey optionally pick a reroll quip.
 local function rerollWorkbenchHand(handKey, slotKey, dialogueScreen, dialogueKey)
     if gameState.coins < 1 then return end
-    if #(gameState.deck or {}) < 7 then
+    if #(gameState.deck or {}) < WORKBENCH_HAND_SIZE then
         showWorkbenchWarning("NOT ENOUGH TILES TO REROLL", 1.5)
         return
     end
@@ -214,7 +218,7 @@ local function rerollWorkbenchHand(handKey, slotKey, dialogueScreen, dialogueKey
     end
 
     Hand.animateAllHandDiscard(gameState[handKey], function()
-        gameState[handKey] = Hand.drawTiles(gameState.deck, 7)
+        gameState[handKey] = Hand.drawTiles(gameState.deck, WORKBENCH_HAND_SIZE)
         Hand.animateTilesDraw(gameState[handKey], 0)
     end)
 end
@@ -5617,7 +5621,7 @@ function Touch.rerollFusionHand()
     end
 
     -- Check if deck has enough tiles (need at least 7 remaining in deck)
-    if #gameState.deck < 7 then
+    if #gameState.deck < WORKBENCH_HAND_SIZE then
         return
     end
 
@@ -5636,7 +5640,7 @@ function Touch.rerollFusionHand()
         gameState.fusionSlotTiles = {}
 
         -- Draw 7 new tiles from remaining deck pool
-        gameState.fusionHand = Hand.drawTiles(gameState.deck, 7)
+        gameState.fusionHand = Hand.drawTiles(gameState.deck, WORKBENCH_HAND_SIZE)
 
         -- Animate new tiles drawing in from right
         Hand.animateTilesDraw(gameState.fusionHand, 0)

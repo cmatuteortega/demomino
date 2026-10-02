@@ -1,5 +1,6 @@
 -- Game Configuration
 TARGET_SCORE = 666  -- Target score for all rounds (change this to adjust difficulty)
+BASE_HAND_SIZE = 7  -- Non-negative tiles kept in the combat hand (bosses may lower it per round)
 
 function love.load()
     love.window.setTitle("Domino Deckbuilder")
@@ -72,7 +73,7 @@ function love.load()
         placementOrder = {},
         discardsUsed = 0,
         maxDiscardsPerRound = 2,  -- Base discards per round
-        handSizeTarget = 7,       -- Non-negative tiles to maintain in hand (bosses may lower this)
+        handSizeTarget = BASE_HAND_SIZE,       -- Non-negative tiles to maintain in hand (bosses may lower this)
         playsUsed = 0,
         handsPlayed = 0,
         currentRound = 1,
@@ -641,6 +642,15 @@ function resetGameToFresh()
     gameState.activeChallenges = {}
     gameState.challengeStates = {}
 
+    -- Reset workbench state not covered above
+    gameState.enhanceHand = {}
+    gameState.enhanceSlotTile = nil
+    gameState.mitosisHand = {}
+    gameState.mitosisSlotTile = nil
+
+    -- Clear flags left by a boss fight that was abandoned mid-round
+    BossBehaviors.clearRoundFlags(gameState)
+
     -- Reset tools/artifacts
     gameState.ownedTools = {}
 
@@ -773,7 +783,7 @@ function initializeCombatRound()
     gameState.placementOrder = {}
     gameState.discardsUsed = 0
     gameState.maxDiscardsPerRound = 2  -- Reset to base value
-    gameState.handSizeTarget = 7       -- Reset to base value (bosses may override)
+    gameState.handSizeTarget = BASE_HAND_SIZE       -- Reset to base value (bosses may override)
     gameState.maxHandsPerRound = 3     -- Reset to base value (bosses may override)
     gameState.playsUsed = 0
     gameState.handsPlayed = 0

@@ -429,6 +429,9 @@ function UI.TitleScreen.continueGame()
     gameState.isEndlessMode = saveData.isEndlessMode or false
     gameState.currentDay = saveData.currentDay or 1
 
+    -- A boss fight abandoned before saving must not leak its flags
+    BossBehaviors.clearRoundFlags(gameState)
+
     -- Restore owned tools
     gameState.ownedTools = saveData.ownedTools or {}
 
@@ -440,12 +443,7 @@ function UI.TitleScreen.continueGame()
     gameState.tileCollection = {}
     if saveData.tileCollection then
         for _, tileData in ipairs(saveData.tileCollection) do
-            -- Use Domino.new to ensure ID is properly assigned, then restore all properties
-            local tile = Domino.new(tileData.left, tileData.right, tileData.leftScore, tileData.rightScore)
-            -- Restore tile type and negative flag - important for visual persistence
-            tile.tileType = tileData.tileType or "regular"
-            tile.negative = tileData.negative or false
-            table.insert(gameState.tileCollection, tile)
+            table.insert(gameState.tileCollection, Save.tileFromData(tileData))
         end
     else
         -- Fallback to starter collection if no collection saved

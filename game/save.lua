@@ -5,6 +5,33 @@ local SAVE_FILE = "demomino_save.lua"
 local STATS_FILE = "demomino_stats.lua"
 local SETTINGS_FILE = "demomino_settings.lua"
 
+-- Persistent properties of a collection tile. Keep tileToData and
+-- tileFromData in sync: anything a node permanently changes on a tile
+-- (fusion score overrides, tile type, negative flag, Enhance bonus) must be
+-- listed here or it is lost on CONTINUE.
+function Save.tileToData(tile)
+    return {
+        left = tile.left,
+        right = tile.right,
+        leftScore = tile.leftScore,      -- score overrides (fused tiles)
+        rightScore = tile.rightScore,
+        tileType = tile.tileType,        -- regular/demon/relic/tender
+        negative = tile.negative,
+        enhanceBonus = tile.enhanceBonus, -- Enhance node upgrades
+        enhanceCount = tile.enhanceCount,
+    }
+end
+
+function Save.tileFromData(data)
+    -- Domino.new assigns a fresh id/instanceId and default runtime state
+    local tile = Domino.new(data.left, data.right, data.leftScore, data.rightScore)
+    tile.tileType = data.tileType or "regular"
+    tile.negative = data.negative or false
+    tile.enhanceBonus = data.enhanceBonus or 0
+    tile.enhanceCount = data.enhanceCount or 0
+    return tile
+end
+
 -- Save the current game state to disk
 function Save.saveGame(gameState)
     if not gameState then
@@ -41,17 +68,10 @@ function Save.saveGame(gameState)
         saveTime = os.time()
     }
 
-    -- Deep copy tile collection (preserve all important tile properties)
+    -- Copy the persistent properties of each collection tile
     if gameState.tileCollection then
         for _, tile in ipairs(gameState.tileCollection) do
-            table.insert(saveData.tileCollection, {
-                left = tile.left,
-                right = tile.right,
-                leftScore = tile.leftScore,    -- Preserve score overrides (for fused tiles)
-                rightScore = tile.rightScore,  -- Preserve score overrides (for fused tiles)
-                tileType = tile.tileType,      -- Preserve tile type (regular/demon/relic)
-                negative = tile.negative       -- Preserve negative flag
-            })
+            table.insert(saveData.tileCollection, Save.tileToData(tile))
         end
     end
 
@@ -356,56 +376,56 @@ function Save.deserializeMap(mapData, screenWidth, screenHeight)
 end
 
 -- Simple serialization (convert Lua table to string)
-function Save.serialize(t)
-    local function serializeValue(v)
-        local vType = type(v)
-        if vType == "string" then
-            return string.format("%q", v)
-        elseif vType == "number" or vType == "boolean" then
-            return tostring(v)
-        elseif vType == "table" then
-            return Save.serializeTable(v)
-        else
-            return "nil"
-        end
+-- Serialize a value as a Lua chunk ("return {...}") that Save.deserialize
+-- can load back. Strings, numbers, booleans and nested tables are kept;
+-- functions/userdata become nil.
+local function serializeNumber(n)
+    if n ~= n or n == math.huge or n == -math.huge then
+        -- nan/inf have no Lua literal; writing them would make the save unloadable
+        error("cannot serialize non-finite number " .. tostring(n))
     end
+    if n == math.floor(n) and math.abs(n) < 2^53 then
+        return string.format("%d", n)
+    end
+    -- %.17g round-trips doubles exactly (tostring keeps only 14 digits)
+    return string.format("%.17g", n)
+end
 
-    return "return " .. serializeValue(t)
+local function serializeInto(buf, v)
+    local vType = type(v)
+    if vType == "string" then
+        buf[#buf + 1] = string.format("%q", v)
+    elseif vType == "number" then
+        buf[#buf + 1] = serializeNumber(v)
+    elseif vType == "boolean" then
+        buf[#buf + 1] = tostring(v)
+    elseif vType == "table" then
+        buf[#buf + 1] = "{"
+        local first = true
+        for k, val in pairs(v) do
+            if not first then buf[#buf + 1] = "," end
+            first = false
+            buf[#buf + 1] = "["
+            serializeInto(buf, k)
+            buf[#buf + 1] = "]="
+            serializeInto(buf, val)
+        end
+        buf[#buf + 1] = "}"
+    else
+        buf[#buf + 1] = "nil"
+    end
+end
+
+function Save.serialize(t)
+    local buf = {"return "}
+    serializeInto(buf, t)
+    return table.concat(buf)
 end
 
 function Save.serializeTable(t)
-    local result = "{"
-    local first = true
-
-    for k, v in pairs(t) do
-        if not first then
-            result = result .. ","
-        end
-        first = false
-
-        -- Handle key
-        if type(k) == "string" then
-            result = result .. "[" .. string.format("%q", k) .. "]"
-        else
-            result = result .. "[" .. tostring(k) .. "]"
-        end
-
-        result = result .. "="
-
-        -- Handle value
-        if type(v) == "string" then
-            result = result .. string.format("%q", v)
-        elseif type(v) == "number" or type(v) == "boolean" then
-            result = result .. tostring(v)
-        elseif type(v) == "table" then
-            result = result .. Save.serializeTable(v)
-        else
-            result = result .. "nil"
-        end
-    end
-
-    result = result .. "}"
-    return result
+    local buf = {}
+    serializeInto(buf, t)
+    return table.concat(buf)
 end
 
 -- Deserialize (convert string back to Lua table)
