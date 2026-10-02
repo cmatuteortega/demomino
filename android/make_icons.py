@@ -28,6 +28,9 @@ CANVAS_DP, VISIBLE_DP = 108, 72
 PX_DP = 0.9          # size of one sprite pixel in dp (demon tile ~58dp tall)
 TILE_W, TILE_H = 64, 32
 OVERLAP = 2          # neighbouring tiles share their 2px outline, like a chain
+# The vertical tile's thick bottom edge pushes its face up: its divider sits on
+# rows 28-29 instead of 32, so shift the art down to centre the face visually.
+FACE_SHIFT = 3
 
 
 def sprite(*path):
@@ -80,7 +83,7 @@ def render(canvas_px, d, background):
                      Image.LANCZOS)
     img = Image.new("RGBA", (canvas_px, canvas_px), background)
     x = (canvas_px - art.width) // 2
-    y = (canvas_px - art.height) // 2
+    y = (canvas_px - art.height) // 2 + round(FACE_SHIFT * PX_DP * d)
     img.alpha_composite(art, (x, y))       # alpha_composite clips at the edges
     return img
 
