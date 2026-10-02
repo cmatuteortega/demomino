@@ -1,4 +1,3 @@
-io.stderr:write("HARNESS START\n")
 -- Golden-master harness: drives the real game deterministically and writes a
 -- per-step state trace. Used to prove refactors don't change behaviour.
 -- Run via tests/golden/run.sh (needs love + xvfb-run).
@@ -24,9 +23,7 @@ local function rnd(n)
 end
 
 -- ── Load the real game ─────────────────────────────────────────────────────
-io.stderr:write("loading game\n")
 love.filesystem.load("game_main.lua")()
-io.stderr:write("game loaded\n")
 
 -- ── State hashing ──────────────────────────────────────────────────────────
 local function hashstr(s, h)
@@ -67,7 +64,7 @@ local function ser(v, seen, out)
     end
 end
 
--- Keys whose contents are pure presentation and legitimately noisy
+-- Deep hash of every top-level gameState key (presentation state included)
 local function keyHashes()
     local res, names = {}, {}
     for k in pairs(gameState) do names[#names+1] = tostring(k) end
@@ -85,53 +82,111 @@ local W, H = love.graphics.getWidth(), love.graphics.getHeight()
 local outf = io.open(OUT, "w")
 local function log(s) outf:write(s, "\n"); outf:flush() end
 
-local frameNo = 0
-local HOOK_FRAME = tonumber(os.getenv("GOLDEN_HOOK_FRAME") or "-1")
-local function frame()
-    frameNo = frameNo + 1
-    if os.getenv("GOLDEN_FRAMES") then io.stderr:write("frame " .. frameNo .. "\n") end
-    if frameNo == HOOK_FRAME then
-        debug.sethook(function()
-            local i = debug.getinfo(2, "nS")
-            if i.what == "C" then
-                local c = debug.getinfo(3, "Sl")
-                io.stderr:write("C " .. tostring(i.name) .. " from " .. tostring(c and c.short_src) .. ":" .. tostring(c and c.currentline) .. "\n")
-            end
-        end, "c")
-    end
-    clock = clock + 1/60
-    love.update(1/60)
+-- Drawing every frame is slow under software GL (the map fog alone is ~18k
+-- rectangles). By default only draw right before input events, which is
+-- what matters: the renderer records the hit-test bounds input relies on.
+local DRAW_ALL = os.getenv("GOLDEN_DRAW_ALL") == "1"
+
+local function draw()
     love.graphics.origin()
     love.graphics.clear(love.graphics.getBackgroundColor())
     love.draw()
     love.graphics.present()
+end
+
+local function frame()
+    clock = clock + 1/60
+    love.update(1/60)
+    if DRAW_ALL then draw() end
     love.event.pump()
     for _ in love.event.poll() do end  -- drop real window events; input is scripted
 end
 
+-- Draw the current state before delivering an input event
+local function sync() if not DRAW_ALL then draw() end end
+
 local function frames(n) for _ = 1, n do frame() end end
 
 local function tap(x, y)
-    love.mousepressed(x, y, 1, false); frames(2)
-    love.mousereleased(x, y, 1, false); frame()
+    sync(); love.mousepressed(x, y, 1, false); frames(2)
+    sync(); love.mousereleased(x, y, 1, false); frame()
 end
 
 local function drag(x1, y1, x2, y2)
-    love.mousepressed(x1, y1, 1, false); frame()
+    sync(); love.mousepressed(x1, y1, 1, false); frame()
     local n = 6
     for i = 1, n do
         local px, py = x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n
-        love.mousemoved(px, py, (x2 - x1) / n, (y2 - y1) / n, false); frame()
+        sync(); love.mousemoved(px, py, (x2 - x1) / n, (y2 - y1) / n, false); frame()
     end
-    love.mousereleased(x2, y2, 1, false); frame()
+    sync(); love.mousereleased(x2, y2, 1, false); frame()
 end
 
-local function randomPoint()
-    -- Bias toward the bottom (hand) and centre (board) where most UI lives
+local function inScreen(x, y) return x and y and x >= 0 and y >= 0 and x < W and y < H end
+
+-- Buttons the renderer recorded this frame: gameState.*Bounds / *Button rects
+local function knownButtons()
+    local list, names = {}, {}
+    for k, v in pairs(gameState) do
+        if type(v) == "table" and type(k) == "string" and (k:match("Bounds$") or k:match("Button$"))
+           and type(v.x) == "number" and type(v.width) == "number" then
+            names[#names + 1] = k
+        end
+    end
+    table.sort(names)
+    for _, k in ipairs(names) do
+        local b = gameState[k]
+        local cx, cy = b.x + b.width / 2, b.y + b.height / 2
+        if inScreen(cx, cy) then list[#list + 1] = {math.floor(cx), math.floor(cy)} end
+    end
+    return list
+end
+
+-- Tiles and tools currently on screen (hands, slots, shop offers, board)
+local OBJECT_LISTS = {"hand", "placedTiles", "fusionHand", "enhanceHand", "pawnHand", "flattenHand",
+    "mitosisHand", "offeredTiles", "offeredTools", "shopPlacedTiles", "artifactsShopPlacedTools",
+    "fusionSlotTiles", "activeDieSprites"}
+local OBJECT_SINGLES = {"enhanceSlotTile", "flattenSlotTile", "mitosisSlotTile", "pawnPlacedTile"}
+local function knownObjects()
+    local list = {}
+    local function add(o)
+        if type(o) ~= "table" then return end
+        local x, y = o.visualX or o.x, o.visualY or o.y
+        if type(x) == "number" and type(y) == "number" and inScreen(x, y) then
+            list[#list + 1] = {math.floor(x), math.floor(y)}
+        end
+    end
+    for _, k in ipairs(OBJECT_LISTS) do
+        if type(gameState[k]) == "table" then for _, o in ipairs(gameState[k]) do add(o) end end
+    end
+    for _, k in ipairs(OBJECT_SINGLES) do add(gameState[k]) end
+    return list
+end
+
+local function pick(list) if #list > 0 then local p = list[rnd(#list)]; return p[1], p[2] end end
+
+local function randomPoint(purpose)
+    -- Bias toward real targets: buttons for taps, tiles/tools for drag starts
     local r = rnd()
+    if purpose == "tap" and r < 0.35 then
+        local x, y = pick(knownButtons()); if x then return x, y end
+    elseif purpose == "dragStart" and r < 0.6 then
+        local x, y = pick(knownObjects()); if x then return x, y end
+    end
+    r = rnd()
+    -- Otherwise bias toward the bottom (hand) and centre (board) where most UI lives
     if r < 0.35 then return rnd(W), math.floor(H * 0.65) + rnd(math.floor(H * 0.35)) end
     if r < 0.6  then return math.floor(W * 0.2) + rnd(math.floor(W * 0.6)), math.floor(H * 0.25) + rnd(math.floor(H * 0.4)) end
     return rnd(W), rnd(H)
+end
+
+-- Overlays swallow every press; close them so fuzzing keeps reaching the screen
+local function closeOverlays()
+    local closed = {}
+    for _, k in ipairs({"settingsMenuOpen", "deckPreviewOpen", "collectionMenuOpen", "titleSettingsMenuOpen"}) do
+        if gameState[k] and rnd() < 0.5 then gameState[k] = false; closed[#closed + 1] = k end
+    end
+    return closed
 end
 
 local phaseCounts = {}
@@ -143,7 +198,20 @@ function love.errorhandler(msg)
 end
 
 
+-- GOLDEN_PIXELS=1: draw at the end of every step and add an md5 of the
+-- rendered frame (mainCanvas, before the CRT pass) to the trace, so
+-- renderer refactors can be checked too.
+local PIXELS = os.getenv("GOLDEN_PIXELS") == "1"
+local function frameHash()
+    draw()
+    local data = mainCanvas:newImageData()
+    local digest = love.data.hash("md5", data)
+    data:release()
+    return (digest:gsub(".", function(c) return string.format("%02x", c:byte()) end)):sub(1, 12)
+end
+
 local function recordStep(step, desc, t0)
+            local px = PIXELS and (" px:" .. frameHash()) or ""
             local t1 = realclock()
             local phase = tostring(gameState.gamePhase)
             phaseCounts[phase] = (phaseCounts[phase] or 0) + 1
@@ -162,7 +230,7 @@ local function recordStep(step, desc, t0)
                 local out = {}; ser(gameState[os.getenv("GOLDEN_DUMP_KEY")], {}, out)
                 local f = io.open(OUT .. ".dump", "w"); f:write((table.concat(out):gsub(",", ",\n"))); f:close()
             end
-            log(("%d %s | %s | %s"):format(step, desc, phase, table.concat(changed, " ")))
+            log(("%d %s | %s | %s%s"):format(step, desc, phase, table.concat(changed, " "), px))
 end
 
 local stepNo = 0
@@ -172,14 +240,16 @@ local function fuzzStep(label)
     local t0 = realclock()
     local r, desc = rnd(), nil
     if r < 0.55 then
-        local x, y = randomPoint(); tap(x, y); desc = ("tap %d,%d"):format(x, y)
+        local x, y = randomPoint("tap"); tap(x, y); desc = ("tap %d,%d"):format(x, y)
     elseif r < 0.85 then
-        local x1, y1 = randomPoint(); local x2, y2 = randomPoint()
+        local x1, y1 = randomPoint("dragStart"); local x2, y2 = randomPoint("dragEnd")
         drag(x1, y1, x2, y2); desc = ("drag %d,%d>%d,%d"):format(x1, y1, x2, y2)
     else
         local n = rnd(90); frames(n); desc = "wait " .. n
     end
     if label then desc = label .. " " .. desc end
+    local closed = closeOverlays()
+    if #closed > 0 then desc = desc .. " closed:" .. table.concat(closed, ",") end
     recordStep(step, desc, t0)
 end
 
@@ -223,20 +293,86 @@ local function enterScenario(kind)
     return true
 end
 
+-- GOLDEN_COVERAGE=1 records which functions of the game's own files ran
+-- (by definition line) to <out>.cov. Function-level only: a line hook makes
+-- the map's per-pixel fog loop far too slow.
+local coverage = os.getenv("GOLDEN_COVERAGE") == "1" and {} or nil
+local function startCoverage()
+    debug.sethook(function()
+        local info = debug.getinfo(2, "S")
+        local src = info.source
+        if src:sub(1, 1) == "@" then
+            local hits = coverage[src]
+            if not hits then hits = {}; coverage[src] = hits end
+            hits[info.linedefined] = true
+        end
+    end, "c")
+end
+local function writeCoverage()
+    debug.sethook()
+    local f = io.open(OUT .. ".cov", "w")
+    for src, hits in pairs(coverage) do
+        local ls = {}
+        for l in pairs(hits) do ls[#ls + 1] = l end
+        table.sort(ls)
+        f:write(src:sub(2), " ", table.concat(ls, ","), "\n")
+    end
+    f:close()
+end
+
+-- GOLDEN_MODE=resetleak: which gameState survives a NEW GAME?
+-- Compare the state right after a reset from a clean boot with the state
+-- after a reset that follows playing every scenario. Keys that differ carry
+-- data from the abandoned run into the new one.
+local function serKey(v) local out = {}; ser(v, {}, out); return table.concat(out) end
+local function snapshotState()
+    local snap = {}
+    for k, v in pairs(gameState) do snap[k] = serKey(v) end
+    return snap
+end
+local function resetLikeNewGame()
+    love.math.setRandomSeed(SEED); math.randomseed(SEED)
+    UI.TitleScreen.startNewGame()
+end
+local function runResetLeak(runScenarios)
+    resetLikeNewGame()
+    local clean = snapshotState()
+    runScenarios()
+    gameState.gamePhase = "title_screen"
+    resetLikeNewGame()
+    local dirty = snapshotState()
+    local keys = {}
+    for k in pairs(clean) do keys[k] = true end
+    for k in pairs(dirty) do keys[k] = true end
+    local sorted = {}
+    for k in pairs(keys) do sorted[#sorted + 1] = k end
+    table.sort(sorted)
+    for _, k in ipairs(sorted) do
+        if clean[k] ~= dirty[k] then
+            local d = dirty[k] or "<absent>"
+            log(("LEAK %s clean=%s dirty=%s"):format(k, (clean[k] or "<absent>"):sub(1, 80), d:sub(1, 160)))
+        end
+    end
+end
+
 function love.run()
+    if coverage then startCoverage() end
     local ok, err = xpcall(function()
-        io.stderr:write("love.load\n")
         love.load()
-        io.stderr:write("loaded; frames\n")
         frames(5)
-        io.stderr:write("frames ok\n")
-        if (os.getenv("GOLDEN_MODE") or "fuzz") == "scenario" then
+        local mode = os.getenv("GOLDEN_MODE") or "fuzz"
+        local function runScenarios()
             for _, kind in ipairs(SCENARIOS) do
                 if enterScenario(kind) then
                     local n = (kind == "combat" or kind == "combat_easy") and SCENARIO_STEPS * 3 or SCENARIO_STEPS
                     for _ = 1, n do fuzzStep(kind) end
                 end
             end
+        end
+        if mode == "resetleak" then
+            runResetLeak(runScenarios)
+        elseif mode == "scenario" then
+            runScenarios()
         else
             for _ = 1, STEPS do fuzzStep() end
         end
@@ -247,5 +383,6 @@ function love.run()
     table.sort(pc)
     log("PHASES " .. table.concat(pc, " "))
     outf:close()
+    if coverage then writeCoverage() end
     return function() return 0 end
 end
