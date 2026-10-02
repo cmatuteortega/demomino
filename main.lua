@@ -1148,6 +1148,110 @@ function love.visible(visible)
     if visible then _resumeApp() else _pauseApp() end
 end
 
+-- Node menu screens (shops, workbenches, contracts, deals, restore), updated by updateNodeMenu
+NODE_MENU_PHASES = {
+    tiles_menu = true, artifacts_menu = true, contracts_menu = true,
+    deal_menu = true, deal_artifacts_menu = true, restore_menu = true,
+}
+
+-- Menus whose shopkeeper makes an idle remark after 10 s of silence
+local IDLE_REMARK_PHASES = {
+    tiles_menu = true, contracts_menu = true, deal_menu = true,
+    deal_artifacts_menu = true, restore_menu = true,
+}
+
+-- tiles_menu sub-mode → which hand is on screen and whether it skips sorting
+local TILES_MENU_HANDS = {
+    alchemy          = {key = "fusionHand"},
+    alchemy_subtract = {key = "fusionHand"},
+    enhance          = {key = "enhanceHand"},
+    pawn             = {key = "pawnHand", skipSort = true},
+    flatten          = {key = "flattenHand", skipSort = true},
+    mitosis          = {key = "mitosisHand"},
+}
+local SHOP_HAND = {key = "offeredTiles", skipSort = true}
+
+local function updateMenuDialogue(dt)
+    local phase = gameState.gamePhase
+    local nodeType = gameState.currentTilesNodeType
+    if phase == "tiles_menu" and (nodeType == "alchemy" or nodeType == "alchemy_subtract") then
+        updateFusionDialogue(dt)
+        return
+    elseif phase == "tiles_menu" and nodeType == "enhance" then
+        updateEnhanceDialogue(dt)
+        return
+    end
+
+    -- Update dialogue for regular shop screens
+    Dialogue.update(dt)
+
+    -- Handle idle timer for shop/contracts flavour text
+    local dialogue = gameState.dialogueAnimation
+    if not dialogue.isActive and IDLE_REMARK_PHASES[phase] then
+        dialogue.idleTimer = dialogue.idleTimer + dt
+
+        -- Trigger random idle remark after 10 seconds
+        if dialogue.idleTimer >= 10.0 then
+            local idleText = Dialogue.getRandomPhrase(phase, "idle")
+            if idleText then
+                Dialogue.show(idleText, {
+                    category = "idle",
+                    skipDelay = false,
+                    requiresAction = false,
+                    autoDissmissTime = 10.0
+                })
+            end
+            dialogue.idleTimer = 0
+        end
+    end
+end
+
+local function updateArtifactShopSprites(dt)
+    if not gameState.offeredTools then return end
+    -- Update positions for all tool sprites
+    for i, tool in ipairs(gameState.offeredTools) do
+        local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
+        if not tool.isDragging and not tool.isAnimating then
+            tool.visualX = x
+            tool.visualY = y
+        end
+        tool.x = x
+        tool.y = y
+    end
+
+    -- Animate draw, idle animations
+    updateToolSpriteDrawAnimations(gameState.offeredTools, dt)
+    updateToolSpriteIdleAnimations(gameState.offeredTools, dt)
+end
+
+function updateNodeMenu(dt)
+    local phase = gameState.gamePhase
+    if phase == "deal_menu" or phase == "deal_artifacts_menu" then
+        updateDealDrawbackSlide(dt)
+    end
+
+    updateMenuDialogue(dt)
+
+    -- Dampen map ambiance when inside node menus
+    if UI.Audio.isMapAmbiancePlaying() then
+        UI.Audio.dampenMapAmbiance()
+    end
+
+    if phase == "tiles_menu" then
+        -- Hand on screen: draw-in, discard and idle animations (like the combat hand)
+        local spec = TILES_MENU_HANDS[gameState.currentTilesNodeType] or SHOP_HAND
+        local hand = gameState[spec.key]
+        if hand then
+            Hand.updatePositions(hand, spec.skipSort)
+            Hand.updateDrawAnimations(hand, dt)
+            Hand.updateDiscardAnimations(hand, dt)
+            Hand.updateIdleAnimations(hand, dt)
+        end
+    elseif phase == "artifacts_menu" then
+        updateArtifactShopSprites(dt)
+    end
+end
+
 function love.update(dt)
     if _appPaused then return end
     if dt > 0.1 then dt = 1/60 end
@@ -1217,116 +1321,8 @@ function love.update(dt)
         end
         -- Update hand tile animations
         Hand.update(dt)
-    elseif gameState.gamePhase == "tiles_menu" or gameState.gamePhase == "artifacts_menu" or gameState.gamePhase == "contracts_menu" or gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" or gameState.gamePhase == "restore_menu" then
-        if gameState.gamePhase == "deal_menu" or gameState.gamePhase == "deal_artifacts_menu" then
-            updateDealDrawbackSlide(dt)
-        end
-        -- Handle mode-specific dialogue for tiles_menu sub-modes
-        if gameState.gamePhase == "tiles_menu" and (gameState.currentTilesNodeType == "alchemy" or gameState.currentTilesNodeType == "alchemy_subtract") then
-            updateFusionDialogue(dt)
-        elseif gameState.gamePhase == "tiles_menu" and gameState.currentTilesNodeType == "enhance" then
-            updateEnhanceDialogue(dt)
-        else
-            -- Update dialogue for regular shop screens
-            Dialogue.update(dt)
-
-            -- Handle idle timer for shop/contracts flavour text
-            local dialogue = gameState.dialogueAnimation
-            local idlePhase = gameState.gamePhase
-            if not dialogue.isActive and (idlePhase == "tiles_menu" or idlePhase == "contracts_menu" or idlePhase == "deal_menu" or idlePhase == "deal_artifacts_menu" or idlePhase == "restore_menu") then
-                dialogue.idleTimer = dialogue.idleTimer + dt
-
-                -- Trigger random idle remark after 10 seconds
-                if dialogue.idleTimer >= 10.0 then
-                    local idleText = Dialogue.getRandomPhrase(idlePhase, "idle")
-                    if idleText then
-                        Dialogue.show(idleText, {
-                            category = "idle",
-                            skipDelay = false,
-                            requiresAction = false,
-                            autoDissmissTime = 10.0
-                        })
-                    end
-                    dialogue.idleTimer = 0
-                end
-            end
-        end
-
-        -- Dampen map ambiance when inside node menus
-        if UI.Audio.isMapAmbiancePlaying() then
-            UI.Audio.dampenMapAmbiance()
-        end
-
-        if gameState.gamePhase == "tiles_menu" then
-            local tileNodeType = gameState.currentTilesNodeType
-            if tileNodeType == "alchemy" or tileNodeType == "alchemy_subtract" then
-                -- Update fusion hand with all animations (like combat/shop hand)
-                if gameState.fusionHand then
-                    Hand.updatePositions(gameState.fusionHand)
-                    Hand.updateDrawAnimations(gameState.fusionHand, dt)  -- Draw animation (tiles sliding in from right)
-                    Hand.updateDiscardAnimations(gameState.fusionHand, dt)  -- Discard animation (tiles falling down)
-                    Hand.updateIdleAnimations(gameState.fusionHand, dt)  -- Idle floating/rotation
-                end
-            elseif tileNodeType == "enhance" then
-                -- Update enhance hand with all animations
-                if gameState.enhanceHand then
-                    Hand.updatePositions(gameState.enhanceHand)
-                    Hand.updateDrawAnimations(gameState.enhanceHand, dt)
-                    Hand.updateDiscardAnimations(gameState.enhanceHand, dt)
-                    Hand.updateIdleAnimations(gameState.enhanceHand, dt)
-                end
-            elseif tileNodeType == "pawn" then
-                -- Update pawn hand with all animations
-                if gameState.pawnHand then
-                    Hand.updatePositions(gameState.pawnHand, true)
-                    Hand.updateDrawAnimations(gameState.pawnHand, dt)
-                    Hand.updateDiscardAnimations(gameState.pawnHand, dt)
-                    Hand.updateIdleAnimations(gameState.pawnHand, dt)
-                end
-            elseif tileNodeType == "flatten" then
-                -- Update flatten hand with all animations
-                if gameState.flattenHand then
-                    Hand.updatePositions(gameState.flattenHand, true)
-                    Hand.updateDrawAnimations(gameState.flattenHand, dt)
-                    Hand.updateDiscardAnimations(gameState.flattenHand, dt)
-                    Hand.updateIdleAnimations(gameState.flattenHand, dt)
-                end
-            elseif tileNodeType == "mitosis" then
-                -- Update mitosis hand with all animations
-                if gameState.mitosisHand then
-                    Hand.updatePositions(gameState.mitosisHand)
-                    Hand.updateDrawAnimations(gameState.mitosisHand, dt)
-                    Hand.updateDiscardAnimations(gameState.mitosisHand, dt)
-                    Hand.updateIdleAnimations(gameState.mitosisHand, dt)
-                end
-            else
-                -- Update shop hand tiles with all animations (like combat hand)
-                if gameState.offeredTiles then
-                    Hand.updatePositions(gameState.offeredTiles, true)  -- Skip sorting
-                    Hand.updateDrawAnimations(gameState.offeredTiles, dt)  -- Draw animation (tiles sliding in from right)
-                    Hand.updateDiscardAnimations(gameState.offeredTiles, dt)  -- Discard animation (tiles falling down)
-                    Hand.updateIdleAnimations(gameState.offeredTiles, dt)  -- Idle floating/rotation
-                end
-            end
-        elseif gameState.gamePhase == "artifacts_menu" then
-            -- Update tool sprite animations (similar to tile shop)
-            if gameState.offeredTools then
-                -- Update positions for all tool sprites
-                for i, tool in ipairs(gameState.offeredTools) do
-                    local x, y = UI.Layout.getHandPosition(i - 1, #gameState.offeredTools)
-                    if not tool.isDragging and not tool.isAnimating then
-                        tool.visualX = x
-                        tool.visualY = y
-                    end
-                    tool.x = x
-                    tool.y = y
-                end
-
-                -- Animate draw, idle animations
-                updateToolSpriteDrawAnimations(gameState.offeredTools, dt)
-                updateToolSpriteIdleAnimations(gameState.offeredTools, dt)
-            end
-        end
+    elseif NODE_MENU_PHASES[gameState.gamePhase] then
+        updateNodeMenu(dt)
     elseif gameState.gamePhase == "map" then
         -- Start map ambiance when entering map phase
         if not UI.Audio.isMapAmbiancePlaying() then
