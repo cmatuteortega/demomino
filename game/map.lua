@@ -1,5 +1,21 @@
 Map = {}
 
+-- pairs() over string keys has no stable order across LuaJIT processes (its
+-- string hash is randomly seeded), so anything that iterates map.nodes while
+-- consuming random numbers must go through this to stay reproducible from the
+-- map seed.
+function Map.sortedPairs(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local i = 0
+    return function()
+        i = i + 1
+        local k = keys[i]
+        if k ~= nil then return k, t[k] end
+    end
+end
+
 -- Weight per node type per night tier. Nights >= 4 use the [4] column.
 -- Missing key = unavailable on that night. Add a new node = add one row.
 --
@@ -292,7 +308,14 @@ function Map.pickWeightedType(currentNight, selectionContext, excludeTypes)
 
     local pool = {}
     local totalWeight = 0
-    for nodeType, weights in pairs(Map.NODE_WEIGHTS) do
+    -- Iterate in sorted order: pairs() order over string keys varies between
+    -- LuaJIT processes, which would make map generation non-reproducible
+    -- from its seed.
+    local nodeTypes = {}
+    for nodeType in pairs(Map.NODE_WEIGHTS) do table.insert(nodeTypes, nodeType) end
+    table.sort(nodeTypes)
+    for _, nodeType in ipairs(nodeTypes) do
+        local weights = Map.NODE_WEIGHTS[nodeType]
         local w = weights[nightTier]
         if w and not excluded[nodeType] then
             local cap = Map.MAX_PER_MAP[nodeType]
@@ -747,7 +770,7 @@ function Map.removeUnreachableNodes(map)
     end
     
     -- Clean up connections that point to removed nodes
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         local validConnections = {}
         for _, connectionId in ipairs(node.connections) do
             if map.nodes[connectionId] then
@@ -836,7 +859,7 @@ function Map.ensureAllPathsReachBoss(map, bossNode)
         
         -- Verify all nodes can reach boss
         local allConnected = true
-        for nodeId, node in pairs(map.nodes) do
+        for nodeId, node in Map.sortedPairs(map.nodes) do
             if not connectedNodes[nodeId] then
                 allConnected = false
                 print("Node " .. nodeId .. " cannot reach boss after attempt " .. attempt)
@@ -943,7 +966,7 @@ function Map.addConnectionToBoss(map, node, connectedNodes, currentDepth, attemp
     -- Third attempt: emergency connection to boss directly
     if attempt >= 3 then
         local bossNode = nil
-        for _, node in pairs(map.nodes) do
+        for _, node in Map.sortedPairs(map.nodes) do
             if node.nodeType == "boss" then
                 bossNode = node
                 break
@@ -974,7 +997,7 @@ end
 -- Validate that the DAG has no cycles (should be impossible with our level-based generation)
 function Map.validateAcyclicStructure(map)
     -- Simple validation: ensure connections only go to higher depth levels
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         for _, connectionId in ipairs(node.connections) do
             local targetNode = map.nodes[connectionId]
             if targetNode and targetNode.depth <= node.depth then
@@ -990,7 +1013,7 @@ function Map.ensureBossHasConnections(map, bossNode)
     local hasIncomingConnection = false
     
     -- Check if any node connects to the boss
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         if nodeId ~= bossNode.id then
             for _, connectionId in ipairs(node.connections) do
                 if connectionId == bossNode.id then
@@ -1458,7 +1481,7 @@ end
 
 -- Generate path tiles connecting nodes using proper domino chains
 function Map.generatePathTiles(map)
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         for _, connectionId in ipairs(node.connections) do
             local targetNode = Map.findNodeById(map, connectionId)
             if targetNode then
@@ -1994,7 +2017,7 @@ function Map.calculatePathLengths(map)
     local bossNode = nil
     
     -- Find start and boss nodes
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -2300,7 +2323,7 @@ function Map.performFinalConnectivityCheck(map)
     -- Find start and boss nodes
     local startNode = nil
     local bossNode = nil
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -2315,7 +2338,7 @@ function Map.performFinalConnectivityCheck(map)
     
     -- Check 1: Boss must have incoming connections
     local bossHasIncoming = false
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         if nodeId ~= bossNode.id then
             for _, connectionId in ipairs(node.connections) do
                 if connectionId == bossNode.id then
@@ -2342,7 +2365,7 @@ function Map.performFinalConnectivityCheck(map)
     -- Check 3: Every node must be reachable from start
     local totalNodes = 0
     local reachableNodes = 0
-    for nodeId, _ in pairs(map.nodes) do
+    for nodeId, _ in Map.sortedPairs(map.nodes) do
         totalNodes = totalNodes + 1
         if reachableFromStart[nodeId] then
             reachableNodes = reachableNodes + 1
@@ -2359,7 +2382,7 @@ function Map.performFinalConnectivityCheck(map)
     -- Check 4: Every node must have a path to boss (backward reachability)
     local canReachBoss = Map.getNodesCanReachBoss(map, bossNode)
     local nodesCanReachBoss = 0
-    for nodeId, _ in pairs(map.nodes) do
+    for nodeId, _ in Map.sortedPairs(map.nodes) do
         if canReachBoss[nodeId] then
             nodesCanReachBoss = nodesCanReachBoss + 1
         else
@@ -2797,7 +2820,7 @@ function Map.getNodesCanReachBoss(map, bossNode)
     -- Keep iterating until no more nodes are marked as able to reach boss
     while changed do
         changed = false
-        for nodeId, node in pairs(map.nodes) do
+        for nodeId, node in Map.sortedPairs(map.nodes) do
             if not canReachBoss[nodeId] then
                 -- Check if any of this node's connections can reach boss
                 for _, connectionId in ipairs(node.connections) do
@@ -2820,7 +2843,7 @@ function Map.analyzePathCombatCounts(map)
     local bossNode = nil
     
     -- Find start and boss nodes
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -3010,7 +3033,7 @@ function Map.correctCombatDeficiency(map)
     
     -- Sort candidates by impact (prefer nodes that fix multiple deficient paths)
     local sortedCandidates = {}
-    for nodeId, candidate in pairs(conversionCandidates) do
+    for nodeId, candidate in Map.sortedPairs(conversionCandidates) do
         table.insert(sortedCandidates, {nodeId = nodeId, candidate = candidate})
     end
     
@@ -3020,7 +3043,11 @@ function Map.correctCombatDeficiency(map)
             return a.candidate.pathCount > b.candidate.pathCount
         end
         -- Secondary: prefer nodes with higher total deficit impact
-        return a.candidate.totalDeficit > b.candidate.totalDeficit
+        if a.candidate.totalDeficit ~= b.candidate.totalDeficit then
+            return a.candidate.totalDeficit > b.candidate.totalDeficit
+        end
+        -- Tiebreak on id so the order is deterministic
+        return a.nodeId < b.nodeId
     end)
     
     -- Convert nodes to combat type until requirements are met

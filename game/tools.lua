@@ -93,6 +93,7 @@ function Tools.generateRandomToolOffers(count)
     for _, toolDef in pairs(toolDefinitions) do
         table.insert(allTools, toolDef.id)
     end
+    table.sort(allTools)  -- pairs() order varies between runs; keep the shuffle seed-reproducible
 
     -- Shuffle the array
     for i = #allTools, 2, -1 do
