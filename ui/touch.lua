@@ -6193,56 +6193,35 @@ function Touch.handleToolButtonClick(toolId)
 end
 
 -- Purchase a tool from the artifacts shop
+-- Red "can't do that" text in the middle of the screen (shop and contract errors)
+local SHOP_ERROR_TEXT = {coins = "NOT ENOUGH COINS!", full = "MAX 3 TOOLS!"}
+local function showShopError(text, color, shake)
+    UI.Animation.createFloatingText(text, gameState.screen.width / 2, gameState.screen.height / 2, {
+        color = color,
+        fontSize = "large",
+        duration = 1.5,
+        riseDistance = 40,
+        startScale = 0.8,
+        endScale = 1.2,
+        shake = shake and 3 or nil,
+        easing = "easeOutQuart"
+    })
+end
+
 function Touch.purchaseTool(toolId, cost)
     -- Double-check affordability and space
-    if gameState.coins < cost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = {0.9, 0.3, 0.3, 1},
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
-        return
-    end
-
-    local ownedTools = gameState.ownedTools or {}
-    if #ownedTools >= 3 then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
-            color = {0.9, 0.3, 0.3, 1},
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
+    local blocked = Shop.checkToolPurchase(gameState, cost)
+    if blocked then
+        showShopError(SHOP_ERROR_TEXT[blocked], {0.9, 0.3, 0.3, 1}, true)
         return
     end
 
     -- Purchase successful
     updateCoins(gameState.coins - cost, {hasBonus = false})
-    table.insert(gameState.ownedTools, toolId)
+    Shop.addOwnedTool(gameState, toolId)
 
     -- Remove the purchased tool from current shop offers
-    if gameState.offeredTools then
-        for i, offeredToolId in ipairs(gameState.offeredTools) do
-            if offeredToolId == toolId then
-                table.remove(gameState.offeredTools, i)
-                break
-            end
-        end
-    end
+    Shop.removeOffer(gameState.offeredTools, toolId)
 
     -- Show success animation
     local centerX = gameState.screen.width / 2
@@ -6365,23 +6344,11 @@ function Touch.purchaseShopPlacedTile()
     end
 
     local tile = gameState.shopPlacedTiles[1]
-    local cost = tile.basePrice or 2
+    local cost = Shop.tilePrice(tile)
 
     -- Check if player can afford
     if gameState.coins < cost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
+        showShopError("NOT ENOUGH COINS!", UI.Colors.FONT_RED, true)
         return
     end
 
@@ -6392,9 +6359,7 @@ function Touch.purchaseShopPlacedTile()
     UI.Audio.playPlayButton()
 
     -- Add tile to player's collection and deck
-    table.insert(gameState.tileCollection, Domino.clone(tile))
-    table.insert(gameState.deck, Domino.clone(tile))
-    Domino.shuffleDeck(gameState.deck)
+    Shop.addTileToRun(gameState, tile)
 
     -- Animate tile zoom out and fade
     UI.Animation.animateTo(tile, {
@@ -6433,57 +6398,11 @@ end
 
 -- Purchase a contract from the contracts shop
 function Touch.purchaseContract(contract)
-    -- Check if player can afford
-    if gameState.coins < contract.cost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
-        return false
-    end
-
-    -- Check if player has space for more contracts (max 2)
-    if #gameState.activeContracts >= 2 then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("MAX 2 CONTRACTS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
-        return false
-    end
-
-    -- Check if player already owns this contract
-    if Contracts.isActive(contract.id, gameState.activeContracts) then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("ALREADY OWNED!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            shake = 3,
-            easing = "easeOutQuart"
-        })
+    -- Check affordability, free slots (max 2) and ownership
+    local blocked = Shop.checkContractPurchase(gameState, contract)
+    if blocked then
+        local text = ({coins = "NOT ENOUGH COINS!", full = "MAX 2 CONTRACTS!", owned = "ALREADY OWNED!"})[blocked]
+        showShopError(text, UI.Colors.FONT_RED, true)
         return false
     end
 
@@ -6494,17 +6413,7 @@ function Touch.purchaseContract(contract)
     UI.Audio.playPlayButton()
 
     -- Add contract to active contracts
-    table.insert(gameState.activeContracts, {
-        id             = contract.id,
-        name           = contract.name,
-        description    = contract.description,
-        effectType     = contract.effectType,
-        effectValue    = contract.effectValue,
-        triggerPip     = contract.triggerPip,
-        condition      = contract.condition,
-        conditionValue = contract.conditionValue,
-        expiresAtRound = gameState.currentRound + 3,
-    })
+    Shop.signContract(gameState, contract)
 
     -- Record contract discovery (first equip only)
     if not (gameState.discoveredContracts and gameState.discoveredContracts[contract.id]) then
@@ -6562,26 +6471,14 @@ function Touch.sealSelectedContract()
 
     if not contract then return end
 
-    local remaining = (contract.expiresAtRound or 0) - gameState.currentRound
-    if remaining >= 3 then
-        UI.Animation.createFloatingText("ALREADY AT MAX!", centerX, centerY, {
-            color = UI.Colors.FONT_RED, fontSize = "large", duration = 1.5,
-            riseDistance = 40, startScale = 0.8, endScale = 1.2, shake = 3, easing = "easeOutQuart"
-        })
+    local blocked = Shop.checkContractSeal(gameState, contract)
+    if blocked then
+        showShopError(blocked == "maxed" and "ALREADY AT MAX!" or "NOT ENOUGH COINS!", UI.Colors.FONT_RED, true)
         return
     end
 
-    local cost = contract.cost or 2
-    if gameState.coins < cost then
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED, fontSize = "large", duration = 1.5,
-            riseDistance = 40, startScale = 0.8, endScale = 1.2, shake = 3, easing = "easeOutQuart"
-        })
-        return
-    end
-
-    updateCoins(gameState.coins - cost, {hasBonus = false})
-    contract.expiresAtRound = gameState.currentRound + 3
+    updateCoins(gameState.coins - Shop.contractSealCost(contract), {hasBonus = false})
+    Shop.sealContract(gameState, contract)
     UI.Audio.playPlayButton()
 
     UI.Animation.createFloatingText(contract.name .. " RENEWED!", centerX, centerY, {
@@ -6595,18 +6492,7 @@ function Touch.rerollShopTiles()
 
     -- Check if player can afford
     if gameState.coins < rerollCost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
+        showShopError("NOT ENOUGH COINS!", UI.Colors.FONT_RED)
         return
     end
 
@@ -6764,38 +6650,10 @@ function Touch.purchaseArtifactsShopTool()
     local tool = gameState.artifactsShopPlacedTools[1]
     local cost = tool.basePrice
 
-    -- Check if player can afford
-    if gameState.coins < cost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
-        return
-    end
-
-    -- Check if player has space
-    local ownedTools = gameState.ownedTools or {}
-    if #ownedTools >= 3 then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
+    -- Check if player can afford and has space
+    local blocked = Shop.checkToolPurchase(gameState, cost)
+    if blocked then
+        showShopError(SHOP_ERROR_TEXT[blocked], UI.Colors.FONT_RED)
         return
     end
 
@@ -6806,10 +6664,7 @@ function Touch.purchaseArtifactsShopTool()
     tool.shopPurchased = true
 
     -- Add tool to owned tools
-    if not gameState.ownedTools then
-        gameState.ownedTools = {}
-    end
-    table.insert(gameState.ownedTools, tool.toolId)
+    Shop.addOwnedTool(gameState, tool.toolId)
 
     -- Play purchase sound
     UI.Audio.playPlayButton()
@@ -6941,38 +6796,10 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
 
     local cost = tool.basePrice
 
-    -- Check if player can afford
-    if gameState.coins < cost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
-        return
-    end
-
-    -- Check if player has space
-    local ownedTools = gameState.ownedTools or {}
-    if #ownedTools >= 3 then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("MAX 3 TOOLS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
+    -- Check if player can afford and has space
+    local blocked = Shop.checkToolPurchase(gameState, cost)
+    if blocked then
+        showShopError(SHOP_ERROR_TEXT[blocked], UI.Colors.FONT_RED)
         return
     end
 
@@ -6983,10 +6810,7 @@ function Touch.purchaseArtifactsShopToolDirect(tool, settledToolSprite)
     tool.shopPurchased = true
 
     -- Add tool to owned tools
-    if not gameState.ownedTools then
-        gameState.ownedTools = {}
-    end
-    table.insert(gameState.ownedTools, tool.toolId)
+    Shop.addOwnedTool(gameState, tool.toolId)
 
     -- Animate the new tool appearing in the stack with a "pop in" effect
     local newToolIndex = #gameState.ownedTools
@@ -7117,23 +6941,10 @@ function Touch.sellToolFromInventory(toolId, toolIndex, settledDie)
         return
     end
 
-    -- Remove tool from owned tools
-    local ownedTools = gameState.ownedTools or {}
-    if toolIndex <= #ownedTools and ownedTools[toolIndex] == toolId then
-        table.remove(ownedTools, toolIndex)
-    else
-        -- Fallback: search for tool
-        for i, id in ipairs(ownedTools) do
-            if id == toolId then
-                table.remove(ownedTools, i)
-                toolIndex = i
-                break
-            end
-        end
-    end
+    -- Remove tool from owned tools (falls back to searching if the slot moved)
+    toolIndex = Shop.removeOwnedTool(gameState, toolId, toolIndex) or toolIndex
 
-    local toolDef = Tools.getDefinition(toolId)
-    local sellValue = ({ [1] = 0, [2] = 1, [3] = 2 })[(toolDef and toolDef.tier) or 1] or 0
+    local sellValue = Shop.toolSellValue(toolId)
 
     -- Pass the settled die physics object directly to cup animation
     -- The die will be kept in the physics array and rendered until cup hides it
@@ -7190,18 +7001,7 @@ function Touch.rerollArtifactsShopTools()
 
     -- Check if player can afford
     if gameState.coins < rerollCost then
-        local centerX = gameState.screen.width / 2
-        local centerY = gameState.screen.height / 2
-
-        UI.Animation.createFloatingText("NOT ENOUGH COINS!", centerX, centerY, {
-            color = UI.Colors.FONT_RED,
-            fontSize = "large",
-            duration = 1.5,
-            riseDistance = 40,
-            startScale = 0.8,
-            endScale = 1.2,
-            easing = "easeOutQuart"
-        })
+        showShopError("NOT ENOUGH COINS!", UI.Colors.FONT_RED)
         return
     end
 
@@ -7581,26 +7381,17 @@ function Touch.acceptDeal()
     if gameState.dealAccepted then return end
     gameState.dealAccepted = true
 
-    -- Add the rolled drawback tiles to the collection
+    -- Add the rolled drawback tiles to the collection and refresh the deck
     local drawback = gameState.dealDemonTiles or {}
-    for _, src in ipairs(drawback) do
-        local t = Domino.new(src.left, src.right, src.leftScore, src.rightScore)
-        t.tileType = src.tileType
-        t.id = src.id
-        table.insert(gameState.tileCollection, t)
-    end
-
-    -- Refresh deck from updated collection
-    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
-    Domino.shuffleDeck(gameState.deck)
+    Shop.addDealDrawback(gameState, drawback)
 
     local contract  = gameState.offeredDealContract
     local screenCX  = gameState.screen.width  / 2
     local screenCY  = gameState.screen.height / 2
 
-    if #gameState.activeContracts >= 2 or not contract then
+    if not Shop.dealContractFits(gameState, contract) then
         -- Slots full: award coins instead
-        updateCoins(gameState.coins + 5, {hasBonus = false})
+        updateCoins(gameState.coins + Shop.DEAL_FALLBACK_COINS, {hasBonus = false})
         UI.Animation.createFloatingText("+5$!", screenCX, screenCY - UI.Layout.scale(60), {
             color = UI.Colors.FONT_WHITE, fontSize = "larger",
             duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,
@@ -7613,17 +7404,7 @@ function Touch.acceptDeal()
         end
     else
         -- Add contract to active list
-        table.insert(gameState.activeContracts, {
-            id             = contract.id,
-            name           = contract.name,
-            description    = contract.description,
-            effectType     = contract.effectType,
-            effectValue    = contract.effectValue,
-            triggerPip     = contract.triggerPip,
-            condition      = contract.condition,
-            conditionValue = contract.conditionValue,
-            expiresAtRound = gameState.currentRound + 3,
-        })
+        Shop.signContract(gameState, contract)
         -- Record contract discovery (first equip only)
         if not (gameState.discoveredContracts and gameState.discoveredContracts[contract.id]) then
             gameState.discoveredContracts = Save.recordDiscoveredContract(contract.id)
@@ -7654,23 +7435,15 @@ function Touch.acceptArtifactDeal()
 
     -- Add the rolled drawback tiles to the collection (same as deal)
     local drawback = gameState.dealDemonTiles or {}
-    for _, src in ipairs(drawback) do
-        local t = Domino.new(src.left, src.right, src.leftScore, src.rightScore)
-        t.tileType = src.tileType
-        t.id = src.id
-        table.insert(gameState.tileCollection, t)
-    end
-    gameState.deck = Domino.createDeckFromCollection(gameState.tileCollection)
-    Domino.shuffleDeck(gameState.deck)
+    Shop.addDealDrawback(gameState, drawback)
 
     local artifact = gameState.offeredDealArtifact
     local screenCX = gameState.screen.width  / 2
     local screenCY = gameState.screen.height / 2
-    local ownedTools = gameState.ownedTools or {}
 
-    if not artifact or #ownedTools >= 3 then
+    if not Shop.dealToolFits(gameState, artifact) then
         -- Tools full: award 5$ instead
-        updateCoins(gameState.coins + 5, {hasBonus = false})
+        updateCoins(gameState.coins + Shop.DEAL_FALLBACK_COINS, {hasBonus = false})
         UI.Animation.createFloatingText("+5$!", screenCX, screenCY - UI.Layout.scale(60), {
             color = UI.Colors.FONT_WHITE, fontSize = "larger",
             duration = 1.8, riseDistance = 40, startScale = 0.8, endScale = 1.2,
@@ -7682,8 +7455,7 @@ function Touch.acceptArtifactDeal()
                 requiresAction = false, autoDissmissTime = 6.0})
         end
     else
-        if not gameState.ownedTools then gameState.ownedTools = {} end
-        table.insert(gameState.ownedTools, artifact.id)
+        Shop.addOwnedTool(gameState, artifact.id)
         UI.Animation.createFloatingText(artifact.name .. " ACQUIRED!", screenCX, screenCY - UI.Layout.scale(60), {
             color = {0.2, 0.9, 0.3, 1}, fontSize = "large",
             duration = 2.0, riseDistance = 60, startScale = 0.5, endScale = 1.5,
