@@ -14,7 +14,7 @@ This is a domino-based roguelike deckbuilding game written in Lua using the LÖV
 ### Core Game Structure
 The game follows a modular Lua architecture with clear separation of concerns:
 
-- **main.lua**: Entry point with Love2D callbacks (love.load, love.update, love.draw) and global `gameState` management. Houses tutorial logic, dialogue orchestration, round initialization, coin updates, the casino minigame and the scoring sequence. `TARGET_SCORE` and `BASE_HAND_SIZE` constants live at the top.
+- **main.lua**: Entry point with Love2D callbacks (love.load, love.update, love.draw), the initial `gameState`, new-run/round initialization (`resetGameToFresh`, `initializeGame`, `initializeCombatRound`, round intro) and app pause handling. `TARGET_SCORE` and `BASE_HAND_SIZE` constants live at the top. The other former main.lua systems are separate files that still define the same global functions: `ui/dialogue_flow.lua` (tutorial + dialogue orchestration), `ui/hud_animation.lua` (`updateScore`, `updateCoins`, coin/tool HUD animations), `ui/scoring_sequence.lua` (tile-by-tile scoring after PLAY), `ui/tile_fire.lua` (Lucifer hand fire, Beelzebub burn; `TileFire.update*`), `game/casino.lua` (gamble node)
 - **game/**: Core game logic modules
   - **domino.lua**: Domino tile creation, manipulation, and utilities. Authoritative source for tile connection logic (`Domino.canConnect`), odd/even special tiles, fusion system, sprite caching, deck generation (standard 28-tile 0-0 to 6-6 plus special tiles)
   - **hand.lua**: Player hand management — tile drawing with staggered animations, selection, idle floating animations, arc-trajectory sorting, drag-and-drop, discard animations, hand reordering
@@ -98,7 +98,7 @@ Requires Love2D/LÖVE framework installed. Game supports desktop and mobile plat
 ### Module Loading Order
 The game loads modules in this specific order (top of `love.load()` in main.lua):
 1. Core game modules: i18n, domino, hand, board, validation, scoring, challenges, boss_behaviors, demon_data, map, save, tools, contracts, drawbacks, dialogue
-2. UI modules: touch, layout, fonts, colors, renderer, animation, audio, title_screen, sprites
+2. UI modules: touch, layout, fonts, colors, renderer, animation, audio, title_screen, sprites, tile_fire, hud_animation, scoring_sequence, dialogue_flow, then game/casino
 3. Sprite loading (functions in `ui/sprites.lua`):
    - `loadDominoSprites()` — standard tiles (162 files including odd/even variants)
    - `loadDemonTileSprites()` — animated demon tile eye frames
@@ -151,7 +151,7 @@ The game loads modules in this specific order (top of `love.load()` in main.lua)
 - `gameState.tilesMenuMode` switches between `"shop"` and `"fusion"` within the tiles menu
 - `gameState.fusionHand` — 7-tile hand shown in fusion mode
 - `gameState.fusionSlotTiles` — `{tile1, tile2}` slots for the fusion input
-- Fusion result logic lives in main.lua and tools.lua
+- Fusion result logic lives in ui/touch.lua (`Touch.confirmFusion`) and game/domino.lua (`Domino.fuseTiles`)
 
 ### Tools vs Artifacts
 - **Tools** (`game/tools.lua`): 9 types, max 3 owned, appear as persistent dice sprites on the board, dragged from the tool stack UI via `gameState.draggedTool`
@@ -161,7 +161,7 @@ The game loads modules in this specific order (top of `love.load()` in main.lua)
 ### Coin System
 - `gameState.coins` — current player currency
 - Full animation state in `gameState.coinsAnimation` — falling coins, chip loops, flip animations
-- Not a separate module — coin update logic (`updateCoins()`) lives in main.lua
+- Coin update logic (`updateCoins()`) lives in ui/hud_animation.lua
 
 ### Board vs Placed Tiles
 - `gameState.board` — populated by `Board.placeTiles()` during chain arrangement; cleared by `Board.clear()`
@@ -222,14 +222,15 @@ The game has two integrated dialogue systems that share the same visual presenta
 - **Tap Detection**: Only top third of screen registers dialogue taps (same as combat dialogue)
 - **Integration**: Tutorial uses same `dialogueAnimation` table as combat dialogue (not separate system)
 
-**Core Functions** (all in main.lua):
+**Core Functions** (all in ui/dialogue_flow.lua):
 - `showTutorialMessage(message, requiresAction)`: Initializes tutorial dialogue with typewriter effect
 - `dismissTutorialOnAction()`: Triggers dismiss animation when player performs relevant action
 - `updateTutorialDialogue(dt)`: Handles timing, auto-dismiss, animation, and message queueing
 - `initializeDialogue(text, category)`: Suppressed during round 1 with tutorial enabled
 
 **Files Involved**:
-- **main.lua**: Tutorial state, message logic, timing, animation handling
+- **main.lua**: Tutorial state (`gameState.tutorialState`)
+- **ui/dialogue_flow.lua**: Tutorial message logic, timing, animation handling
 - **ui/touch.lua**: Tap detection (top third), tile placement triggers, discard triggers, drag detection
 - **ui/renderer.lua**: Settings menu tutorial toggle rendering
 - **game/save.lua**: Tutorial setting persistence (`saveSettings()`, `loadSettings()`)
