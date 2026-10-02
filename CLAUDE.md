@@ -30,11 +30,15 @@ The game follows a modular Lua architecture with clear separation of concerns:
   - **boss_behaviors.lua**: Per-boss hooks (`onBeforeScore`, `onCombatEnd`, ...) keyed by demon name
   - **drawbacks.lua**: Tile penalties offered with deal-node contracts
   - **i18n.lua**: UI string tables (en/es) and the current language
+  - **workbench.lua**: Pure rules for the enhance, fusion/subtraction, flatten, mitosis and pawn screens (`Workbench.enhance`, `fuse`, `flatten`, `duplicate`, `sell`, `deckWithoutHand`). Functions take the collection and tiles, mutate them and return the outcome; `ui/touch.lua` handles coins, animation, sound and dialogue around them
+  - **shop.lua**: Pure shop/contract rules — purchase checks (`Shop.checkToolPurchase`, `checkContractPurchase`, `checkContractSeal` return nil or a reason), inventory changes (`addOwnedTool`, `removeOwnedTool`, `addTileToRun`, `signContract`, `sealContract`), tool sell values, deal-node drawbacks. Limits live here (`MAX_TOOLS`, `MAX_CONTRACTS`, `CONTRACT_ROUNDS`)
+  - **run.lua**: Round-end rules — `Run.roundReward` (coin breakdown), `isRoundWon`/`isRoundLost`, `finishWonRound` (next night or run complete after night 5), `finishLostRound`
+  - **rng.lua**: Random streams. Gameplay uses `love.math.random`; cosmetic effects (shakes, blinks, particles, coin scatter, die jitter, sound and dialogue-line picks) use `RNG.cosmetic` so they never shift gameplay rolls. New cosmetic randomness must use `RNG.cosmetic`
   - **save.lua**: Save/load system — full game state serialization, map persistence, tile collection, settings (music/sfx/tutorial), stats tracking (bestRound persists across all runs). `Save.tileToData`/`Save.tileFromData` define which tile properties persist; add new permanent tile properties there
 - **ui/**: User interface and interaction modules
   - **layout.lua**: Responsive layout calculations and screen positioning — hand area, board area, button positions, tool stack positions, mobile vs desktop detection
   - **renderer.lua**: Drawing and visual representation of all game elements (~8400 lines). 74 draw functions covering dominoes, board, hand, score formula, menus, dialogue, tool sprites, CRT shader
-  - **touch.lua**: Input handling for mouse/touch (~7800 lines) — drag-and-drop for tiles and tools, double-tap detection, hand reordering, map panning, button hit detection, gesture recognition (tap vs drag). Still also holds most shop/workbench/contract actions. `Touch.released` dispatches per-screen work through `releasePhaseHandlers[gamePhase]`, drops through `releaseDropHandlers[draggedFrom]`, and `Touch.pressed` calls `pressHandlers.*` in place; handlers return `true` when they consumed the event. Fusion/enhance/pawn/flatten/mitosis share the workbench helpers at the top of the file
+  - **touch.lua**: Input handling for mouse/touch (~7300 lines) — drag-and-drop for tiles and tools, double-tap detection, hand reordering, map panning, button hit detection, gesture recognition (tap vs drag). Shop, workbench, contract and round-end actions call the pure rules in `game/workbench.lua`, `game/shop.lua` and `game/run.lua`, then animate the result. `Touch.routeToNode` dispatches node entry through `nodeEntryHandlers[nodeType]`. `Touch.released` dispatches per-screen work through `releasePhaseHandlers[gamePhase]`, drops through `releaseDropHandlers[draggedFrom]`, and `Touch.pressed` calls `pressHandlers.*` in place; handlers return `true` when they consumed the event. Fusion/enhance/pawn/flatten/mitosis share the workbench helpers at the top of the file
   - **animation.lua**: Core animation engine — easing functions (easeOutQuart, easeOutBack, easeOutElastic, easeOutBounce), physics simulation for dice (momentum/friction/wall bouncing), floating text, score popups, cup capture animation, avoidance zones to prevent dice landing on UI
   - **fonts.lua**: Pixellari.ttf loading with 11 responsive sizes, `drawText()` and `drawAnimatedText()` (opacity, scale, rotation, shake, shadow)
   - **colors.lua**: 6-color theme palette constants (Background dark, Background light, Font white, Font pink, Font red, Font red dark) plus tile blend colors for the hard-light shader
@@ -97,7 +101,7 @@ Requires Love2D/LÖVE framework installed. Game supports desktop and mobile plat
 
 ### Module Loading Order
 The game loads modules in this specific order (top of `love.load()` in main.lua):
-1. Core game modules: i18n, domino, hand, board, validation, scoring, challenges, boss_behaviors, demon_data, map, save, tools, contracts, drawbacks, dialogue
+1. Core game modules: rng, i18n, domino, hand, board, validation, scoring, challenges, boss_behaviors, demon_data, map, save, tools, contracts, drawbacks, dialogue, workbench, shop, run
 2. UI modules: touch, layout, fonts, colors, renderer, animation, audio, title_screen, sprites, tile_fire, hud_animation, scoring_sequence, dialogue_flow, then game/casino
 3. Sprite loading (functions in `ui/sprites.lua`):
    - `loadDominoSprites()` — standard tiles (162 files including odd/even variants)
