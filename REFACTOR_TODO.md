@@ -1,8 +1,8 @@
 # Refactor hand-off: remaining work
 
-Follow-up list from the refactor session on branch `ccr-26e627f1-3ql5so`
-(last commit `7faeee6`). Everything listed under "Done" is pushed. CI
-(`tests.yml` and `android.yml`) is green on that commit.
+Follow-up list for the refactor on PR #25. The first session (branch
+`ccr-26e627f1-3ql5so`, up to `3220184`) and the second session (branch
+`ccr-429268fc-hu0li8`, on top of it) are listed under "Done".
 
 ## Done (for context)
 
@@ -16,6 +16,19 @@ Follow-up list from the refactor session on branch `ccr-26e627f1-3ql5so`
 | `5bde442` | `UI.Layout.getTileSpriteScale()` replaces 29 copies of the scale formula |
 | `da08140` | `main.lua` split into `ui/dialogue_flow.lua`, `ui/hud_animation.lua`, `ui/scoring_sequence.lua`, `ui/tile_fire.lua`, `game/casino.lua` |
 | `7faeee6` | CI tolerates `love`'s man-page postinst failure |
+
+Second session (each pure refactor verified byte-identical on 2 scenario + 2 fuzz seeds):
+
+| Commit | What |
+| --- | --- |
+| `ed7de51` | `game/workbench.lua`: enhance / fusion / flatten / mitosis / pawn rules out of `touch.lua` (+ `tests/test_workbench.lua`) |
+| `1418799` | `game/shop.lua`: tool / tile / contract purchases, renewal, tool selling, deal nodes (+ `tests/test_shop.lua`); one `showShopError` helper |
+| `e7b2f44` | `game/run.lua`: round reward and win/loss progression (+ `tests/test_run.lua`); `Touch.routeToNode` → `nodeEntryHandlers` |
+| `21c3648` | Map generation logging behind `Map.DEBUG`; CLAUDE.md `findValidChain` reference fixed |
+| `ff455b1` | Cosmetic randomness on its own generator (`game/rng.lua`, `RNG.cosmetic`). Changes RNG streams by design |
+| `3a3d794` | Eye-blink state keyed by `instanceId` |
+| `315a232` | Save/settings files loaded as sandboxed data (no bytecode, empty env) |
+| `451a2bf` | `love.update` node-menu branch → `updateNodeMenu` with lookup tables |
 
 ## Environment setup for the next session
 
@@ -58,24 +71,20 @@ Add `GOLDEN_PIXELS=1` to both sides when the change touches drawing.
 
 ## Remaining work, highest value first
 
-### 1. Move game rules out of `ui/touch.lua` (~7,860 lines)
-Input handling still owns the economy and the shop, contract and workbench
-actions:
-
-- `Touch.purchaseTool`, `purchaseShopPlacedTile`, `purchaseContract`, `purchaseArtifactsShopTool(Direct)`
-- `Touch.sellPawnTile`, `sellToolFromInventory`
-- `Touch.confirmEnhance`, `confirmFusion`, `confirmFlatten`, `confirmMitosis`
-- `Touch.rerollShopTiles`, `rerollArtifactsShopTools`, `rerollFusionHand`
-- `Touch.signSelectedContract`, `sealSelectedContract`, `acceptDeal`, `acceptArtifactDeal`
-- `Touch.useToolDirectly`, `Touch.checkGameEnd`, `Touch.routeToNode` (~376 lines)
-
-Approach: for each action, split the pure rule from its animation and sound
-calls. The pure part covers cost checks, collection and deck mutation, coin
-changes and contract state. Move it into `game/shop.lua`,
-`game/workbench.lua` and `game/run.lua`, which return results that `touch.lua`
-then animates. Add unit tests for the pure halves. This is judgement work,
-not a mechanical move; do one screen per commit and verify each with the
-golden traces.
+### 1. Game rules out of `ui/touch.lua` — mostly done
+Workbench, shop, contract, deal and round-end rules now live in
+`game/workbench.lua`, `game/shop.lua` and `game/run.lua` with unit tests.
+`Touch.useToolDirectly` already delegated to `Tools.canUse` / `Tools.use`.
+What's left is small:
+- The rerolls (`rerollShopTiles`, `rerollArtifactsShopTools`,
+  `rerollFusionHand`, `rerollWorkbenchHand`) are mostly animation. Their rule
+  is "pay `shopRerollCost` / 1 coin, draw new offers", and the offers already
+  come from `Domino.generateShopTileOffers` / `Tools.generateRandomToolOffers`.
+- Behaviour quirks kept as-is during the move, worth a look:
+  `Run.DISCARDS_FOR_REWARD` is a fixed 2, not `maxDiscardsPerRound`.
+  `Workbench.sell` matches `tileType` raw, but enhance/flatten treat nil as
+  `"normal"`, while `Domino.clone` defaults to `"regular"`. Fusion matches on
+  values only, so it can consume a relic copy of the same pips.
 
 ### 2. Single run-state factory (replace field-by-field resets)
 `love.load`, `resetGameToFresh`, `initializeGame`, `initializeCombatRound`
@@ -88,16 +97,11 @@ constructor, and have resets replace the whole layer. Re-run `resetleak`
 afterwards. It should list only presentation state and the freshly
 generated map.
 
-### 3. Give cosmetic randomness its own generator
-Gameplay (deck shuffles, shop rolls, map) and cosmetic effects (coin
-offsets in `ui/hud_animation.lua`, chip-loop and typewriter sound picks in
-`ui/audio.lua`, renderer shake, eye blinks) share `love.math.random`. Worse,
-`updateChipLoopSound` draws when a sound finishes in *real* time, so
-gameplay randomness depends on audio timing and seeded runs aren't fully
-reproducible on real devices. Fix: use a `love.math.newRandomGenerator()`
-for cosmetics, or one for gameplay seeded from the map seed. This changes
-the RNG streams, so traces will differ. Check that diffs are limited to
-random outcomes, not crashes or phase changes.
+### 3. ~~Give cosmetic randomness its own generator~~ — done (`ff455b1`)
+Cosmetic draws use `RNG.cosmetic` (game/rng.lua), and gameplay keeps
+`love.math.random`. Remaining edge: `Dialogue.getRandomPhrase` counts as
+cosmetic, but the chosen line's length sets how long dialogue stays up.
+That shows in traces but not in gameplay outcomes.
 
 ### 4. Split large renderer functions (`ui/renderer.lua`, ~8,400 lines)
 The largest functions are `drawScore` (519 lines), `drawCollectionMenu` (322),
@@ -116,25 +120,20 @@ a low-res canvas. Pixel hashes will change slightly, so compare screenshots
 by eye.
 
 ### 6. Smaller cleanups
-- [ ] `game/map.lua` has 39 debug `print` calls run during every map
-      generation. Remove them or put them behind a debug flag.
-- [ ] `lib/suit` is vendored but never `require`d. Delete it, or note why it's kept.
-- [ ] CLAUDE.md "Tile Connection Logic" still mentions
-      `Validation.findValidChain()`, which doesn't exist.
-- [ ] Renderer `eyeBlinkStates` is keyed by `tile.id` (e.g. `"3-5"`), so
-      duplicate tiles share blink state. Key by `instanceId`.
+- [x] `game/map.lua` debug prints are behind `Map.DEBUG`.
+- [ ] `lib/suit` is vendored but never `require`d. Delete it, or note why it's kept
+      (not done: needs the owner's OK).
+- [x] CLAUDE.md "Tile Connection Logic" no longer mentions `findValidChain`.
+- [x] Renderer `eyeBlinkStates` is keyed by `instanceId`.
 - [ ] `conf.lua` declares `t.version = "12.0"`; stock LÖVE 11.x shows a
       blocking compatibility dialog. Fine for the Android 12.0 build, but
       desktop players on 11.5 see it.
 - [ ] Most cross-module functions are still globals (`updateCoins`,
       `initializeDialogue`, `getToolAt`, sprite tables, ...). Moving them into
       module tables would make dependencies explicit; do it gradually.
-- [ ] `love.update`'s menus branch (~110 lines covering
-      tiles/artifacts/contracts/deal/restore) could use the same per-phase
-      handler table as `Touch.released`.
-- [ ] `Save.deserialize` runs the save file with `loadstring`. Fine for local
-      saves, but a sandboxed `setfenv(f, {})` would stop a tampered save from
-      running code.
+- [x] `love.update`'s menus branch is `updateNodeMenu(dt)`. The rest of
+      `love.update` is still an if/elseif chain over phases.
+- [x] Save and settings files load through a sandboxed `loadDataChunk`.
 
 ### 7. Harness coverage gaps
 These handlers never ran during golden runs, so their extraction was
