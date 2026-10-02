@@ -144,7 +144,7 @@ The game loads modules in this specific order (top of `love.load()` in main.lua)
 ### Tile Connection Logic
 - **Authoritative source**: `Domino.canConnect(domino1, side1, domino2, side2)` in `game/domino.lua`
 - Supports direct pip matching and special odd/even tile matching
-- `Validation.validateSequentialPlacement()` and `Validation.findValidChain()` delegate to `Domino.canConnect`
+- `Validation.validateSequentialPlacement()`, `Validation.canFitAtEnd()`, `Validation.orientForEnd()` and `Validation.canConnectBothWays()` delegate to `Domino.canConnect`
 - **When modifying connection rules**, only change `Domino.canConnect` — validation picks it up automatically
 
 ### Fusion/Alchemy System
