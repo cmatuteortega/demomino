@@ -28,7 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install LÖVE and Xvfb
-        run: sudo apt-get update && sudo apt-get install -y love xvfb
+        run: |
+          sudo apt-get update
+          # love's postinst registers a man page alternative and fails on
+          # images that strip man pages; the binary is installed regardless
+          sudo apt-get install -y love xvfb || true
+          love --version
+          command -v xvfb-run
       # Enters every node type and fuzzes input on each screen; fails on any
       # Lua error or crash. See tests/golden/run.sh.
       - name: Scenario run (every screen)
