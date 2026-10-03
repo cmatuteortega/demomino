@@ -204,7 +204,7 @@ function Dialogue.getRandomPhrase(phase, category)
         return nil
     end
 
-    return categoryPhrases[love.math.random(1, #categoryPhrases)]
+    return categoryPhrases[RNG.cosmetic(1, #categoryPhrases)]
 end
 
 -- Show dialogue for current phase
@@ -423,19 +423,19 @@ function Dialogue.checkTriggers(phase, triggerType, context)
     -- Handle different trigger types
     if triggerType == Dialogue.TriggerType.ON_ENTER then
         if content.greetings and #content.greetings > 0 then
-            local text = content.greetings[love.math.random(1, #content.greetings)]
+            local text = content.greetings[RNG.cosmetic(1, #content.greetings)]
             return text, {category = "greeting", skipDelay = true, requiresAction = false}
         end
     elseif triggerType == Dialogue.TriggerType.RANDOM_IDLE then
         if content.idle and #content.idle > 0 then
-            local text = content.idle[love.math.random(1, #content.idle)]
+            local text = content.idle[RNG.cosmetic(1, #content.idle)]
             return text, {category = "idle", skipDelay = false, requiresAction = false}
         end
     elseif triggerType == Dialogue.TriggerType.ON_ACTION then
         -- Context should specify which action (e.g., "purchase", "discard", "win")
         local actionCategory = context.action
         if actionCategory and content[actionCategory] and #content[actionCategory] > 0 then
-            local text = content[actionCategory][love.math.random(1, #content[actionCategory])]
+            local text = content[actionCategory][RNG.cosmetic(1, #content[actionCategory])]
             return text, {category = actionCategory, skipDelay = true, requiresAction = false}
         end
     end

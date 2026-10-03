@@ -109,8 +109,8 @@ function UI.Fonts.drawAnimatedText(text, x, y, size, color, alignment, animProps
         finalColor[4] = (finalColor[4] or 1) * opacity
     end
 
-    local shakeX = shake > 0 and (love.math.random() - 0.5) * shake * 2 or 0
-    local shakeY = shake > 0 and (love.math.random() - 0.5) * shake * 2 or 0
+    local shakeX = shake > 0 and (RNG.cosmetic() - 0.5) * shake * 2 or 0
+    local shakeY = shake > 0 and (RNG.cosmetic() - 0.5) * shake * 2 or 0
 
     local font = UI.Fonts.get(size)
     local textWidth = font:getWidth(text)

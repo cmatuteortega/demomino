@@ -1,5 +1,27 @@
 Map = {}
 
+-- Map generation logs its connectivity and balance passes; set to true to see them
+Map.DEBUG = false
+local function debugLog(...)
+    if Map.DEBUG then print(...) end
+end
+
+-- pairs() over string keys has no stable order across LuaJIT processes (its
+-- string hash is randomly seeded), so anything that iterates map.nodes while
+-- consuming random numbers must go through this to stay reproducible from the
+-- map seed.
+function Map.sortedPairs(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local i = 0
+    return function()
+        i = i + 1
+        local k = keys[i]
+        if k ~= nil then return k, t[k] end
+    end
+end
+
 -- Weight per node type per night tier. Nights >= 4 use the [4] column.
 -- Missing key = unavailable on that night. Add a new node = add one row.
 --
@@ -292,7 +314,14 @@ function Map.pickWeightedType(currentNight, selectionContext, excludeTypes)
 
     local pool = {}
     local totalWeight = 0
-    for nodeType, weights in pairs(Map.NODE_WEIGHTS) do
+    -- Iterate in sorted order: pairs() order over string keys varies between
+    -- LuaJIT processes, which would make map generation non-reproducible
+    -- from its seed.
+    local nodeTypes = {}
+    for nodeType in pairs(Map.NODE_WEIGHTS) do table.insert(nodeTypes, nodeType) end
+    table.sort(nodeTypes)
+    for _, nodeType in ipairs(nodeTypes) do
+        local weights = Map.NODE_WEIGHTS[nodeType]
         local w = weights[nightTier]
         if w and not excluded[nodeType] then
             local cap = Map.MAX_PER_MAP[nodeType]
@@ -659,7 +688,7 @@ function Map.generateDAGConnections(map, minConnections, maxConnections)
                                 if not alreadyConnected then
                                     table.insert(node.connections, targetNode.id)
                                     connectionsAdded = connectionsAdded + 1
-                                    print("Emergency connection added: " .. node.id .. " -> " .. targetNode.id)
+                                    debugLog("Emergency connection added: " .. node.id .. " -> " .. targetNode.id)
                                     break
                                 end
                             end
@@ -738,7 +767,7 @@ function Map.removeUnreachableNodes(map)
             else
                 -- Remove unreachable nodes
                 map.nodes[node.id] = nil
-                print("Removed unreachable node: " .. node.id .. " at depth " .. depth .. " row " .. node.path)
+                debugLog("Removed unreachable node: " .. node.id .. " at depth " .. depth .. " row " .. node.path)
             end
         end
         
@@ -747,7 +776,7 @@ function Map.removeUnreachableNodes(map)
     end
     
     -- Clean up connections that point to removed nodes
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         local validConnections = {}
         for _, connectionId in ipairs(node.connections) do
             if map.nodes[connectionId] then
@@ -768,7 +797,7 @@ function Map.validateAndFixDAG(map, currentNight)
     -- Check if boss node still exists after unreachable node removal
     if #map.levels[numLevels] == 0 then
         -- Boss was removed, regenerate map (this should be rare)
-        print("Warning: Boss node was unreachable, regenerating map...")
+        debugLog("Warning: Boss node was unreachable, regenerating map...")
         return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration
     end
 
@@ -789,7 +818,7 @@ function Map.validateAndFixDAG(map, currentNight)
     -- FINAL: Comprehensive connectivity validation with regeneration fallback
     local connectivityValid = Map.performFinalConnectivityCheck(map)
     if not connectivityValid then
-        print("Critical: Final connectivity check failed, regenerating map...")
+        debugLog("Critical: Final connectivity check failed, regenerating map...")
         return Map.generateMap(map.screenWidth, map.screenHeight, map.currentNight) -- Recursive regeneration as last resort
     end
 end
@@ -828,7 +857,7 @@ function Map.ensureAllPathsReachBoss(map, bossNode)
                         connectedNodes[node.id] = true
                         table.insert(fixedNodes, node.id)
                     else
-                        print("Warning: Could not fix connectivity for node " .. node.id .. " on attempt " .. attempt)
+                        debugLog("Warning: Could not fix connectivity for node " .. node.id .. " on attempt " .. attempt)
                     end
                 end
             end
@@ -836,20 +865,20 @@ function Map.ensureAllPathsReachBoss(map, bossNode)
         
         -- Verify all nodes can reach boss
         local allConnected = true
-        for nodeId, node in pairs(map.nodes) do
+        for nodeId, node in Map.sortedPairs(map.nodes) do
             if not connectedNodes[nodeId] then
                 allConnected = false
-                print("Node " .. nodeId .. " cannot reach boss after attempt " .. attempt)
+                debugLog("Node " .. nodeId .. " cannot reach boss after attempt " .. attempt)
             end
         end
         
         if allConnected then
             if #fixedNodes > 0 then
-                print("Successfully fixed connectivity for " .. #fixedNodes .. " nodes on attempt " .. attempt)
+                debugLog("Successfully fixed connectivity for " .. #fixedNodes .. " nodes on attempt " .. attempt)
             end
             break
         elseif attempt == maxAttempts then
-            print("Warning: Could not ensure all paths reach boss after " .. maxAttempts .. " attempts")
+            debugLog("Warning: Could not ensure all paths reach boss after " .. maxAttempts .. " attempts")
         end
     end
 end
@@ -907,7 +936,7 @@ function Map.addConnectionToBoss(map, node, connectedNodes, currentDepth, attemp
                 if connectedNodes[targetNode.id] and Map.isValidConnection(node, targetNode, map) then
                     -- Add connection to this reachable node
                     table.insert(node.connections, targetNode.id)
-                    print("Fixed connectivity: " .. node.id .. " -> " .. targetNode.id .. " (standard rules)")
+                    debugLog("Fixed connectivity: " .. node.id .. " -> " .. targetNode.id .. " (standard rules)")
                     return true
                 end
             end
@@ -932,7 +961,7 @@ function Map.addConnectionToBoss(map, node, connectedNodes, currentDepth, attemp
                     
                     if not alreadyConnected then
                         table.insert(node.connections, targetNode.id)
-                        print("Fixed connectivity: " .. node.id .. " -> " .. targetNode.id .. " (relaxed rules)")
+                        debugLog("Fixed connectivity: " .. node.id .. " -> " .. targetNode.id .. " (relaxed rules)")
                         return true
                     end
                 end
@@ -943,7 +972,7 @@ function Map.addConnectionToBoss(map, node, connectedNodes, currentDepth, attemp
     -- Third attempt: emergency connection to boss directly
     if attempt >= 3 then
         local bossNode = nil
-        for _, node in pairs(map.nodes) do
+        for _, node in Map.sortedPairs(map.nodes) do
             if node.nodeType == "boss" then
                 bossNode = node
                 break
@@ -962,7 +991,7 @@ function Map.addConnectionToBoss(map, node, connectedNodes, currentDepth, attemp
             
             if not alreadyConnected then
                 table.insert(node.connections, bossNode.id)
-                print("Emergency connection: " .. node.id .. " -> " .. bossNode.id .. " (direct to boss)")
+                debugLog("Emergency connection: " .. node.id .. " -> " .. bossNode.id .. " (direct to boss)")
                 return true
             end
         end
@@ -974,7 +1003,7 @@ end
 -- Validate that the DAG has no cycles (should be impossible with our level-based generation)
 function Map.validateAcyclicStructure(map)
     -- Simple validation: ensure connections only go to higher depth levels
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         for _, connectionId in ipairs(node.connections) do
             local targetNode = map.nodes[connectionId]
             if targetNode and targetNode.depth <= node.depth then
@@ -990,7 +1019,7 @@ function Map.ensureBossHasConnections(map, bossNode)
     local hasIncomingConnection = false
     
     -- Check if any node connects to the boss
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         if nodeId ~= bossNode.id then
             for _, connectionId in ipairs(node.connections) do
                 if connectionId == bossNode.id then
@@ -1031,7 +1060,7 @@ function Map.ensureBossHasConnections(map, bossNode)
         
         -- If still no connection possible with constraints, this indicates a structural issue
         if not hasIncomingConnection then
-            print("Warning: Could not connect boss node while respecting constraints - may need map regeneration")
+            debugLog("Warning: Could not connect boss node while respecting constraints - may need map regeneration")
         end
     end
 end
@@ -1458,7 +1487,7 @@ end
 
 -- Generate path tiles connecting nodes using proper domino chains
 function Map.generatePathTiles(map)
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         for _, connectionId in ipairs(node.connections) do
             local targetNode = Map.findNodeById(map, connectionId)
             if targetNode then
@@ -1994,7 +2023,7 @@ function Map.calculatePathLengths(map)
     local bossNode = nil
     
     -- Find start and boss nodes
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -2132,7 +2161,7 @@ function Map.validatePathBalance(map)
     
     -- Check if we have valid paths
     if #pathInfo.lengths == 0 then
-        print("Warning: No valid paths found during balance validation")
+        debugLog("Warning: No valid paths found during balance validation")
         return
     end
     
@@ -2147,16 +2176,16 @@ function Map.validatePathBalance(map)
     local lengthRange = pathInfo.maxLength - pathInfo.minLength
     local balanceThreshold = 3 -- Maximum acceptable difference between shortest and longest path
     
-    print(string.format("Path balance: %d paths, lengths %d-%d (avg %.1f), variance %.1f", 
+    debugLog(string.format("Path balance: %d paths, lengths %d-%d (avg %.1f), variance %.1f", 
           #pathInfo.paths, pathInfo.minLength, pathInfo.maxLength, pathInfo.averageLength, variance))
     
     -- If paths are reasonably balanced, no action needed
     if lengthRange <= balanceThreshold then
-        print("Path balance acceptable")
+        debugLog("Path balance acceptable")
         return
     end
     
-    print(string.format("Path imbalance detected (range %d > threshold %d), attempting to improve...", 
+    debugLog(string.format("Path imbalance detected (range %d > threshold %d), attempting to improve...", 
           lengthRange, balanceThreshold))
     
     -- Attempt to improve balance by adding strategic connections
@@ -2165,7 +2194,7 @@ function Map.validatePathBalance(map)
     -- Recalculate and report final balance
     local finalPathInfo = Map.calculatePathLengths(map)
     local finalRange = finalPathInfo.maxLength - finalPathInfo.minLength
-    print(string.format("Final path balance: %d paths, lengths %d-%d (range %d)", 
+    debugLog(string.format("Final path balance: %d paths, lengths %d-%d (range %d)", 
           #finalPathInfo.paths, finalPathInfo.minLength, finalPathInfo.maxLength, finalRange))
 end
 
@@ -2230,7 +2259,7 @@ function Map.improvePathBalance(map, pathInfo)
                 if bestCandidate and bestScore > 5 then
                     table.insert(node.connections, bestCandidate.id)
                     improvementMade = true
-                    print(string.format("Added balance connection: %s -> %s (score %.1f)", 
+                    debugLog(string.format("Added balance connection: %s -> %s (score %.1f)", 
                           node.id, bestCandidate.id, bestScore))
                 end
                 
@@ -2249,7 +2278,7 @@ function Map.improvePathBalance(map, pathInfo)
         
         -- If balance is now acceptable, stop
         if currentRange <= 3 then
-            print(string.format("Path balance improved sufficiently after %d attempts", attempts))
+            debugLog(string.format("Path balance improved sufficiently after %d attempts", attempts))
             break
         end
     end
@@ -2295,12 +2324,12 @@ end
 
 -- Perform comprehensive final connectivity check
 function Map.performFinalConnectivityCheck(map)
-    print("Performing final connectivity validation...")
+    debugLog("Performing final connectivity validation...")
     
     -- Find start and boss nodes
     local startNode = nil
     local bossNode = nil
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -2309,13 +2338,13 @@ function Map.performFinalConnectivityCheck(map)
     end
     
     if not startNode or not bossNode then
-        print("ERROR: Missing start or boss node")
+        debugLog("ERROR: Missing start or boss node")
         return false
     end
     
     -- Check 1: Boss must have incoming connections
     local bossHasIncoming = false
-    for nodeId, node in pairs(map.nodes) do
+    for nodeId, node in Map.sortedPairs(map.nodes) do
         if nodeId ~= bossNode.id then
             for _, connectionId in ipairs(node.connections) do
                 if connectionId == bossNode.id then
@@ -2328,58 +2357,58 @@ function Map.performFinalConnectivityCheck(map)
     end
     
     if not bossHasIncoming then
-        print("ERROR: Boss node has no incoming connections")
+        debugLog("ERROR: Boss node has no incoming connections")
         return false
     end
     
     -- Check 2: Forward reachability from start
     local reachableFromStart = Map.getReachableNodes(map, startNode)
     if not reachableFromStart[bossNode.id] then
-        print("ERROR: Boss is not reachable from start")
+        debugLog("ERROR: Boss is not reachable from start")
         return false
     end
     
     -- Check 3: Every node must be reachable from start
     local totalNodes = 0
     local reachableNodes = 0
-    for nodeId, _ in pairs(map.nodes) do
+    for nodeId, _ in Map.sortedPairs(map.nodes) do
         totalNodes = totalNodes + 1
         if reachableFromStart[nodeId] then
             reachableNodes = reachableNodes + 1
         else
-            print("ERROR: Node " .. nodeId .. " is not reachable from start")
+            debugLog("ERROR: Node " .. nodeId .. " is not reachable from start")
         end
     end
     
     if reachableNodes ~= totalNodes then
-        print("ERROR: " .. (totalNodes - reachableNodes) .. " nodes are unreachable from start")
+        debugLog("ERROR: " .. (totalNodes - reachableNodes) .. " nodes are unreachable from start")
         return false
     end
     
     -- Check 4: Every node must have a path to boss (backward reachability)
     local canReachBoss = Map.getNodesCanReachBoss(map, bossNode)
     local nodesCanReachBoss = 0
-    for nodeId, _ in pairs(map.nodes) do
+    for nodeId, _ in Map.sortedPairs(map.nodes) do
         if canReachBoss[nodeId] then
             nodesCanReachBoss = nodesCanReachBoss + 1
         else
-            print("ERROR: Node " .. nodeId .. " cannot reach boss")
+            debugLog("ERROR: Node " .. nodeId .. " cannot reach boss")
         end
     end
     
     if nodesCanReachBoss ~= totalNodes then
-        print("ERROR: " .. (totalNodes - nodesCanReachBoss) .. " nodes cannot reach boss")
+        debugLog("ERROR: " .. (totalNodes - nodesCanReachBoss) .. " nodes cannot reach boss")
         return false
     end
     
     -- Check 5: Ensure we have at least one complete path from start to boss
     local pathCount = Map.calculatePathLengths(map)
     if #pathCount.paths == 0 then
-        print("ERROR: No complete paths from start to boss")
+        debugLog("ERROR: No complete paths from start to boss")
         return false
     end
     
-    print("Final connectivity validation PASSED: " .. totalNodes .. " nodes, " .. #pathCount.paths .. " complete paths")
+    debugLog("Final connectivity validation PASSED: " .. totalNodes .. " nodes, " .. #pathCount.paths .. " complete paths")
     return true
 end
 
@@ -2797,7 +2826,7 @@ function Map.getNodesCanReachBoss(map, bossNode)
     -- Keep iterating until no more nodes are marked as able to reach boss
     while changed do
         changed = false
-        for nodeId, node in pairs(map.nodes) do
+        for nodeId, node in Map.sortedPairs(map.nodes) do
             if not canReachBoss[nodeId] then
                 -- Check if any of this node's connections can reach boss
                 for _, connectionId in ipairs(node.connections) do
@@ -2820,7 +2849,7 @@ function Map.analyzePathCombatCounts(map)
     local bossNode = nil
     
     -- Find start and boss nodes
-    for _, node in pairs(map.nodes) do
+    for _, node in Map.sortedPairs(map.nodes) do
         if node.nodeType == "start" then
             startNode = node
         elseif node.nodeType == "boss" then
@@ -2948,7 +2977,7 @@ function Map.validateConsecutiveCombatLevels(map)
     end
 
     if fixed then
-        print("Fixed consecutive combat levels by converting some to non-combat")
+        debugLog("Fixed consecutive combat levels by converting some to non-combat")
     end
 end
 
@@ -2957,16 +2986,16 @@ function Map.validateCombatRequirements(map)
     local pathAnalysis = Map.analyzePathCombatCounts(map)
     
     if #pathAnalysis.deficientPaths == 0 then
-        print(string.format("Combat requirements PASSED: All %d paths have %d+ combat nodes", 
+        debugLog(string.format("Combat requirements PASSED: All %d paths have %d+ combat nodes", 
               #pathAnalysis.paths, pathAnalysis.minCombatRequired))
         return true
     end
     
-    print(string.format("Combat requirements FAILED: %d of %d paths have insufficient combat nodes", 
+    debugLog(string.format("Combat requirements FAILED: %d of %d paths have insufficient combat nodes", 
           #pathAnalysis.deficientPaths, #pathAnalysis.paths))
     
     for _, defPath in ipairs(pathAnalysis.deficientPaths) do
-        print(string.format("  Path %d: %d combat nodes (need %d more)", 
+        debugLog(string.format("  Path %d: %d combat nodes (need %d more)", 
               defPath.pathIndex, defPath.combatCount, defPath.deficit))
     end
     
@@ -2981,7 +3010,7 @@ function Map.correctCombatDeficiency(map)
         return true -- Already satisfies requirements
     end
     
-    print(string.format("Correcting combat deficiency in %d paths...", #pathAnalysis.deficientPaths))
+    debugLog(string.format("Correcting combat deficiency in %d paths...", #pathAnalysis.deficientPaths))
     
     -- Find candidate nodes for conversion (exclude start, boss, and already combat nodes)
     local conversionCandidates = {}
@@ -3010,7 +3039,7 @@ function Map.correctCombatDeficiency(map)
     
     -- Sort candidates by impact (prefer nodes that fix multiple deficient paths)
     local sortedCandidates = {}
-    for nodeId, candidate in pairs(conversionCandidates) do
+    for nodeId, candidate in Map.sortedPairs(conversionCandidates) do
         table.insert(sortedCandidates, {nodeId = nodeId, candidate = candidate})
     end
     
@@ -3020,7 +3049,11 @@ function Map.correctCombatDeficiency(map)
             return a.candidate.pathCount > b.candidate.pathCount
         end
         -- Secondary: prefer nodes with higher total deficit impact
-        return a.candidate.totalDeficit > b.candidate.totalDeficit
+        if a.candidate.totalDeficit ~= b.candidate.totalDeficit then
+            return a.candidate.totalDeficit > b.candidate.totalDeficit
+        end
+        -- Tiebreak on id so the order is deterministic
+        return a.nodeId < b.nodeId
     end)
     
     -- Convert nodes to combat type until requirements are met
@@ -3043,13 +3076,13 @@ function Map.correctCombatDeficiency(map)
         node.nodeType = "combat"
         conversions = conversions + 1
         
-        print(string.format("Converted %s from %s to combat (affects %d deficient paths)", 
+        debugLog(string.format("Converted %s from %s to combat (affects %d deficient paths)", 
               nodeId, oldType, candidateInfo.candidate.pathCount))
         
         -- Check if we've satisfied all requirements
         local newAnalysis = Map.analyzePathCombatCounts(map)
         if #newAnalysis.deficientPaths == 0 then
-            print(string.format("Combat requirements satisfied after %d conversions", conversions))
+            debugLog(string.format("Combat requirements satisfied after %d conversions", conversions))
             return true
         end
     end
@@ -3057,10 +3090,10 @@ function Map.correctCombatDeficiency(map)
     -- Final check
     local finalAnalysis = Map.analyzePathCombatCounts(map)
     if #finalAnalysis.deficientPaths == 0 then
-        print(string.format("Combat requirements satisfied after %d conversions", conversions))
+        debugLog(string.format("Combat requirements satisfied after %d conversions", conversions))
         return true
     else
-        print(string.format("WARNING: Still have %d deficient paths after %d conversions", 
+        debugLog(string.format("WARNING: Still have %d deficient paths after %d conversions", 
               #finalAnalysis.deficientPaths, conversions))
         return false
     end

@@ -71,8 +71,7 @@ function Board.getTileDisplayWidth(tile, dynamicScale)
 
         if sprite and sprite.getWidth and sprite.getHeight then
             -- Use same scaling as renderer
-            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-            local spriteScale = math.max(minScale * 2.0, 1.0)
+            local spriteScale = UI.Layout.getTileSpriteScale()
 
             -- Apply dynamic scale for board tiles
             spriteScale = spriteScale * dynamicScale

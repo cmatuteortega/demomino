@@ -80,8 +80,8 @@ function UI.TitleScreen.initializeTitleTiles()
             tile.eyeBlinkState = {
                 currentFrame = 1,  -- 1 = base, 2-4 = blink frames
                 frameTimer = 0,
-                blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
-                blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+                blinkTimer = RNG.cosmetic() * 3 + 2,  -- Random initial delay 2-5s
+                blinkInterval = RNG.cosmetic() * 3 + 2,  -- 2-5 seconds between blinks
                 isBlinking = false,
                 blinkPhase = 0  -- 0-3 for animation sequence
             }
@@ -175,7 +175,7 @@ function UI.TitleScreen.updateTitleTileAnimations(dt)
                     eyeState.blinkPhase = 1
                     eyeState.frameTimer = 0
                     eyeState.currentFrame = 2  -- First blink frame
-                    eyeState.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                    eyeState.blinkInterval = RNG.cosmetic() * 3 + 2  -- New random interval
                 end
             end
         end
@@ -429,6 +429,9 @@ function UI.TitleScreen.continueGame()
     gameState.isEndlessMode = saveData.isEndlessMode or false
     gameState.currentDay = saveData.currentDay or 1
 
+    -- A boss fight abandoned before saving must not leak its flags
+    BossBehaviors.clearRoundFlags(gameState)
+
     -- Restore owned tools
     gameState.ownedTools = saveData.ownedTools or {}
 
@@ -440,12 +443,7 @@ function UI.TitleScreen.continueGame()
     gameState.tileCollection = {}
     if saveData.tileCollection then
         for _, tileData in ipairs(saveData.tileCollection) do
-            -- Use Domino.new to ensure ID is properly assigned, then restore all properties
-            local tile = Domino.new(tileData.left, tileData.right, tileData.leftScore, tileData.rightScore)
-            -- Restore tile type and negative flag - important for visual persistence
-            tile.tileType = tileData.tileType or "regular"
-            tile.negative = tileData.negative or false
-            table.insert(gameState.tileCollection, tile)
+            table.insert(gameState.tileCollection, Save.tileFromData(tileData))
         end
     else
         -- Fallback to starter collection if no collection saved

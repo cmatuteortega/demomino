@@ -268,6 +268,9 @@ function Contracts.generateShopContracts()
     for _, contract in pairs(Contracts.definitions) do
         table.insert(contractPool, contract)
     end
+    -- Sort first: pairs() order varies between runs, so the shuffle below
+    -- would not be reproducible from the RNG seed otherwise
+    table.sort(contractPool, function(a, b) return a.id < b.id end)
 
     -- Shuffle the pool using Fisher-Yates algorithm
     for i = #contractPool, 2, -1 do
@@ -303,6 +306,7 @@ function Contracts.getRandomForDeal(activeContracts)
         end
     end
     if #pool == 0 then return nil end
+    table.sort(pool, function(a, b) return a.id < b.id end)
     return pool[love.math.random(1, #pool)]
 end
 

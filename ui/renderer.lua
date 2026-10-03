@@ -140,6 +140,11 @@ end
 -- Eye blink state management
 local eyeBlinkStates = {}
 
+-- Blink state belongs to one tile instance: two copies of the same demon tile blink independently
+local function blinkKey(tile)
+    return tile.instanceId or tile.id
+end
+
 local function initializeEyeBlinks(tileId, pipCount)
     -- Safety check: ensure tileId is valid
     if not tileId then
@@ -159,8 +164,8 @@ local function initializeEyeBlinks(tileId, pipCount)
         eyeBlinkStates[tileId].pips[i] = {
             currentFrame = 1,  -- 1 = base, 2-4 = blink frames
             frameTimer = 0,
-            blinkTimer = love.math.random() * 3 + 2,  -- Random initial delay 2-5s
-            blinkInterval = love.math.random() * 3 + 2,  -- 2-5 seconds between blinks
+            blinkTimer = RNG.cosmetic() * 3 + 2,  -- Random initial delay 2-5s
+            blinkInterval = RNG.cosmetic() * 3 + 2,  -- 2-5 seconds between blinks
             isBlinking = false,
             blinkPhase = 0  -- 0-5 for animation sequence
         }
@@ -190,7 +195,7 @@ function UI.Renderer.updateEyeBlinks(dt)
     end
 
     for _, tile in ipairs(demonTiles) do
-        local tileId = tile.id
+        local tileId = blinkKey(tile)
         -- Use Domino.getValue to handle special tiles (odd, even, x, etc.)
         local pipCount = Domino.getValue(tile)
 
@@ -205,10 +210,10 @@ function UI.Renderer.updateEyeBlinks(dt)
         local currentTime = love.timer.getTime()
 
         -- Check for special blink patterns every 8-15 seconds
-        if currentTime - blinkState.lastBlinkPattern > love.math.random() * 7 + 8 then
+        if currentTime - blinkState.lastBlinkPattern > RNG.cosmetic() * 7 + 8 then
             blinkState.lastBlinkPattern = currentTime
 
-            local patternRoll = love.math.random()
+            local patternRoll = RNG.cosmetic()
 
             if patternRoll < 0.2 then
                 -- Wave pattern: cascade blinks with 100ms delay
@@ -259,7 +264,7 @@ function UI.Renderer.updateEyeBlinks(dt)
                     pip.blinkPhase = 1
                     pip.frameTimer = 0
                     pip.currentFrame = 2  -- First blink frame
-                    pip.blinkInterval = love.math.random() * 3 + 2  -- New random interval
+                    pip.blinkInterval = RNG.cosmetic() * 3 + 2  -- New random interval
                 end
             end
         end
@@ -269,12 +274,12 @@ function UI.Renderer.updateEyeBlinks(dt)
     local activeTileIds = {}
     for _, tile in ipairs(gameState.placedTiles) do
         if tile.isAnchor or tile.tileType == "demon" then
-            activeTileIds[tile.id] = true
+            activeTileIds[blinkKey(tile)] = true
         end
     end
     for _, tile in ipairs(gameState.hand or {}) do
         if tile.tileType == "demon" then
-            activeTileIds[tile.id] = true
+            activeTileIds[blinkKey(tile)] = true
         end
     end
 
@@ -442,8 +447,8 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
 
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -466,8 +471,7 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     end
 
     -- Calculate sprite scaling based on screen size (same as regular tiles)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply dynamic scaling for board tiles
     if dynamicScale < 1.0 then
@@ -499,7 +503,7 @@ function UI.Renderer.drawDemonDomino(domino, x, y, scale, orientation, dynamicSc
     -- Clamp to 0-9; odd/even strings and values >=10 render 0 eyes (blank side)
     local leftVal  = type(domino.left)  == "number" and math.min(domino.left,  9) or 0
     local rightVal = type(domino.right) == "number" and math.min(domino.right, 9) or 0
-    local tileId = domino.id
+    local tileId = blinkKey(domino)
 
     -- Defensive: ensure blink states exist before drawing (update loop may not have run yet)
     initializeEyeBlinks(tileId, leftVal + rightVal)
@@ -550,8 +554,8 @@ function UI.Renderer.drawDemonDominoShadow(domino, x, y, scale, orientation, dyn
 
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -574,8 +578,7 @@ function UI.Renderer.drawDemonDominoShadow(domino, x, y, scale, orientation, dyn
     end
 
     -- Calculate sprite scaling based on screen size (same as regular tiles)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply dynamic scaling for board tiles
     if dynamicScale < 1.0 then
@@ -686,8 +689,8 @@ function UI.Renderer.drawDominoShadow(domino, x, y, scale, orientation, dynamicS
     end
 
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -725,8 +728,7 @@ function UI.Renderer.drawDominoShadow(domino, x, y, scale, orientation, dynamicS
         local sprite = spriteData.sprite
         if sprite and sprite.getWidth and sprite.getHeight then
             -- Calculate scaling (same as full draw)
-            local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-            local spriteScale = math.max(minScale * 2.0, 1.0)
+            local spriteScale = UI.Layout.getTileSpriteScale()
 
             if dynamicScale < 1.0 then
                 spriteScale = spriteScale * dynamicScale
@@ -808,8 +810,8 @@ function UI.Renderer.drawDomino(domino, x, y, scale, orientation, dynamicScale, 
     
     -- Apply scoring shake effect
     if domino.scoreShake and domino.scoreShake > 0 then
-        local shakeX = (love.math.random() - 0.5) * domino.scoreShake * 2
-        local shakeY = (love.math.random() - 0.5) * domino.scoreShake * 2
+        local shakeX = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
+        local shakeY = (RNG.cosmetic() - 0.5) * domino.scoreShake * 2
         x = x + shakeX
         y = y + shakeY
     end
@@ -2068,8 +2070,7 @@ function UI.Renderer.drawCoinSprites()
     local textX, textY, stackX, stackY = UI.Layout.getCoinDisplayPosition()
 
     if coinSprite then
-        local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-        local spriteScale = math.max(minScale * 2.0, 1.0)
+        local spriteScale = UI.Layout.getTileSpriteScale()
 
         -- Position coin stack 20px left of layout position
         local coinStartX = stackX - UI.Layout.scale(20)
@@ -4008,8 +4009,7 @@ function UI.Renderer.drawToolSprite(tool)
     end
 
     -- Calculate sprite scaling (same as combat tools)
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     -- Apply drag scaling and selection scaling
     spriteScale = spriteScale * (tool.dragScale or 1.0) * (tool.selectScale or 1.0)
@@ -5053,8 +5053,7 @@ function UI.Renderer.drawDealArtifactsArea()
     local centerY   = boardArea.y + boardArea.height / 2 + UI.Layout.scale(20)
 
     local sampleSprite = dominoSprites and dominoSprites["00"]
-    local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale  = math.max(minScale * 2.0, 1.0)
+    local spriteScale  = UI.Layout.getTileSpriteScale()
     local tileW = sampleSprite and (sampleSprite.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
@@ -5224,8 +5223,7 @@ function UI.Renderer.drawCasinoDealerTiles()
     local casino = gameState.casino
     if not casino or not casino.dealerTiles then return end
 
-    local minScale   = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     for _, tile in ipairs(casino.dealerTiles) do
         UI.Renderer.drawDomino(tile, tile.visualX, tile.visualY, gameState.screen.scale, "vertical", 1.0)
@@ -5374,8 +5372,7 @@ function UI.Renderer.drawDealArea()
 
     -- Tile size calculation
     local sampleSprite = dominoSprites and dominoSprites["00"]
-    local minScale     = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale  = math.max(minScale * 2.0, 1.0)
+    local spriteScale  = UI.Layout.getTileSpriteScale()
     local tileW = sampleSprite and (sampleSprite.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
     local tileH = sampleSprite and (sampleSprite.sprite:getHeight() * spriteScale) or UI.Layout.scale(100)
     local tileGap = UI.Layout.scale(10)
@@ -6718,8 +6715,7 @@ function UI.Renderer.drawFusionArea()
     local centerY = boardArea.y + boardArea.height / 2
 
     -- Sprite dimensions: tilted sprite is 64×32 px, vertical is 32×64 px.
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleTilted = dominoTiltedSprites and dominoTiltedSprites["00"]
     local tileDispW = sampleTilted and (sampleTilted.sprite:getWidth()  * spriteScale) or UI.Layout.scale(100)
@@ -6989,8 +6985,7 @@ function UI.Renderer.drawMitosisArea()
     local boardArea = UI.Layout.getBoardArea()
     local centerY = boardArea.y + boardArea.height / 2
 
-    local minScale = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-    local spriteScale = math.max(minScale * 2.0, 1.0)
+    local spriteScale = UI.Layout.getTileSpriteScale()
 
     local sampleVert = dominoSprites and dominoSprites["00"]
     local verticalWidth  = sampleVert and (sampleVert.sprite:getWidth()  * spriteScale) or UI.Layout.scale(50)
@@ -7381,8 +7376,7 @@ function UI.Renderer.drawTooltip()
         if tt.spriteHalfH and tt.spriteHalfH > 0 then
             tileHalfH = tt.spriteHalfH
         else
-            local minSc = math.min(gameState.screen.width / 800, gameState.screen.height / 600)
-            local spSc  = math.max(minSc * 2.0, 1.0)
+            local spSc  = UI.Layout.getTileSpriteScale()
             local isBoardTile = false
             if gameState.placedTiles then
                 for _, t in ipairs(gameState.placedTiles) do

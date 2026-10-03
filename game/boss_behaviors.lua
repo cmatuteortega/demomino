@@ -540,7 +540,18 @@ BossBehaviors.BEHAVIORS = {
     },
 }
 
+-- Flags a boss's onInit sets for the duration of its fight. onCombatEnd only
+-- runs when a fight is won or lost, so a fight abandoned via RESTART RUN or
+-- RETURN TO TITLE would otherwise leave them on for the next run (e.g. Samael
+-- disabling contracts and tools). Cleared at every round start and new run.
+function BossBehaviors.clearRoundFlags(gameState)
+    gameState.samaelActive = nil
+    gameState.debugFireHand = false
+    gameState.beelzebubBurn = nil
+end
+
 function BossBehaviors.initialize(gameState)
+    BossBehaviors.clearRoundFlags(gameState)
     local behavior = BossBehaviors.BEHAVIORS[gameState.currentDemonName]
     if behavior and behavior.onInit then
         behavior.onInit(gameState)
